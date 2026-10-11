@@ -232,7 +232,13 @@
         didFinish?(kind, false)
       } else if let failure {
         let message = (failure as? LocalizedError)?.errorDescription ?? failure.localizedDescription
-        state = .failed(kind, date, message)
+        // The activity view says what failed in few words: the errors, or
+        // the exit code when the log had none it could read.
+        var summary = message
+        if case .failed(let status, _)? = failure as? ActionError {
+          summary = errorCount > 0 ? "\(errorCount) error\(errorCount == 1 ? "" : "s")" : "Exit code \(status)"
+        }
+        state = .failed(kind, date, summary)
         appendStatus(message, kind: .failure)
         didFinish?(kind, false)
       } else if kind != .run && errorCount > 0 {
