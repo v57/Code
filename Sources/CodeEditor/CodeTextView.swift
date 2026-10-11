@@ -72,6 +72,49 @@
     var editedLines = IndexSet()
     /// Extra height below the last line, so it can scroll up to the top.
     private(set) var overscroll: CGFloat = 0
+
+    // MARK: Line marks (see CodeTextView+Annotations.swift)
+
+    /// Issues shown on their lines, as in Xcode: a tinted line and a banner
+    /// with the message at its right end. Lines move with edits.
+    public var annotations: [LineAnnotation] = [] {
+      didSet { if annotations != oldValue { annotationsChanged() } }
+    }
+    /// Lines (from 0) with a breakpoint, drawn in the gutter; a click on a
+    /// line number toggles one.
+    public var breakpoints: Set<Int> = [] {
+      didSet { if breakpoints != oldValue { rulerNeedsDisplay() } }
+    }
+    /// Breakpoints are drawn dimmed when deactivated.
+    public var breakpointsActive = true {
+      didSet { if breakpointsActive != oldValue { rulerNeedsDisplay() } }
+    }
+    /// Whether clicking the gutter toggles breakpoints.
+    public var allowsBreakpoints = true
+    /// Called when the user adds or removes a breakpoint, or edits move them.
+    public var onBreakpointsChange: ((Set<Int>) -> Void)?
+    /// The line the debugger stopped at (from 0), highlighted in green.
+    public var executionLine: Int? {
+      didSet {
+        guard executionLine != oldValue else { return }
+        needsDisplay = true
+        rulerNeedsDisplay()
+      }
+    }
+    /// Whether annotations show a message banner (else only the line tint).
+    public var showsAnnotationMessages = true {
+      didSet { if showsAnnotationMessages != oldValue { needsDisplay = true } }
+    }
+    /// ⌘-click at a character location (jump to definition); return true
+    /// when handled.
+    public var onCommandClick: ((Int) -> Bool)?
+    /// Called after an edit with the old range (UTF-16) and the new text, for
+    /// language servers.
+    public var onTextChange: ((NSRange, String) -> Void)?
+    /// Called when line marks move or the text is laid out again (the
+    /// minimap redraws).
+    public var onLayoutChange: (() -> Void)?
+    var annotationPopover: NSPopover?
     private var colors: [SyntaxKind: NSColor] = [:]
     private var plainColor = NSColor.textColor
 
@@ -409,6 +452,10 @@
       let changed = lineIndex.apply(edit: oldRange, replacementLength: editedRange.length, in: text)
       let lineDelta = lineIndex.count - oldLineCount
       shiftDirtyRange(forEditAt: oldRange, newLength: editedRange.length)
+      if lineDelta != 0 { shiftLineMarks(changed: changed, lineDelta: lineDelta) }
+      if let onTextChange {
+        onTextChange(oldRange, text.substring(with: editedRange))
+      }
       // Changed lines get their indent and fonts again, highlighted or not.
       markDirty(lines: changed)
       // Lines after the edit move with it; the edited lines are the ones the
@@ -539,6 +586,7 @@
       guard range.length > 0 else { return }
       applyLineAttributes(in: range)
       layoutManager?.invalidateDisplay(forCharacterRange: range)
+      onLayoutChange?()
     }
 
     /// Redraws everything after a full scan or theme change, setting fonts
@@ -551,6 +599,7 @@
       }
       applyLineAttributes(in: full)
       layoutManager?.invalidateDisplay(forCharacterRange: full)
+      onLayoutChange?()
     }
 
     public nonisolated func layoutManager(
@@ -616,6 +665,15 @@
       }
       if let next = typeOverMarkers.filter({ $0 > location }).min() { end = min(end, next) }
       return (colors[kind] ?? plainColor, NSRange(location: location, length: max(1, end - location)))
+    }
+
+    /// The syntax tokens of `line` (document offsets); empty while the
+    /// text isn't highlighted.
+    public func tokens(ofLine line: Int) -> [CodeToken] {
+      guard let highlighter, highlighter.lines.length == textStorage?.length,
+        line >= 0, line < highlighter.lines.count
+      else { return [] }
+      return highlighter.tokens(ofLine: line)
     }
 
     // MARK: - Edits and selection
@@ -696,6 +754,7 @@
 
     public override func drawBackground(in rect: NSRect) {
       super.drawBackground(in: rect)
+      drawLineTints(in: rect)
       guard configuration.highlightCurrentLine, let lineRect = currentLineRect(),
         lineRect.intersects(rect)
       else { return }
@@ -708,8 +767,21 @@
       NSBezierPath(roundedRect: bar, xRadius: radius, yRadius: radius).fill()
     }
 
-    private func rulerNeedsDisplay() {
+    func rulerNeedsDisplay() {
       enclosingScrollView?.verticalRulerView?.needsDisplay = true
+    }
+
+    public override func draw(_ dirtyRect: NSRect) {
+      super.draw(dirtyRect)
+      drawAnnotationBanners(in: dirtyRect)
+    }
+
+    public override func mouseDown(with event: NSEvent) {
+      if handleCommandClick(event) { return }
+      if event.clickCount == 1, handleBannerClick(at: convert(event.locationInWindow, from: nil)) {
+        return
+      }
+      super.mouseDown(with: event)
     }
 
     // MARK: - Edit assists (see CodeTextView+EditAssists.swift)

@@ -8,6 +8,58 @@
   /// current-line highlight starts here. Draws only the visible lines and
   /// widens when the line count gains a digit (two digits at least).
   @MainActor final class LineNumberRuler: NSRulerView {
+    /// Xcode's breakpoint: a blue tag pointing at the text.
+    static func drawBreakpoint(in rect: NSRect, active: Bool) {
+      let color = NSColor(srgbRed: 0.27, green: 0.53, blue: 0.97, alpha: active ? 1 : 0.4)
+      color.setFill()
+      tagPath(in: rect).fill()
+    }
+
+    /// The debugger's current line: a green tag over the breakpoint.
+    static func drawExecutionArrow(in rect: NSRect) {
+      NSColor(srgbRed: 0.30, green: 0.72, blue: 0.36, alpha: 0.95).setFill()
+      tagPath(in: rect.insetBy(dx: 0, dy: 1)).fill()
+    }
+
+    static func tagPath(in rect: NSRect) -> NSBezierPath {
+      let point = min(rect.height / 2, 7)
+      let path = NSBezierPath()
+      let radius: CGFloat = 2
+      path.move(to: NSPoint(x: rect.minX + radius, y: rect.minY))
+      path.line(to: NSPoint(x: rect.maxX - point, y: rect.minY))
+      path.line(to: NSPoint(x: rect.maxX, y: rect.midY))
+      path.line(to: NSPoint(x: rect.maxX - point, y: rect.maxY))
+      path.line(to: NSPoint(x: rect.minX + radius, y: rect.maxY))
+      path.appendArc(
+        withCenter: NSPoint(x: rect.minX + radius, y: rect.maxY - radius), radius: radius,
+        startAngle: 90, endAngle: 180)
+      path.line(to: NSPoint(x: rect.minX, y: rect.minY + radius))
+      path.appendArc(
+        withCenter: NSPoint(x: rect.minX + radius, y: rect.minY + radius), radius: radius,
+        startAngle: 180, endAngle: 270)
+      path.close()
+      return path
+    }
+
+    /// A click on a line number toggles its breakpoint, as in Xcode.
+    override func mouseDown(with event: NSEvent) {
+      guard let textView, textView.allowsBreakpoints, let layoutManager = textView.layoutManager,
+        let container = textView.textContainer
+      else { return super.mouseDown(with: event) }
+      let point = textView.convert(event.locationInWindow, from: nil)
+      let y = point.y - textView.textContainerOrigin.y
+      let line: Int
+      if y >= layoutManager.extraLineFragmentRect.minY, !layoutManager.extraLineFragmentRect.isEmpty {
+        line = textView.lineIndex.count - 1
+      } else {
+        let glyph = layoutManager.glyphIndex(for: NSPoint(x: 0, y: max(0, y)), in: container)
+        let character = layoutManager.characterIndexForGlyph(at: glyph)
+        line = textView.lineIndex.line(containing: character)
+      }
+      textView.toggleBreakpoint(atLine: line)
+      needsDisplay = true
+    }
+
     /// Space left of the numbers, and between the numbers and the ruler's
     /// right edge (the text starts after the text view's inset).
     static let leadingSpace: CGFloat = 17
@@ -93,11 +145,26 @@
       let lastLine = lines.line(containing: NSMaxRange(chars))
       let right = ruleThickness - Self.trailingSpace
 
+      let breakpoints = textView.breakpoints
+      let marked: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.white]
+
       func label(_ line: Int, at fragment: NSRect) {
         let top = convert(NSPoint(x: 0, y: fragment.minY + origin.y), from: textView).y
         guard top + fragment.height >= rect.minY, top <= rect.maxY else { return }
         let number = String(line + 1) as NSString
-        let attributes = caretLines.contains(line) ? current : normal
+        // The first fragment of the line: wrapped lines show one marker.
+        let markerRect = NSRect(
+          x: 2, y: top + 1, width: ruleThickness - 2,
+          height: min(fragment.height, textView.lineHeight) - 2)
+        var attributes = caretLines.contains(line) ? current : normal
+        if breakpoints.contains(line) {
+          Self.drawBreakpoint(in: markerRect, active: textView.breakpointsActive)
+          attributes = marked
+        }
+        if textView.executionLine == line {
+          Self.drawExecutionArrow(in: markerRect)
+          attributes = marked
+        }
         let width = number.size(withAttributes: attributes).width
         // On the text's baseline.
         number.draw(
