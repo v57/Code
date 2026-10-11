@@ -121,7 +121,18 @@
 
     // MARK: - Drawing
 
-    public override func draw(_ dirtyRect: NSRect) {
+    public override init(frame frameRect: NSRect) {
+      super.init(frame: frameRect)
+      // Since macOS 14 views don't clip: the background fill would cover
+      // the views around the minimap.
+      clipsToBounds = true
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    public override func draw(_ rect: NSRect) {
+      let dirtyRect = rect.intersection(bounds)
       NSColor(hex: theme.background).setFill()
       dirtyRect.fill()
       // A hairline between the editor and the minimap.

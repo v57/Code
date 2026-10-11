@@ -51,9 +51,16 @@
   /// Shows one editor at a time and swaps editors (tab changes), moving
   /// focus along when the previous editor had it.
   @MainActor public final class CodeEditorHostView: NSView {
-    public private(set) weak var current: CodeEditorScrollView?
+    public private(set) weak var current: NSView?
+    private weak var currentTextView: NSView?
 
     public func show(_ editor: CodeEditorScrollView) {
+      show(editor, focusing: editor.textView)
+    }
+
+    /// Shows `editor` (an editor with views around it, like a minimap),
+    /// moving focus to `textView` when the previous editor had it.
+    public func show(_ editor: NSView, focusing textView: NSView) {
       guard editor !== current else { return }
       let hadFocus = window?.firstResponder is CodeTextView
       current?.removeFromSuperview()
@@ -61,14 +68,15 @@
       editor.autoresizingMask = [.width, .height]
       addSubview(editor)
       current = editor
-      if hadFocus { window?.makeFirstResponder(editor.textView) }
+      currentTextView = textView
+      if hadFocus { window?.makeFirstResponder(textView) }
     }
 
     public override func viewDidMoveToWindow() {
       super.viewDidMoveToWindow()
       // A new window (or tab) opens with the caret in the editor.
-      if let editor = current, window?.firstResponder === window {
-        window?.makeFirstResponder(editor.textView)
+      if let textView = currentTextView, window?.firstResponder === window {
+        window?.makeFirstResponder(textView)
       }
     }
   }

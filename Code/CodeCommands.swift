@@ -10,6 +10,11 @@ struct CodeCommands: Commands {
   @AppStorage(EditorSettings.fontSize) private var fontSize = EditorSettings.defaultFontSize
   @AppStorage(EditorSettings.wrapLines) private var wrapLines = true
   @AppStorage(EditorSettings.showLineNumbers) private var showLineNumbers = true
+  @AppStorage(EditorSettings.showsMinimap) private var showsMinimap = true
+  @AppStorage(EditorSettings.actionsEnabled) private var actionsEnabled = true
+
+  private var services: ProjectServices? { model?.services }
+  private var actions: ActionController? { model?.services.actions }
 
   private var workspace: Workspace? { model?.workspace }
 
@@ -64,6 +69,89 @@ struct CodeCommands: Commands {
       }
       .keyboardShortcut("j", modifiers: [.command, .shift])
       .disabled(workspace?.selectedDocument == nil)
+      Divider()
+      Button("Jump to Definition") {
+        guard let services, let document = workspace?.selectedDocument,
+          let textView = document.textView
+        else { return }
+        services.jumpToDefinition(in: document, at: textView.selectedRange().location)
+      }
+      .keyboardShortcut("j", modifiers: [.command, .control])
+      .disabled(workspace?.selectedDocument?.textView == nil)
+      Button("Show Quick Help") {
+        guard let services, let document = workspace?.selectedDocument,
+          let textView = document.textView
+        else { return }
+        services.showQuickHelp(in: document, at: textView.selectedRange().location)
+      }
+      .keyboardShortcut("/", modifiers: [.command, .control, .shift])
+      .disabled(workspace?.selectedDocument?.textView == nil)
+      Button("Go Back") { services?.goBack() }
+        .keyboardShortcut(.leftArrow, modifiers: [.command, .control])
+        .disabled(services?.canGoBack != true)
+      Button("Go Forward") { services?.goForward() }
+        .keyboardShortcut(.rightArrow, modifiers: [.command, .control])
+        .disabled(services?.canGoForward != true)
+    }
+
+    CommandMenu("Product") {
+      Button("Run") { model?.perform(.run) }
+        .keyboardShortcut("r")
+        .disabled(actions?.canPerform(.run) != true || !actionsEnabled)
+      Button("Test") { model?.perform(.test) }
+        .keyboardShortcut("u")
+        .disabled(actions?.canPerform(.test) != true || !actionsEnabled)
+      Button("Build") { model?.perform(.build) }
+        .keyboardShortcut("b")
+        .disabled(actions?.canPerform(.build) != true || !actionsEnabled)
+      Button("Clean Build Folder") { model?.perform(.clean) }
+        .keyboardShortcut("k", modifiers: [.command, .shift])
+        .disabled(actions?.canPerform(.clean) != true || !actionsEnabled)
+      Divider()
+      Button("Stop") { actions?.stop() }
+        .keyboardShortcut(".")
+        .disabled(actions?.isRunning != true)
+      Divider()
+      Button("Refresh Schemes") { actions?.scan() }
+        .disabled(actions == nil || !actionsEnabled)
+      Button("Refresh Run Destinations") { actions?.refreshDestinations() }
+        .disabled(actions == nil || !actionsEnabled)
+    }
+
+    CommandMenu("Debug") {
+      let debugger = services?.debugger
+      let isPaused: Bool = {
+        if case .paused? = debugger?.state { return true }
+        return false
+      }()
+      Button(isPaused ? "Continue" : "Pause") {
+        isPaused ? debugger?.continueRunning() : debugger?.pause()
+      }
+      .keyboardShortcut("y", modifiers: [.command, .control])
+      .disabled(debugger == nil)
+      Button("Step Over") { debugger?.stepOver() }
+        .keyboardShortcut(KeyEquivalent(Character(UnicodeScalar(NSF6FunctionKey)!)), modifiers: [])
+        .disabled(!isPaused)
+      Button("Step Into") { debugger?.stepInto() }
+        .keyboardShortcut(KeyEquivalent(Character(UnicodeScalar(NSF7FunctionKey)!)), modifiers: [])
+        .disabled(!isPaused)
+      Button("Step Out") { debugger?.stepOut() }
+        .keyboardShortcut(KeyEquivalent(Character(UnicodeScalar(NSF8FunctionKey)!)), modifiers: [])
+        .disabled(!isPaused)
+      Divider()
+      Button(services?.breakpointsActive == false ? "Activate Breakpoints" : "Deactivate Breakpoints") {
+        services?.breakpointsActive.toggle()
+      }
+      .keyboardShortcut("y")
+      .disabled(services == nil)
+      Button("Add or Remove Breakpoint at Current Line") {
+        guard let textView = workspace?.selectedDocument?.textView else { return }
+        textView.toggleBreakpoint(atLine: textView.currentSelection.line - 1)
+      }
+      .keyboardShortcut("\\")
+      .disabled(workspace?.selectedDocument?.textView == nil)
+      Button("Delete All Breakpoints") { services?.removeAllBreakpoints() }
+        .disabled(services?.hasBreakpoints != true)
     }
 
     CommandMenu("Editor") {
@@ -86,6 +174,16 @@ struct CodeCommands: Commands {
       Toggle("Wrap Lines", isOn: $wrapLines)
         .keyboardShortcut("z", modifiers: [.option])
       Toggle("Line Numbers", isOn: $showLineNumbers)
+      Toggle("Minimap", isOn: $showsMinimap)
+        .keyboardShortcut("m", modifiers: [.command, .control, .shift])
+      Button(model?.isConsoleVisible == true ? "Hide Debug Area" : "Show Debug Area") {
+        model?.isConsoleVisible.toggle()
+      }
+      .keyboardShortcut("y", modifiers: [.command, .shift])
+      .disabled(model == nil)
+      Button("Show Issues") { model?.isIssuesPresented = true }
+        .keyboardShortcut("5", modifiers: [.command])
+        .disabled(model == nil || !actionsEnabled)
       Divider()
       Button("Zoom In") { zoom(by: 1) }
         .keyboardShortcut("+")

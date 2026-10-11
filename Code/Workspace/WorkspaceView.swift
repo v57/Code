@@ -8,6 +8,8 @@ struct WorkspaceView: View {
   @Environment(Workspace.self) private var workspace
   @AppStorage(EditorSettings.excludedNames) private var excludedNames =
     EditorSettings.defaultExcludedNames
+  @AppStorage("console.height") private var consoleHeight = 220.0
+  private let serviceSettings = ServiceSettingsReader()
 
   var body: some View {
     @Bindable var model = model
@@ -26,8 +28,18 @@ struct WorkspaceView: View {
           Divider()
         }
         EditorArea()
+        if model.isConsoleVisible {
+          ConsoleDivider(height: $consoleHeight)
+          ConsoleView()
+            .frame(height: consoleHeight)
+        }
         Divider()
         StatusBar()
+      }
+      .toolbar {
+        if serviceSettings.settings.actionsEnabled {
+          ProjectToolbar(model: model)
+        }
       }
       .overlay(alignment: .top) {
         if model.isQuickOpenPresented {
@@ -40,6 +52,12 @@ struct WorkspaceView: View {
       }
     }
     .navigationTitle(workspace.name)
+    .onChange(of: serviceSettings.settings, initial: true) { _, settings in
+      model.services.settings = settings
+    }
+    #if DEBUG
+      .onAppear { AppState.shared.debugModel = model }
+    #endif
     .focusedSceneValue(\.windowModel, model)
     .alert(promptTitle, isPresented: isPrompting) {
       TextField("Name", text: $model.promptText)
@@ -70,6 +88,7 @@ struct WorkspaceView: View {
     .onDisappear {
       workspace.flushAll()
       workspace.saveSession()
+      model.services.shutDown()
     }
   }
 
@@ -106,5 +125,31 @@ struct WorkspaceView: View {
     default:
       return ""
     }
+  }
+}
+
+/// The bar between the editor and the console; drag to resize.
+private struct ConsoleDivider: View {
+  @Binding var height: Double
+  @State private var start: Double?
+
+  var body: some View {
+    Divider()
+      .overlay {
+        Color.clear
+          .frame(height: 7)
+          .contentShape(Rectangle())
+          .onHover { inside in
+            if inside { NSCursor.resizeUpDown.push() } else { NSCursor.pop() }
+          }
+          .gesture(
+            DragGesture(coordinateSpace: .global)
+              .onChanged { value in
+                let base = start ?? height
+                start = base
+                height = min(max(base - value.translation.height, 80), 900)
+              }
+              .onEnded { _ in start = nil })
+      }
   }
 }

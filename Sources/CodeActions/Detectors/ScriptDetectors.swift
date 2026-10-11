@@ -45,10 +45,12 @@ public struct NodeDetector: ProjectDetector {
         name: package.name ?? folder.name, toolchain: .node, directory: folder.url,
         commands: commands)
     ]
-    for name in scripts.keys.sorted()
-    where !Self.ignoredScripts.contains(where: {
-      name == $0 || name.hasPrefix($0 + ":") || name.hasPrefix($0 + "-")
-    }) {
+    // Other scripts become schemes of their own, unless there are many
+    // (a benchmark matrix): then they stay out of the scheme menu.
+    let extra = scripts.keys.sorted().filter { name in
+      !Self.ignoredScripts.contains { name == $0 || name.hasPrefix($0 + ":") || name.hasPrefix($0 + "-") }
+    }
+    for name in extra where extra.count <= 6 {
       var scriptCommands = commands
       scriptCommands[.run] = "\(run) \(shellQuote(name))"
       schemes.append(

@@ -64,6 +64,17 @@ import Observation
   /// editor tidies the text (trims trailing whitespace) and returns whether
   /// it changed anything.
   @ObservationIgnored public var willSave: (@MainActor () -> Bool)?
+  /// Runs before an explicit save, before `willSave`, and may take a while:
+  /// formatting on save. It changes the editor's text (an undoable edit), so
+  /// the file is written once, already formatted.
+  @ObservationIgnored public var preSave: (@MainActor () async -> Void)?
+  /// Called after each successful write, with the text written.
+  @ObservationIgnored public var didSave: (@MainActor (String) -> Void)?
+  /// Where to put the caret once the editor shows the text (line and
+  /// column from 1): a jump to a definition in a file not shown yet.
+  @ObservationIgnored public var pendingSelection: (line: Int, column: Int)?
+  /// An explicit save is running its `preSave`.
+  public private(set) var isSaving = false
 
   @ObservationIgnored private var hasPendingEdits = false
   @ObservationIgnored private var saveTask: Task<Void, Never>?
@@ -184,6 +195,8 @@ import Observation
     hasPendingEdits = true
     if saveState != .unsaved { saveState = .unsaved }
     saveTask?.cancel()
+    // An explicit save is about to write; no autosave in between.
+    if isSaving { return }
     saveTask = Task { [weak self, saveDelay] in
       try? await Task.sleep(for: saveDelay)
       guard !Task.isCancelled else { return }
@@ -203,7 +216,23 @@ import Observation
   /// An explicit save (⌘S): lets the editor tidy the text, then writes
   /// whatever is pending.
   public func save() {
-    guard content == .text else { return }
+    guard content == .text, !isSaving else { return }
+    guard let preSave else {
+      finishSave()
+      return
+    }
+    // No autosave while formatting: the save below writes once.
+    saveTask?.cancel()
+    saveTask = nil
+    isSaving = true
+    Task {
+      await preSave()
+      isSaving = false
+      finishSave()
+    }
+  }
+
+  private func finishSave() {
     if willSave?() == true { hasPendingEdits = true }
     flush()
   }
@@ -220,6 +249,7 @@ import Observation
       hasPendingEdits = false
       isMissing = false
       saveState = .saved
+      didSave?(newText)
     } catch {
       saveState = .failed(error.localizedDescription)
     }

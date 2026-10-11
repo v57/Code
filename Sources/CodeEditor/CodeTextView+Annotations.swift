@@ -26,7 +26,66 @@
     }
   }
 
+  /// An edit as language servers take it: the replaced range in the text
+  /// before the edit (lines and UTF-16 columns from 0) and the new text.
+  public struct TextEdit: Equatable, Sendable {
+    public var startLine: Int
+    public var startColumn: Int
+    public var endLine: Int
+    public var endColumn: Int
+    public var text: String
+  }
+
   extension CodeTextView {
+    // MARK: - Formatting
+
+    /// Replaces the text with a formatted version as one undoable edit
+    /// ("Format"), touching only the part that changed so the caret, scroll
+    /// position and line marks stay where they were.
+    public func applyFormattedText(_ newText: String) {
+      guard let storage = textStorage else { return }
+      let old = storage.mutableString
+      let new = newText as NSString
+      guard old as String != newText else { return }
+      // Common prefix and suffix, in UTF-16 units.
+      var prefix = 0
+      let maxPrefix = min(old.length, new.length)
+      while prefix < maxPrefix, old.character(at: prefix) == new.character(at: prefix) { prefix += 1 }
+      var suffix = 0
+      while suffix < maxPrefix - prefix,
+        old.character(at: old.length - 1 - suffix) == new.character(at: new.length - 1 - suffix)
+      { suffix += 1 }
+      // Don't split a surrogate pair or a CRLF.
+      while prefix > 0, UTF16.isTrailSurrogate(old.character(at: prefix)) { prefix -= 1 }
+      let oldRange = NSRange(location: prefix, length: old.length - prefix - suffix)
+      let replacement = new.substring(with: NSRange(location: prefix, length: new.length - prefix - suffix))
+      let selection = selectedRange()
+      let caretLine = lineIndex.line(containing: selection.location)
+      let caretColumn = selection.location - lineIndex.starts[caretLine]
+      let scroll = enclosingScrollView?.contentView.bounds.origin
+      guard shouldChangeText(in: oldRange, replacementString: replacement) else { return }
+      storage.replaceCharacters(
+        in: oldRange, with: NSAttributedString(string: replacement, attributes: typingAttributes))
+      didChangeText()
+      undoManager?.setActionName("Format")
+      // The caret: shifted when after the change, else kept on its line.
+      let delta = (replacement as NSString).length - oldRange.length
+      var caret: Int
+      if selection.location >= NSMaxRange(oldRange) {
+        caret = selection.location + delta
+      } else if selection.location <= oldRange.location {
+        caret = selection.location
+      } else {
+        caret = location(line: caretLine, column: caretColumn)
+      }
+      caret = min(max(0, caret), storage.length)
+      setSelectedRange(NSRange(location: caret, length: 0))
+      if let scroll, let clip = enclosingScrollView?.contentView {
+        clip.scroll(to: scroll)
+        enclosingScrollView?.reflectScrolledClipView(clip)
+      }
+    }
+
     // MARK: - Moving with edits
 
     /// Moves annotations, breakpoints and the execution line with an edit
@@ -293,13 +352,23 @@
       return true
     }
 
-    /// A ⌘-click: asks `onCommandClick` (jump to definition).
+    /// A ⌘-click asks `onCommandClick` (jump to definition), a ⌥-click
+    /// `onOptionClick` (Quick Help).
     func handleCommandClick(_ event: NSEvent) -> Bool {
-      guard event.modifierFlags.contains(.command), let onCommandClick else { return false }
+      let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+      let handler: ((Int) -> Bool)?
+      if flags == .command {
+        handler = onCommandClick
+      } else if flags == .option {
+        handler = onOptionClick
+      } else {
+        handler = nil
+      }
+      guard let handler else { return false }
       let point = convert(event.locationInWindow, from: nil)
       let location = characterIndexForInsertion(at: point)
       guard location != NSNotFound else { return false }
-      return onCommandClick(location)
+      return handler(location)
     }
 
     /// The identifier around `location` (letters, digits, "_", "$").

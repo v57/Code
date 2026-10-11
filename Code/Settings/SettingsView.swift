@@ -9,8 +9,14 @@ struct SettingsView: View {
         .tabItem { Label("Editor", systemImage: "character.cursor.ibeam") }
       FilesSettingsView()
         .tabItem { Label("Files", systemImage: "folder") }
+      LanguagesSettingsView()
+        .tabItem { Label("Languages", systemImage: "curlybraces") }
+      FormattingSettingsView()
+        .tabItem { Label("Formatting", systemImage: "text.alignleft") }
+      RunSettingsView()
+        .tabItem { Label("Run", systemImage: "play") }
     }
-    .frame(width: 480)
+    .frame(width: 560)
   }
 }
 
@@ -25,6 +31,9 @@ private struct EditorSettingsView: View {
   @AppStorage(EditorSettings.highlightCurrentLine) private var highlightCurrentLine = true
   @AppStorage(EditorSettings.autoCloseDelimiters) private var autoCloseDelimiters = true
   @AppStorage(EditorSettings.trimTrailingWhitespace) private var trimTrailingWhitespace = true
+  @AppStorage(EditorSettings.showsMinimap) private var showsMinimap = true
+  @AppStorage(EditorSettings.showsInlineIssues) private var showsInlineIssues = true
+  @AppStorage(EditorSettings.showsIssueMessages) private var showsIssueMessages = true
 
   /// Installed fixed-pitch font families.
   private let monospacedFamilies: [String] = {
@@ -69,6 +78,11 @@ private struct EditorSettingsView: View {
       Toggle("Wrap lines", isOn: $wrapLines)
       Toggle("Show line numbers", isOn: $showLineNumbers)
       Toggle("Highlight current line", isOn: $highlightCurrentLine)
+      Toggle("Show minimap", isOn: $showsMinimap)
+      Divider()
+      Toggle("Show issues in the editor", isOn: $showsInlineIssues)
+      Toggle("Show issue messages at the end of lines", isOn: $showsIssueMessages)
+        .disabled(!showsInlineIssues)
     }
     .padding(20)
   }

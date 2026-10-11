@@ -26,6 +26,8 @@ import Observation
   public private(set) var previewTabID: TextDocument.ID?
   /// A transient message for the status bar (a failed file operation).
   public var statusMessage: String?
+  /// Called with documents whose tabs closed (language servers close them).
+  @ObservationIgnored public var onCloseDocuments: (([TextDocument]) -> Void)?
 
   @ObservationIgnored private var watcher: FileWatcher?
   @ObservationIgnored private var indexRebuild: Task<Void, Never>?
@@ -91,7 +93,9 @@ import Observation
     if preview, let previewID = previewTabID, let i = tabs.firstIndex(where: { $0.id == previewID })
     {
       tabs[i].flush()
+      let replaced = tabs[i]
       tabs[i] = document
+      onCloseDocuments?([replaced])
     } else if let selected = selectedTabID, let i = tabs.firstIndex(where: { $0.id == selected }) {
       tabs.insert(document, at: i + 1)
     } else {
@@ -113,6 +117,7 @@ import Observation
     guard let i = tabs.firstIndex(where: { $0.id == document.id }) else { return }
     document.flush()
     tabs.remove(at: i)
+    onCloseDocuments?([document])
     if previewTabID == document.id { previewTabID = nil }
     if selectedTabID == document.id {
       // Select the neighbor, as editors do: the tab to the right, else left.
@@ -123,6 +128,7 @@ import Observation
 
   public func closeOthers(_ document: TextDocument) {
     for other in tabs where other.id != document.id { other.flush() }
+    onCloseDocuments?(tabs.filter { $0.id != document.id })
     tabs = tabs.filter { $0.id == document.id }
     previewTabID = previewTabID == document.id ? previewTabID : nil
     selectedTabID = document.id
@@ -131,6 +137,7 @@ import Observation
 
   public func closeAll() {
     flushAll()
+    onCloseDocuments?(tabs)
     tabs = []
     previewTabID = nil
     selectedTabID = nil

@@ -14,6 +14,9 @@ struct StatusBar: View {
     HStack(spacing: 14) {
       leading
       Spacer(minLength: 8)
+      if let document = workspace.selectedDocument, document.isSaving {
+        Text("Formatting…")
+      }
       if let document = workspace.selectedDocument, document.content == .text {
         Button(position) { model.isGoToLinePresented = true }
           .help("Go to Line (⌘L)")
@@ -29,7 +32,10 @@ struct StatusBar: View {
   }
 
   @ViewBuilder private var leading: some View {
-    if let message = workspace.statusMessage {
+    if let message = model.services.statusMessage {
+      Label(message, systemImage: "info.circle")
+        .foregroundStyle(.secondary)
+    } else if let message = workspace.statusMessage {
       Label(message, systemImage: "exclamationmark.triangle.fill")
         .foregroundStyle(.orange)
         .onTapGesture { workspace.statusMessage = nil }
@@ -43,6 +49,13 @@ struct StatusBar: View {
     }
     if workspace.index.isIndexing {
       ProgressView().controlSize(.mini)
+    }
+    if let activity = model.services.languageServers.activity {
+      HStack(spacing: 4) {
+        ProgressView().controlSize(.mini)
+        Text(activity).lineLimit(1).truncationMode(.middle)
+      }
+      .help(activity)
     }
   }
 

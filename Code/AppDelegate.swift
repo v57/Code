@@ -4,6 +4,12 @@ import AppKit
 /// projects. Folders and files opened from Finder or the Dock arrive through
 /// `onOpenURL` in `WorkspaceWindow`.
 final class AppDelegate: NSObject, NSApplicationDelegate {
+  func applicationDidFinishLaunching(_ notification: Notification) {
+    #if DEBUG
+      DebugAutomation.start()
+    #endif
+  }
+
   func applicationDidResignActive(_ notification: Notification) {
     AppState.shared.flushAll()
   }

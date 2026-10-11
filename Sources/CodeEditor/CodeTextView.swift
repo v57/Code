@@ -108,9 +108,12 @@
     /// ⌘-click at a character location (jump to definition); return true
     /// when handled.
     public var onCommandClick: ((Int) -> Bool)?
-    /// Called after an edit with the old range (UTF-16) and the new text, for
+    /// Called with each edit, positioned in the text before it, for
     /// language servers.
-    public var onTextChange: ((NSRange, String) -> Void)?
+    public var onTextChange: ((TextEdit) -> Void)?
+    /// ⌥-click at a character location (Quick Help); return true when
+    /// handled.
+    public var onOptionClick: ((Int) -> Bool)?
     /// Called when line marks move or the text is laid out again (the
     /// minimap redraws).
     public var onLayoutChange: (() -> Void)?
@@ -448,14 +451,21 @@
     private func storageEdited(range editedRange: NSRange, delta: Int) {
       guard let text = textStorage?.mutableString else { return }
       let oldRange = NSRange(location: editedRange.location, length: editedRange.length - delta)
+      if let onTextChange {
+        // Positions in the old text, before the line index moves on.
+        let startLine = lineIndex.line(containing: oldRange.location)
+        let endLine = lineIndex.line(containing: NSMaxRange(oldRange))
+        onTextChange(
+          TextEdit(
+            startLine: startLine, startColumn: oldRange.location - lineIndex.starts[startLine],
+            endLine: endLine, endColumn: NSMaxRange(oldRange) - lineIndex.starts[endLine],
+            text: text.substring(with: editedRange)))
+      }
       let oldLineCount = lineIndex.count
       let changed = lineIndex.apply(edit: oldRange, replacementLength: editedRange.length, in: text)
       let lineDelta = lineIndex.count - oldLineCount
       shiftDirtyRange(forEditAt: oldRange, newLength: editedRange.length)
       if lineDelta != 0 { shiftLineMarks(changed: changed, lineDelta: lineDelta) }
-      if let onTextChange {
-        onTextChange(oldRange, text.substring(with: editedRange))
-      }
       // Changed lines get their indent and fonts again, highlighted or not.
       markDirty(lines: changed)
       // Lines after the edit move with it; the edited lines are the ones the

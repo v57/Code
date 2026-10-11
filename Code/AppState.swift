@@ -4,6 +4,10 @@ import SwiftUI
 /// App-wide state: recent projects and the open workspaces.
 @MainActor @Observable final class AppState {
   static let shared = AppState()
+  #if DEBUG
+    /// The window the last debug automation command acts on.
+    @ObservationIgnored weak var debugModel: WindowModel?
+  #endif
 
   let recents = RecentProjects()
   /// Captured from the windows; opens project windows from menus outside a

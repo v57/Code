@@ -19,7 +19,13 @@ import SwiftUI
   }
 
   let workspace: Workspace
+  /// Schemes and actions, language servers, formatting, issues, breakpoints.
+  let services: ProjectServices
   var isQuickOpenPresented = false
+  /// The console under the editor (Xcode's debug area, ⇧⌘Y).
+  var isConsoleVisible = false
+  var isIssuesPresented = false
+  @ObservationIgnored private var installObserver: NSObjectProtocol?
   var isGoToLinePresented = false
   var prompt: Prompt?
   /// The text field of the current prompt.
@@ -32,6 +38,30 @@ import SwiftUI
 
   init(workspace: Workspace) {
     self.workspace = workspace
+    services = ProjectServices(workspace: workspace, settings: EditorSettings.storedServiceSettings)
+    installObserver = NotificationCenter.default.addObserver(
+      forName: .codeToolInstalled, object: nil, queue: .main
+    ) { [weak self] note in
+      guard let id = note.object as? String else { return }
+      MainActor.assumeIsolated {
+        self?.services.languageServers.retry(id)
+        self?.services.reopenShownDocuments()
+      }
+    }
+    services.actions.didFinish = { [weak self] kind, succeeded in
+      // A failed build shows its log, as Xcode shows the issues.
+      if !succeeded, kind != .run, self?.services.actions.issues.isEmpty == true {
+        self?.isConsoleVisible = true
+      }
+    }
+  }
+
+  /// Runs an action; Run and Test show the console, as Xcode shows the debug
+  /// area.
+  func perform(_ kind: ActionKind) {
+    guard services.settings.actionsEnabled else { return }
+    if kind == .run || kind == .test { isConsoleVisible = true }
+    services.actions.perform(kind)
   }
 
   /// The folder new items go into: the selected folder, the selected file's

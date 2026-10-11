@@ -7,6 +7,7 @@ struct EditorArea: View {
   @Environment(Workspace.self) private var workspace
   @Environment(WindowModel.self) private var model
   private let settings = EditorConfigurationReader()
+  private let serviceSettings = ServiceSettingsReader()
 
   var body: some View {
     Group {
@@ -24,11 +25,17 @@ struct EditorArea: View {
     case .loading:
       ProgressView()
     case .text:
+      let services = serviceSettings.settings
       CodeEditorView(
-        document: document, revision: document.revision, configuration: settings.configuration
+        document: document, revision: document.revision, configuration: settings.configuration,
+        services: model.services, marks: marks(for: document),
+        features: EditorFeatures(
+          showsMinimap: services.showsMinimap, showsIssueMessages: services.showsIssueMessages,
+          breakpointsEnabled: services.breakpointsEnabled)
       ) { selection in
         model.selection = selection
       }
+
     case .binary:
       unavailable(
         "Binary File", systemImage: "doc.questionmark",
@@ -44,6 +51,21 @@ struct EditorArea: View {
         "Can’t Open “\(document.name)”", systemImage: "exclamationmark.triangle",
         description: message, document: document)
     }
+  }
+
+  /// Changes when the editor's issues, breakpoints or debugger line do.
+  private func marks(for document: TextDocument) -> Int {
+    var hasher = Hasher()
+    let services = model.services
+    for annotation in services.annotations(for: document.url) {
+      hasher.combine(annotation.line)
+      hasher.combine(annotation.message)
+    }
+    hasher.combine(services.breakpoints(for: document.url))
+    hasher.combine(services.breakpointsActive)
+    hasher.combine(services.executionLocation?.url)
+    hasher.combine(services.executionLocation?.line)
+    return hasher.finalize()
   }
 
   private func unavailable(
