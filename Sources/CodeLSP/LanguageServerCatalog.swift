@@ -166,6 +166,35 @@ public enum LanguageServerCatalog {
       arguments: ["--stdio"], rootMarkers: [], install: .brew("yaml-language-server")),
   ]
 
+  /// Options for starting a server in a project: the TypeScript server
+  /// needs a TypeScript install, and a project without its own gets a
+  /// global one (npm's, Bun's or Homebrew's).
+  public static func initializationOptions(
+    for configuration: LanguageServerConfiguration, root: URL, environment: [String: String]
+  ) -> JSONValue {
+    guard configuration.id == "typescript-language-server" else {
+      return configuration.initializationOptions
+    }
+    let fm = FileManager.default
+    var folder = root
+    while folder.path.count > 1 {
+      if fm.fileExists(atPath: folder.appendingPathComponent("node_modules/typescript/lib/tsserver.js").path) {
+        return configuration.initializationOptions
+      }
+      folder = folder.deletingLastPathComponent()
+    }
+    let home = fm.homeDirectoryForCurrentUser.path
+    let globals = [
+      home + "/.local/lib/node_modules", "/opt/homebrew/lib/node_modules", "/usr/local/lib/node_modules",
+      home + "/.bun/install/global/node_modules", "/opt/homebrew/opt/typescript/libexec/lib/node_modules",
+    ] + (environment["NPM_CONFIG_PREFIX"].map { [$0 + "/lib/node_modules"] } ?? [])
+    for global in globals {
+      let server = global + "/typescript/lib/tsserver.js"
+      if fm.fileExists(atPath: server) { return ["tsserver": ["path": .string(server)]] }
+    }
+    return configuration.initializationOptions
+  }
+
   /// The server for a file, by its extension.
   public static func configuration(for url: URL, in configurations: [LanguageServerConfiguration] = all)
     -> LanguageServerConfiguration?

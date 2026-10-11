@@ -106,6 +106,7 @@
     public var onStatusChange: (() -> Void)?
 
     private let connection: LSPConnection
+    private let initializationOptions: JSONValue
     /// 1: full text on each change; 2: incremental.
     private var syncKind = 1
     private var capabilities: JSONValue = .null
@@ -118,6 +119,8 @@
     ) {
       self.configuration = configuration
       self.root = root
+      initializationOptions = LanguageServerCatalog.initializationOptions(
+        for: configuration, root: root, environment: environment)
       connection = LSPConnection(
         executable: executable, arguments: configuration.arguments, directory: root,
         environment: environment)
@@ -152,7 +155,7 @@
         "rootUri": rootURI,
         "rootPath": .string(root.path),
         "workspaceFolders": [["uri": rootURI, "name": .string(root.lastPathComponent)]],
-        "initializationOptions": configuration.initializationOptions,
+        "initializationOptions": initializationOptions,
         "capabilities": [
           "general": ["positionEncodings": ["utf-16"]],
           "workspace": ["configuration": true, "workspaceFolders": true],
