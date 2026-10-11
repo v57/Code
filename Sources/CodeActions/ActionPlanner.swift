@@ -1,5 +1,6 @@
 import Foundation
 
+#if os(macOS)
 /// One step of an action ("Build", "Install", "Launch"), run in order.
 public struct ActionStep: Sendable {
   public var title: String
@@ -20,7 +21,6 @@ public struct ActionStep: Sendable {
   }
 }
 
-#if os(macOS)
   /// What steps share while an action runs: the folder, the environment, the
   /// output, the running command (to stop it) and cleanups for Stop.
   public final class ActionContext: @unchecked Sendable {

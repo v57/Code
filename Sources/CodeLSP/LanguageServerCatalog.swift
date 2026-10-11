@@ -183,7 +183,7 @@ public enum LanguageServerCatalog {
       }
       folder = folder.deletingLastPathComponent()
     }
-    let home = fm.homeDirectoryForCurrentUser.path
+    let home = URL(fileURLWithPath: NSHomeDirectory()).path
     let globals = [
       home + "/.local/lib/node_modules", "/opt/homebrew/lib/node_modules", "/usr/local/lib/node_modules",
       home + "/.bun/install/global/node_modules", "/opt/homebrew/opt/typescript/libexec/lib/node_modules",

@@ -1,6 +1,7 @@
+import Foundation
+
 #if os(macOS)
   import Darwin
-  import Foundation
 
   /// A shell command running on a pseudo-terminal, as Xcode runs products:
   /// programs see a terminal, so they flush output line by line (a Swift or

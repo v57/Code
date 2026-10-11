@@ -207,7 +207,7 @@ public struct FormattingService: Sendable {
   /// to the home folder).
   public static func findUpward(_ names: [String], from file: URL) -> URL? {
     guard !names.isEmpty else { return nil }
-    let home = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL.path
+    let home = URL(fileURLWithPath: NSHomeDirectory()).standardizedFileURL.path
     var folder = file.standardizedFileURL.deletingLastPathComponent()
     while folder.path.count > 1 {
       for name in names {

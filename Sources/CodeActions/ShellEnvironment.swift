@@ -35,7 +35,7 @@ public final class ShellEnvironment: @unchecked Sendable {
   /// The Android SDK: $ANDROID_HOME, $ANDROID_SDK_ROOT or Android Studio's
   /// default location.
   public var androidSDK: URL? {
-    let home = FileManager.default.homeDirectoryForCurrentUser
+    let home = URL(fileURLWithPath: NSHomeDirectory())
     let candidates = [variables["ANDROID_HOME"], variables["ANDROID_SDK_ROOT"]].compactMap { $0 }
       + [home.appendingPathComponent("Library/Android/sdk").path]
     return candidates.map { URL(fileURLWithPath: $0) }.first {
@@ -74,7 +74,7 @@ public final class ShellEnvironment: @unchecked Sendable {
     let marker = "__CODE_ENVIRONMENT__"
     if let output = SubprocessCapture.run(
       shell, ["-l", "-i", "-c", "printf '\\n\(marker)\\n'; /usr/bin/env -0"],
-      directory: FileManager.default.homeDirectoryForCurrentUser, timeout: 8,
+      directory: URL(fileURLWithPath: NSHomeDirectory()), timeout: 8,
       requireSuccess: false),
       let range = output.range(of: marker + "\n")
     {
@@ -85,7 +85,7 @@ public final class ShellEnvironment: @unchecked Sendable {
         result[key] = String(entry[entry.index(after: eq)...])
       }
     }
-    let home = FileManager.default.homeDirectoryForCurrentUser.path
+    let home = URL(fileURLWithPath: NSHomeDirectory()).path
     // Gradle wrappers need a JDK; without JAVA_HOME use Android Studio's or
     // Homebrew's, as Android Studio does.
     if result["JAVA_HOME"]?.isEmpty ?? true {
