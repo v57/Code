@@ -1,7 +1,9 @@
 # Code
 
 A folder-based code editor for macOS, in the style of VS Code and Zed: open a
-folder, browse it in the sidebar, edit files in tabs with syntax highlighting.
+folder, browse it in the sidebar, edit files in tabs with syntax highlighting,
+and build, run, test and debug it from an Xcode-style toolbar, with language
+servers for definitions and issues.
 
 Two parts, like `../Markdown`: the libraries (this package) and a thin
 SwiftUI app (`Code.xcodeproj`, sources in `Code/`).
@@ -9,8 +11,7 @@ SwiftUI app (`Code.xcodeproj`, sources in `Code/`).
 Libraries
 
   Each library can be used on its own; CodeKit is all of them plus what
-  connects them. Future libraries (language servers, code navigation,
-  linting) join the same way.
+  connects them.
 
     CodeHighlighting   languages, incremental highlighter, bracket matching,
                        themes (platform-neutral, no dependencies)
@@ -18,8 +19,24 @@ Libraries
                        documents with autosave, tabs and sessions (neutral)
     CodeEditor         the AppKit editor: CodeTextView, line numbers,
                        CodeEditorScrollView, SwiftUI CodeTextEditor(text:)
-    CodeKit            re-exports the three; CodeEditorView(document:) edits a
-                       workspace document (autosave, reload, ⌘S trimming)
+    CodeActions        schemes found in a folder (Xcode, SwiftPM, Cargo, Go,
+                       Gradle/Android, Maven, Node, Python, CMake, Make, Zig,
+                       Dart, .NET, Elixir, Ruby, PHP; ported from Shell's
+                       integrations), run destinations (Mac, simulators, iOS
+                       devices, Android devices and emulators), running
+                       build/run/test/clean on a pseudo-terminal, build-log
+                       issues and progress (macOS)
+    CodeLSP            language server client (JSON-RPC over stdio), the
+                       catalog of servers and how to install each from its
+                       official source, a manager per workspace (macOS)
+    CodeMinimap        Xcode's minimap drawn as shapes, MARK sections, marks
+    CodeFormatting     formatters run on the text before an explicit save
+                       (swift-format, Prettier, gofmt, rustfmt, Ruff, …)
+    CodeKit            re-exports them all; CodeEditorView(document:) edits a
+                       workspace document (autosave, reload, ⌘S trimming,
+                       minimap, issues, breakpoints); ProjectServices connects
+                       a window's actions, servers, formatting, issues,
+                       breakpoints and the LLDB DebugSession
 
 Layout
 
@@ -31,10 +48,21 @@ Layout
     Sources/CodeEditor/         CodeTextView (+EditAssists), LineNumberRuler,
                                 CodeEditorScrollView, CodeTextEditor,
                                 EditorConfiguration
-    Sources/CodeKit/            CodeKit (re-exports), CodeEditorView
+    Sources/CodeEditor/         + CodeTextView+Annotations (inline issues,
+                                breakpoints, execution line, ⌘/⌥-click, format)
+    Sources/CodeActions/        ActionScheme, ProjectScanner, Detectors/,
+                                RunDestination, ShellEnvironment, PTYProcess,
+                                BuildLog, ActionPlanner, ActionController
+    Sources/CodeLSP/            JSONValue, LSPConnection, LanguageServerCatalog,
+                                LanguageServer, LanguageServerManager
+    Sources/CodeMinimap/        MinimapView
+    Sources/CodeFormatting/     Formatter (catalog and FormattingService)
+    Sources/CodeKit/            CodeKit (re-exports), CodeEditorView,
+                                ProjectServices, DebugSession, QuickHelpPopover
     Code/                       the app
       CodeApp.swift, CodeCommands.swift, AppState.swift, AppDelegate.swift
-      Welcome/, Workspace/, Settings/
+      Welcome/, Workspace/ (+ ProjectToolbar, ConsoleView), Settings/
+      (+ ToolsSettingsView: Languages, Formatting, Run), DebugAutomation
 
 Architecture
 
@@ -70,6 +98,37 @@ Architecture
   projects are saved at quit and reopened at launch; each project restores its
   tabs and expanded folders.
 
+  Actions. `ProjectScanner` lists the folder and its subfolders two levels
+  down once and hands the entries to each detector, so a folder of several
+  projects (one implementation per language) gets every project's schemes.
+  Commands run with the login shell's environment (read once, with an
+  interactive shell so .zshrc's PATH counts) on a pseudo-terminal, as Xcode
+  runs products: programs flush line by line and show progress; each command
+  is its own session, so Stop ends everything it started. `BuildLogParser`
+  reads Swift/Clang, Go, Rust, TypeScript, Kotlin, Java, C#, Dart, Elixir,
+  Python and Zig diagnostics and "[n/m]" or Cargo/Gradle progress.
+  Xcode schemes run on this Mac (the executable itself, so its output shows),
+  on simulators (simctl install and launch --console-pty) and devices
+  (devicectl install and launch --console); Android apps install with Gradle
+  (ANDROID_SERIAL), launch with adb and stream logcat; a virtual device that
+  isn't running is started first.
+
+  Language servers are never bundled: each is installed from its official
+  source (Homebrew, npm, gems, .NET tools, or Xcode's), from Settings ›
+  Languages. A server runs per project root (the nearest or outermost folder
+  with its markers), so a workspace of several projects has one per project.
+  Edits go as incremental changes positioned in the text before the edit.
+
+  Formatting runs in `TextDocument.preSave` on ⌘S: the formatter reads the
+  text on standard input (finding its own config from the file's path), the
+  editor applies the result as one undoable "Format" edit touching only what
+  changed, and the document writes once. Autosave doesn't format.
+
+  Breakpoints are kept per project and move with edits; Run with
+  breakpoints builds and runs the program under LLDB (the program on its own
+  terminal), shows the stopped line in green and its variables in the
+  console, with Continue, Step Over/Into/Out and an (lldb) prompt.
+
 Features
 
   - Sidebar file tree: lazy folders, live updates from disk, hidden names
@@ -95,13 +154,32 @@ Features
     the navigator, "Line: Col:" in the bottom bar.
   - Binary files, files over 20 MB and unreadable files show a placeholder;
     files over 2 MB open without highlighting.
+  - Xcode's toolbar: Run (⌘R; hold for Test, Build, Clean), Stop (⌘.), the
+    scheme › destination picker, the activity view with a progress bar,
+    status and issue counts (click for the issue list, ⌘5). The Product and
+    Debug menus, the debug area (⇧⌘Y) with the log, filter and debug bar.
+  - Issues from the build and language servers in the editor: a tinted line
+    and a message banner (click for all of the line's messages), counted
+    once when both report them.
+  - Jump to Definition (⌘-click, ⌃⌘J), Quick Help (⌥-click), Go Back and
+    Forward (⌃⌘← ⌃⌘→).
+  - The minimap (⌃⇧⌘M): runs of text as rounded bars in their syntax colors,
+    MARK sections as titles, issues, breakpoints and the debugger's line;
+    click or drag to scroll.
+  - Breakpoints: click a line number (⌘\\ at the caret), ⌘Y deactivates
+    them; F6/F7/F8 step.
+  - Settings turn each part off: toolbar actions, language servers (each),
+    formatting (each formatter, "only with a config file", a custom command
+    such as a local swift-format build), minimap, inline issues, breakpoints.
 
 Verification
 
-    swift build && swift test        # CodeKitTests
+    swift build && swift test        # all test targets (CodeLSPTests talk to
+                                     # gopls, CodeFormattingTests run
+                                     # swift-format and gofmt when installed)
     swift build --triple arm64-apple-ios17.0-simulator \
       --sdk "$(xcrun --sdk iphonesimulator --show-sdk-path)"
     xcodebuild -project Code.xcodeproj -scheme Code -destination 'platform=macOS' build
 
-Not yet: terminal, git, jump to definition. The app is not sandboxed so those
-can run tools later.
+Not yet: terminal, git. The app is not sandboxed: it runs build tools,
+language servers, formatters, simctl, devicectl, adb and LLDB.
