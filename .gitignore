@@ -1,0 +1,14 @@
+# Build products (SwiftPM and the DerivedData path used by CLI builds)
+.build/
+build/
+
+# Xcode user state (scheme selection, breakpoints) — machine-local
+.swiftpm/xcode/xcuserdata/
+Code.xcodeproj/xcuserdata/
+Code.xcodeproj/project.xcworkspace/xcuserdata/
+
+CLAUDE.md
+/.claude
+
+# Finder
+.DS_Store
