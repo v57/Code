@@ -176,7 +176,8 @@ private struct ActivityView: View {
     .frame(width: 420, height: 24)
     .background(RoundedRectangle(cornerRadius: 6).fill(.quaternary.opacity(0.5)))
     .overlay(alignment: .bottom) {
-      if actions.isRunning {
+      // A bar while building; none while the program runs, as in Xcode.
+      if actions.isRunning, !(actions.runningKind == .run && actions.stepTitle == "Run") {
         Group {
           if let fraction = actions.progress?.fraction {
             ProgressView(value: fraction)

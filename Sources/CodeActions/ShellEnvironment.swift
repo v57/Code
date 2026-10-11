@@ -86,6 +86,19 @@ public final class ShellEnvironment: @unchecked Sendable {
       }
     }
     let home = FileManager.default.homeDirectoryForCurrentUser.path
+    // Gradle wrappers need a JDK; without JAVA_HOME use Android Studio's or
+    // Homebrew's, as Android Studio does.
+    if result["JAVA_HOME"]?.isEmpty ?? true {
+      let candidates = [
+        "/Applications/Android Studio.app/Contents/jbr/Contents/Home",
+        "/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home",
+        "/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home",
+        "/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home",
+      ]
+      if let java = candidates.first(where: { FileManager.default.isExecutableFile(atPath: $0 + "/bin/java") }) {
+        result["JAVA_HOME"] = java
+      }
+    }
     var path = (result["PATH"] ?? "").split(separator: ":").map(String.init)
     for extra in fallbackPaths(home: home) where !path.contains(extra) { path.append(extra) }
     result["PATH"] = path.joined(separator: ":")

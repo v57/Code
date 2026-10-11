@@ -82,9 +82,14 @@ public struct GradleDetector: ProjectDetector {
     return modules
   }
 
+  /// A module that applies the Android application plugin (not a root
+  /// build that only declares it with `apply false`).
   static func isAndroidApp(_ script: String) -> Bool {
-    script.contains("com.android.application") || script.contains("android.application")
-      || script.contains("applicationId")
+    if script.contains("applicationId") { return true }
+    return script.split(separator: "\n").contains { line in
+      (line.contains("com.android.application") || line.contains("android.application"))
+        && !line.contains("apply false")
+    }
   }
 }
 

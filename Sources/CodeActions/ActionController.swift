@@ -110,7 +110,9 @@
     }
 
     public var selectedDestination: RunDestination? {
+      // A connected device before starting a virtual one.
       destinations.first { $0.id == selectedDestinationID }
+        ?? destinations.first { $0.isAvailable && $0.kind != .androidVirtualDevice }
         ?? destinations.first { $0.isAvailable }
     }
 
@@ -202,7 +204,7 @@
         for step in steps {
           if context.isCancelled { break }
           stepTitle = step.title
-          progress = ActionProgress(message: step.title)
+          progress = step.title == "Run" && kind == .run ? nil : ActionProgress(message: step.title)
           do {
             try await step.work(context)
           } catch {
@@ -261,7 +263,8 @@
         case .issue(let issue):
           if known.insert(issue.id).inserted { issues.append(issue) }
         case .progress(let progress):
-          if isRunning { self.progress = progress }
+          // A running program's output isn't build progress.
+          if isRunning, !(runningKind == .run && stepTitle == "Run") { self.progress = progress }
         }
       }
     }

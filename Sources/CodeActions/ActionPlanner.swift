@@ -143,7 +143,7 @@ public struct ActionStep: Sendable {
       }
       var steps: [ActionStep] = [.shell("Build", "xcodebuild \(arguments) build")]
       steps.append(
-        ActionStep("Launch") { context in
+        ActionStep("Run") { context in
           guard
             let json = await context.capture("xcodebuild \(arguments) -showBuildSettings -json"),
             let product = XcodeProduct.parse(json, scheme: scheme.name)
@@ -224,16 +224,22 @@ public struct ActionStep: Sendable {
         ]
       }
       let install = scheme.commands[.run] ?? "./gradlew installDebug --console=plain"
+      // The device's serial, found (or the emulator started) once.
+      let device = SerialBox()
       return [
         ActionStep("Install") { context in
           let serial = try await androidSerial(for: destination, adb: adb, context: context)
+          device.serial = serial
           var installEnvironment = environment
           installEnvironment["ANDROID_SERIAL"] = serial
           try await context.run(install, title: "Install", environment: installEnvironment)
+        },
+        ActionStep("Run") { context in
+          guard let serial = device.serial else { return }
           guard let applicationID = scheme.androidApplicationID else {
             throw ActionError.missing("Couldn’t find the app’s applicationId in its Gradle build.")
           }
-          let device = "\(shellQuote(adb)) -s \(shellQuote(serial))"
+          let adbDevice = "\(shellQuote(adb)) -s \(shellQuote(serial))"
           let app = shellQuote(applicationID)
           let shellEnvironment = context.environment
           context.onStop {
@@ -242,14 +248,18 @@ public struct ActionStep: Sendable {
               environment: shellEnvironment, timeout: 10)
           }
           try await context.run(
-            "\(device) shell am force-stop \(app); \(device) shell monkey -p \(app) -c android.intent.category.LAUNCHER 1 >/dev/null",
+            "\(adbDevice) shell am force-stop \(app); \(adbDevice) shell monkey -p \(app) -c android.intent.category.LAUNCHER 1 >/dev/null",
             title: "Launch")
           // The app's log, while it runs.
           try await context.run(
-            "for i in {1..20}; do pid=$(\(device) shell pidof -s \(app) | tr -d '\\r'); [ -n \"$pid\" ] && break; sleep 0.5; done; [ -n \"$pid\" ] && exec \(device) logcat -v brief --pid=$pid",
+            "for i in {1..20}; do pid=$(\(adbDevice) shell pidof -s \(app) | tr -d '\\r'); [ -n \"$pid\" ] && break; sleep 0.5; done; [ -n \"$pid\" ] && exec \(adbDevice) logcat -v brief --pid=$pid",
             title: "Run", allowFailure: true)
-        }
+        },
       ]
+    }
+
+    final class SerialBox: @unchecked Sendable {
+      var serial: String?
     }
 
     /// The adb serial of a destination; starts a virtual device and waits for
