@@ -1,0 +1,150 @@
+import Foundation
+
+/// The environment of the user's login shell. An app opened from the Dock
+/// gets launchd's minimal PATH, without Homebrew, ~/.local/bin, Bun, Cargo
+/// or the Android SDK; commands run with this environment instead, so they
+/// find the same tools as in Terminal.
+public final class ShellEnvironment: @unchecked Sendable {
+  public static let shared = ShellEnvironment()
+
+  /// The variables commands run with.
+  public let variables: [String: String]
+
+  public init(variables: [String: String]) {
+    self.variables = variables
+  }
+
+  private convenience init() {
+    self.init(variables: Self.load())
+  }
+
+  public var path: [String] {
+    (variables["PATH"] ?? "").split(separator: ":").map(String.init)
+  }
+
+  /// The full path of `tool` on the PATH, or nil.
+  public func which(_ tool: String) -> String? {
+    if tool.hasPrefix("/") { return FileManager.default.isExecutableFile(atPath: tool) ? tool : nil }
+    for directory in path {
+      let candidate = directory + "/" + tool
+      if FileManager.default.isExecutableFile(atPath: candidate) { return candidate }
+    }
+    return nil
+  }
+
+  /// The Android SDK: $ANDROID_HOME, $ANDROID_SDK_ROOT or Android Studio's
+  /// default location.
+  public var androidSDK: URL? {
+    let home = FileManager.default.homeDirectoryForCurrentUser
+    let candidates = [variables["ANDROID_HOME"], variables["ANDROID_SDK_ROOT"]].compactMap { $0 }
+      + [home.appendingPathComponent("Library/Android/sdk").path]
+    return candidates.map { URL(fileURLWithPath: $0) }.first {
+      FileManager.default.fileExists(atPath: $0.appendingPathComponent("platform-tools").path)
+    }
+  }
+
+  /// `adb`, from the PATH or the Android SDK.
+  public var adb: String? {
+    which("adb") ?? androidSDK.map { $0.appendingPathComponent("platform-tools/adb").path }
+  }
+
+  /// The Android emulator, from the Android SDK.
+  public var androidEmulator: String? {
+    guard let path = androidSDK?.appendingPathComponent("emulator/emulator").path,
+      FileManager.default.isExecutableFile(atPath: path)
+    else { return which("emulator") }
+    return path
+  }
+
+  /// Folders added after the login shell's PATH, where tools commonly live
+  /// even when the shell profile doesn't list them.
+  static func fallbackPaths(home: String) -> [String] {
+    [
+      "/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin", home + "/.local/bin",
+      home + "/.bun/bin", home + "/.cargo/bin", home + "/go/bin",
+      home + "/Library/Android/sdk/platform-tools", "/usr/bin", "/bin", "/usr/sbin", "/sbin",
+    ]
+  }
+
+  /// Runs the login shell once (interactive, so .zshrc counts too) and reads
+  /// its environment; falls back to this process's environment.
+  static func load() -> [String: String] {
+    var result = ProcessInfo.processInfo.environment
+    let shell = result["SHELL"].flatMap { $0.isEmpty ? nil : $0 } ?? "/bin/zsh"
+    let marker = "__CODE_ENVIRONMENT__"
+    if let output = SubprocessCapture.run(
+      shell, ["-l", "-i", "-c", "printf '\\n\(marker)\\n'; /usr/bin/env -0"],
+      directory: FileManager.default.homeDirectoryForCurrentUser, timeout: 8,
+      requireSuccess: false),
+      let range = output.range(of: marker + "\n")
+    {
+      for entry in output[range.upperBound...].split(separator: "\0") {
+        guard let eq = entry.firstIndex(of: "=") else { continue }
+        let key = String(entry[..<eq])
+        guard !key.isEmpty, key != "_", key != "SHLVL", key != "PWD", key != "OLDPWD" else { continue }
+        result[key] = String(entry[entry.index(after: eq)...])
+      }
+    }
+    let home = FileManager.default.homeDirectoryForCurrentUser.path
+    var path = (result["PATH"] ?? "").split(separator: ":").map(String.init)
+    for extra in fallbackPaths(home: home) where !path.contains(extra) { path.append(extra) }
+    result["PATH"] = path.joined(separator: ":")
+    return result
+  }
+}
+
+/// Runs a command to completion and returns its standard output, for
+/// listings (`xcodebuild -list`, `simctl list`, `adb devices`).
+public enum SubprocessCapture {
+  /// Standard output, or nil when the command fails, can't start or runs
+  /// past `timeout` seconds (it is then terminated).
+  public static func run(
+    _ executable: String, _ arguments: [String], directory: URL? = nil,
+    environment: [String: String]? = nil, timeout: TimeInterval = 60, requireSuccess: Bool = true
+  ) -> String? {
+    #if os(macOS)
+      let process = Process()
+      process.executableURL = URL(fileURLWithPath: executable)
+      process.arguments = arguments
+      if let directory { process.currentDirectoryURL = directory }
+      if let environment { process.environment = environment }
+      let output = Pipe()
+      process.standardOutput = output
+      process.standardError = FileHandle.nullDevice
+      process.standardInput = FileHandle.nullDevice
+      let done = DispatchSemaphore(value: 0)
+      process.terminationHandler = { _ in done.signal() }
+      do { try process.run() } catch { return nil }
+      // Read while it runs: a full pipe would block the command.
+      nonisolated(unsafe) var data = Data()
+      let reader = DispatchQueue.global(qos: .userInitiated)
+      let readDone = DispatchSemaphore(value: 0)
+      reader.async {
+        data = output.fileHandleForReading.readDataToEndOfFile()
+        readDone.signal()
+      }
+      if done.wait(timeout: .now() + timeout) == .timedOut {
+        process.terminate()
+        kill(process.processIdentifier, SIGKILL)
+        _ = readDone.wait(timeout: .now() + 1)
+        return nil
+      }
+      _ = readDone.wait(timeout: .now() + 2)
+      if requireSuccess, process.terminationStatus != 0 { return nil }
+      return String(decoding: data, as: UTF8.self)
+    #else
+      return nil
+    #endif
+  }
+
+  /// Runs a shell command line with the login shell's environment.
+  public static func shell(
+    _ command: String, directory: URL? = nil, timeout: TimeInterval = 60,
+    requireSuccess: Bool = true
+  ) -> String? {
+    run(
+      "/bin/zsh", ["-c", command], directory: directory,
+      environment: ShellEnvironment.shared.variables, timeout: timeout,
+      requireSuccess: requireSuccess)
+  }
+}
