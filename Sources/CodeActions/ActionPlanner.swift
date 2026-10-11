@@ -161,7 +161,8 @@ public struct ActionStep: Sendable {
         let udid = shellQuote(destination.id)
         try await context.run("xcrun simctl boot \(udid)", title: "Boot", allowFailure: true)
         try await context.run(
-          "open -a \"$(xcode-select -p)/Applications/Simulator.app\" --args -CurrentDeviceUDID \(udid)",
+          // Simulator.app, or DeviceHub in Xcodes that replaced it.
+          "open -b com.apple.iphonesimulator --args -CurrentDeviceUDID \(udid) 2>/dev/null || open -b com.apple.dt.Devices",
           title: "Open Simulator",
           allowFailure: true)
         try await context.run(
