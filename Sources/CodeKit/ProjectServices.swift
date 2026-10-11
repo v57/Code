@@ -209,7 +209,10 @@
       var seen = Set<String>()
       var result: [LineAnnotation] = []
       func add(_ annotation: LineAnnotation) {
-        if seen.insert("\(annotation.line)|\(annotation.message)").inserted { result.append(annotation) }
+        // A build and a language server often report the same error.
+        if seen.insert("\(annotation.line)|\(annotation.message.lowercased())").inserted {
+          result.append(annotation)
+        }
       }
       for issue in actions.issues where issue.line != nil && resolve(issue.url) == url {
         add(
@@ -243,6 +246,11 @@
               column: diagnostic.range.start.character + 1, severity: severity,
               message: diagnostic.message, source: .languageServer))
         }
+      }
+      // The same error from the build and the language server counts once.
+      var seen = Set<String>()
+      result = result.filter {
+        seen.insert("\($0.url?.path ?? "")|\($0.line ?? 0)|\($0.message.lowercased())").inserted
       }
       return result.sorted {
         ($0.severity, $0.url?.path ?? "", $0.line ?? 0) < ($1.severity, $1.url?.path ?? "", $1.line ?? 0)

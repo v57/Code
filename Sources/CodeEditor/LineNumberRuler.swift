@@ -8,27 +8,45 @@
   /// current-line highlight starts here. Draws only the visible lines and
   /// widens when the line count gains a digit (two digits at least).
   @MainActor final class LineNumberRuler: NSRulerView {
-    /// Xcode's breakpoint: a blue tag pointing at the text.
+    /// Xcode's breakpoint: a blue tag behind the line number, from well
+    /// left of it to a short rounded point past it.
     static func drawBreakpoint(in rect: NSRect, active: Bool) {
-      let color = NSColor(srgbRed: 0.27, green: 0.53, blue: 0.97, alpha: active ? 1 : 0.4)
-      color.setFill()
+      NSColor(srgbRed: 0.23, green: 0.48, blue: 0.97, alpha: active ? 1 : 0.4).setFill()
       tagPath(in: rect).fill()
     }
 
-    /// The debugger's current line: a green tag over the breakpoint.
+    /// The debugger's current line: Xcode's green tag, over a breakpoint.
     static func drawExecutionArrow(in rect: NSRect) {
-      NSColor(srgbRed: 0.30, green: 0.72, blue: 0.36, alpha: 0.95).setFill()
-      tagPath(in: rect.insetBy(dx: 0, dy: 1)).fill()
+      NSColor(srgbRed: 0.20, green: 0.66, blue: 0.33, alpha: 1).setFill()
+      tagPath(in: rect).fill()
+    }
+
+    /// Where the tag goes for a line whose number ends at `numberEnd`: it
+    /// starts 24 pt left of the number's end and points 8 pt past it.
+    static func tagRect(numberEnd: CGFloat, top: CGFloat, height: CGFloat) -> NSRect {
+      let left = max(2, numberEnd - 24)
+      return NSRect(x: left, y: top + 0.5, width: numberEnd + 8 - left, height: height - 1)
     }
 
     static func tagPath(in rect: NSRect) -> NSBezierPath {
-      let point = min(rect.height / 2, 7)
+      let radius = min(4, rect.height / 4)
+      let tip = rect.height * 0.32
+      let body = rect.maxX - tip
       let path = NSBezierPath()
-      let radius: CGFloat = 2
       path.move(to: NSPoint(x: rect.minX + radius, y: rect.minY))
-      path.line(to: NSPoint(x: rect.maxX - point, y: rect.minY))
-      path.line(to: NSPoint(x: rect.maxX, y: rect.midY))
-      path.line(to: NSPoint(x: rect.maxX - point, y: rect.maxY))
+      path.line(to: NSPoint(x: body - 1, y: rect.minY))
+      // The point, slightly rounded at its corners and tip.
+      path.curve(
+        to: NSPoint(x: body + 1.2, y: rect.minY + 0.8), controlPoint1: NSPoint(x: body, y: rect.minY),
+        controlPoint2: NSPoint(x: body + 0.6, y: rect.minY + 0.3))
+      path.line(to: NSPoint(x: rect.maxX - 0.6, y: rect.midY - 0.9))
+      path.curve(
+        to: NSPoint(x: rect.maxX - 0.6, y: rect.midY + 0.9), controlPoint1: NSPoint(x: rect.maxX, y: rect.midY - 0.4),
+        controlPoint2: NSPoint(x: rect.maxX, y: rect.midY + 0.4))
+      path.line(to: NSPoint(x: body + 1.2, y: rect.maxY - 0.8))
+      path.curve(
+        to: NSPoint(x: body - 1, y: rect.maxY), controlPoint1: NSPoint(x: body + 0.6, y: rect.maxY - 0.3),
+        controlPoint2: NSPoint(x: body, y: rect.maxY))
       path.line(to: NSPoint(x: rect.minX + radius, y: rect.maxY))
       path.appendArc(
         withCenter: NSPoint(x: rect.minX + radius, y: rect.maxY - radius), radius: radius,
@@ -63,7 +81,8 @@
     /// Space left of the numbers, and between the numbers and the ruler's
     /// right edge (the text starts after the text view's inset).
     static let leadingSpace: CGFloat = 17
-    static let trailingSpace: CGFloat = 3
+    /// Room after the numbers for a breakpoint's point, as in Xcode.
+    static let trailingSpace: CGFloat = 10
     /// Where the current-line highlight starts.
     static let highlightInset: CGFloat = 14
 
@@ -146,16 +165,18 @@
       let right = ruleThickness - Self.trailingSpace
 
       let breakpoints = textView.breakpoints
-      let marked: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.white]
+      let marked: [NSAttributedString.Key: Any] = [
+        .font: NSFont.monospacedDigitSystemFont(ofSize: font.pointSize, weight: .semibold),
+        .foregroundColor: NSColor.white,
+      ]
 
       func label(_ line: Int, at fragment: NSRect) {
         let top = convert(NSPoint(x: 0, y: fragment.minY + origin.y), from: textView).y
         guard top + fragment.height >= rect.minY, top <= rect.maxY else { return }
         let number = String(line + 1) as NSString
         // The first fragment of the line: wrapped lines show one marker.
-        let markerRect = NSRect(
-          x: 2, y: top + 1, width: ruleThickness - 2,
-          height: min(fragment.height, textView.lineHeight) - 2)
+        let markerRect = Self.tagRect(
+          numberEnd: right, top: top, height: min(fragment.height, textView.lineHeight))
         var attributes = caretLines.contains(line) ? current : normal
         if breakpoints.contains(line) {
           Self.drawBreakpoint(in: markerRect, active: textView.breakpointsActive)

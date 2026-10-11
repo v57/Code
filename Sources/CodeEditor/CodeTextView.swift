@@ -764,7 +764,8 @@
 
     public override func drawBackground(in rect: NSRect) {
       super.drawBackground(in: rect)
-      drawLineTints(in: rect)
+      // Issue and debugger tints go over the current-line bar.
+      defer { drawLineTints(in: rect) }
       guard configuration.highlightCurrentLine, let lineRect = currentLineRect(),
         lineRect.intersects(rect)
       else { return }
@@ -1055,7 +1056,17 @@
         var rect = layoutManager.boundingRect(forGlyphRange: glyphs, in: textContainer)
         rect.origin.y += textContainerOrigin.y
         let visible = visibleRect
-        scroll(NSPoint(x: visible.minX, y: max(0, rect.midY - visible.height / 2)))
+        if let scrollView = enclosingScrollView {
+          // Keep the clip view's x: with the line numbers' inset it is
+          // negative, and the visible rect's x (0) would slide the text
+          // under them.
+          let clip = scrollView.contentView
+          let maxY = max(0, frame.height - clip.bounds.height)
+          clip.scroll(to: NSPoint(x: clip.bounds.minX, y: min(maxY, max(0, rect.midY - visible.height / 2))))
+          scrollView.reflectScrolledClipView(clip)
+        } else {
+          scroll(NSPoint(x: visible.minX, y: max(0, rect.midY - visible.height / 2)))
+        }
       }
       if content.length > 0 { showFindIndicator(for: content) }
     }

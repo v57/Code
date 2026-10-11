@@ -26,6 +26,12 @@
     }
 
     private static func run(_ command: String) {
+      if command.hasPrefix("window:") {
+        let name = String(command.dropFirst("window:".count))
+        AppState.shared.debugModel =
+          AppState.shared.debugModels.compactMap(\.model).first { $0.workspace.name == name }
+        return
+      }
       guard let model = AppState.shared.debugModel else { return }
       let services = model.services
       let (name, argument) = split(command)
@@ -101,7 +107,7 @@
             lines.append("  view \(type(of: current)) frame \(current.frame) hidden \(current.isHidden) alpha \(current.alphaValue)")
             view = current.superview
           }
-          lines.append("  text length \(textView.string.count) visible \(textView.visibleRect)")
+          lines.append("  text length \(textView.string.count) visible \(textView.visibleRect) clip \(textView.enclosingScrollView?.contentView.bounds ?? .zero) container \(textView.textContainer?.size ?? .zero) inset \(textView.textContainerInset) origin \(textView.textContainerOrigin)")
         }
         lines.append("tabs: \(model.workspace.tabs.map(\.name))")
         lines.append("log tail:")

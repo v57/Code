@@ -56,7 +56,10 @@ struct WorkspaceView: View {
       model.services.settings = settings
     }
     #if DEBUG
-      .onAppear { AppState.shared.debugModel = model }
+      .onAppear {
+        AppState.shared.debugModel = model
+        AppState.shared.debugModels.append(WeakWindowModel(model: model))
+      }
     #endif
     .focusedSceneValue(\.windowModel, model)
     .alert(promptTitle, isPresented: isPrompting) {

@@ -170,7 +170,7 @@ public enum DestinationProvider {
     guard let payload = try? JSONDecoder().decode(Payload.self, from: data) else { return [] }
     return payload.result.devices.compactMap { device in
       let hardware = device.hardwareProperties
-      guard hardware?.reality != "virtual", hardware?.platform == "iOS",
+      guard hardware?.reality == nil || hardware?.reality == "physical", hardware?.platform == "iOS",
         device.connectionProperties?.pairingState == "paired"
       else { return nil }
       let available = device.connectionProperties?.tunnelState != "unavailable"

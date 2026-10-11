@@ -7,6 +7,8 @@ import SwiftUI
   #if DEBUG
     /// The window the last debug automation command acts on.
     @ObservationIgnored weak var debugModel: WindowModel?
+    /// Every window's model, for `window:<name>`.
+    @ObservationIgnored var debugModels: [WeakWindowModel] = []
   #endif
 
   let recents = RecentProjects()
@@ -134,3 +136,9 @@ import SwiftUI
     }
   }
 }
+
+#if DEBUG
+  struct WeakWindowModel {
+    weak var model: WindowModel?
+  }
+#endif

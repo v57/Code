@@ -71,7 +71,7 @@
       send("target create \(quote(executable))")
       send("process handle SIGINT --pass false --stop true --notify true")
       for (url, lines) in services?.breakpoints ?? [:] where services?.breakpointsActive == true {
-        for line in lines.sorted() { send("breakpoint set --file \(quote(url.path)) --line \(line + 1)") }
+        for line in lines.sorted() { send("breakpoint set --file \(quote(FileTree.realPath(of: url))) --line \(line + 1)") }
       }
       let tty = terminal?.path ?? "/dev/null"
       send("process launch --working-dir \(quote(directory.path)) -i /dev/null -o \(tty) -e \(tty)")
@@ -114,7 +114,7 @@
       guard case .paused = state else { return }
       send("breakpoint delete")
       for (url, lines) in breakpoints {
-        for line in lines.sorted() { send("breakpoint set --file \(quote(url.path)) --line \(line + 1)") }
+        for line in lines.sorted() { send("breakpoint set --file \(quote(FileTree.realPath(of: url))) --line \(line + 1)") }
       }
     }
 
@@ -217,9 +217,21 @@
       settings.c_oflag &= ~tcflag_t(OPOST)
       tcsetattr(slave, TCSANOW, &settings)
       terminal = (master, slave, String(cString: name))
+      let source = Self.makeReader(master: master, slave: slave) { [weak self] lines in
+        Task { @MainActor in for line in lines { self?.log?(line) } }
+      }
+      terminalSource = source
+      source.resume()
+    }
+
+    /// Reads the program's terminal off the main thread and hands over
+    /// whole lines.
+    private nonisolated static func makeReader(
+      master: Int32, slave: Int32, deliver: @escaping @Sendable ([String]) -> Void
+    ) -> DispatchSourceRead {
       let source = DispatchSource.makeReadSource(fileDescriptor: master, queue: .global())
       nonisolated(unsafe) var buffer = Data()
-      source.setEventHandler { [weak self] in
+      source.setEventHandler {
         var bytes = [UInt8](repeating: 0, count: 16384)
         let count = read(master, &bytes, bytes.count)
         guard count > 0 else { return }
@@ -229,15 +241,13 @@
           lines.append(ANSI.strip(String(decoding: buffer[buffer.startIndex..<newline], as: UTF8.self)))
           buffer.removeSubrange(buffer.startIndex...newline)
         }
-        guard !lines.isEmpty else { return }
-        Task { @MainActor in for line in lines { self?.log?(line) } }
+        if !lines.isEmpty { deliver(lines) }
       }
       source.setCancelHandler {
         close(master)
         close(slave)
       }
-      terminalSource = source
-      source.resume()
+      return source
     }
 
     private func closeTerminal() {
