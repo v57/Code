@@ -78,6 +78,9 @@
       case "save": document?.save()
       case "insert": document?.textView?.insertText(argument, replacementRange: document!.textView!.selectedRange())
       case "console": model.isConsoleVisible = argument != "off"
+      case "settings":
+        if !argument.isEmpty { UserDefaults.standard.set(argument, forKey: "settings.tab") }
+        AppState.shared.debugOpenSettings?()
       case "issues": model.isIssuesPresented.toggle()
       case "back": services.goBack()
       case "continue": services.debugger?.continueRunning()

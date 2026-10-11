@@ -10,6 +10,9 @@ struct WorkspaceView: View {
     EditorSettings.defaultExcludedNames
   @AppStorage("console.height") private var consoleHeight = 220.0
   private let serviceSettings = ServiceSettingsReader()
+  #if DEBUG
+    @Environment(\.openSettings) private var openSettings
+  #endif
 
   var body: some View {
     @Bindable var model = model
@@ -59,6 +62,7 @@ struct WorkspaceView: View {
       .onAppear {
         AppState.shared.debugModel = model
         AppState.shared.debugModels.append(WeakWindowModel(model: model))
+        AppState.shared.debugOpenSettings = { openSettings() }
       }
     #endif
     .focusedSceneValue(\.windowModel, model)

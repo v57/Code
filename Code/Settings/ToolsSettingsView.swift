@@ -56,6 +56,7 @@ struct LanguagesSettingsView: View {
       Text("Each language’s server is installed separately, from its official source. ⌘-click a symbol to jump to its definition; ⌥-click for Quick Help.")
         .font(.caption)
         .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
       List {
         ForEach(LanguageServerCatalog.all) { server in
           ToolRow(
@@ -110,8 +111,11 @@ struct FormattingSettingsView: View {
                 }),
               installCommand: formatter.installCommand, toolID: formatter.id)
             HStack {
-              Toggle("Only with a config file", isOn: requiresConfigBinding(formatter))
-                .controlSize(.small)
+              if !formatter.configFiles.isEmpty {
+                Toggle("Only with a config file", isOn: requiresConfigBinding(formatter))
+                  .controlSize(.small)
+                  .help(formatter.configFiles.joined(separator: ", "))
+              }
               Spacer()
               TextField("Custom command", text: commandBinding(formatter.id))
                 .textFieldStyle(.roundedBorder)

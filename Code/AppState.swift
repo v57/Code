@@ -9,6 +9,7 @@ import SwiftUI
     @ObservationIgnored weak var debugModel: WindowModel?
     /// Every window's model, for `window:<name>`.
     @ObservationIgnored var debugModels: [WeakWindowModel] = []
+    @ObservationIgnored var debugOpenSettings: (() -> Void)?
   #endif
 
   let recents = RecentProjects()

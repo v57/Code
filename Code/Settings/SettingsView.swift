@@ -3,18 +3,26 @@ import CodeKit
 import SwiftUI
 
 struct SettingsView: View {
+  /// The tab shown, kept for the next time Settings opens.
+  @AppStorage("settings.tab") private var tab = "editor"
+
   var body: some View {
-    TabView {
+    TabView(selection: $tab) {
       EditorSettingsView()
         .tabItem { Label("Editor", systemImage: "character.cursor.ibeam") }
+        .tag("editor")
       FilesSettingsView()
         .tabItem { Label("Files", systemImage: "folder") }
+        .tag("files")
       LanguagesSettingsView()
         .tabItem { Label("Languages", systemImage: "curlybraces") }
+        .tag("languages")
       FormattingSettingsView()
         .tabItem { Label("Formatting", systemImage: "text.alignleft") }
+        .tag("formatting")
       RunSettingsView()
         .tabItem { Label("Run", systemImage: "play") }
+        .tag("run")
     }
     .frame(width: 560)
   }
