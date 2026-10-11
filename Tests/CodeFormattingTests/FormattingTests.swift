@@ -49,6 +49,16 @@ import Testing
     #expect(service.formatter(for: url.appendingPathComponent("a.ts")) == nil)
   }
 
+  @Test func prettierWithItsConfig() async throws {
+    let service = FormattingService(environment: environment)
+    guard service.executable(for: FormatterCatalog.all.first { $0.id == "prettier" }!) != nil else { return }
+    let url = try folder([".prettierrc": #"{"semi": false, "singleQuote": true}"#])
+    defer { try? FileManager.default.removeItem(at: url) }
+    let formatted = try await service.format(
+      "const a = {b:\"c\"};\n", url: url.appendingPathComponent("a.ts"))
+    #expect(formatted == "const a = { b: 'c' }\n")
+  }
+
   @Test func failuresDontReturnText() async throws {
     let service = FormattingService(environment: environment)
     let url = try folder(["go.mod": "module x\n"])
