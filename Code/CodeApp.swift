@@ -9,7 +9,6 @@ import SwiftUI
   var body: some Scene {
     WindowGroup(id: WorkspaceWindow.id, for: URL.self) { $root in
       WorkspaceWindow(root: $root)
-        .frame(minWidth: 640, minHeight: 400)
     }
     .defaultSize(width: 1200, height: 800)
     .commands { CodeCommands() }

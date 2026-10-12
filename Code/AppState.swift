@@ -103,32 +103,6 @@ import SwiftUI
     return workspaces.values.first { $0.workspace?.root == folder }
   }
 
-  // MARK: - Reopening projects at launch
-
-  private static let openProjectsKey = "openProjects"
-  @ObservationIgnored private var hasRestoredProjects = false
-
-  /// Remembers the open project folders at quit, so the next launch reopens
-  /// them (as VS Code and Zed do) whatever the system's window restoration
-  /// setting is.
-  func saveOpenProjects() {
-    let roots = workspaces.values.compactMap { $0.workspace?.root.path }
-    UserDefaults.standard.set(roots, forKey: Self.openProjectsKey)
-  }
-
-  /// The folders to reopen, once per launch: the first window to appear
-  /// takes them.
-  func takeProjectsToRestore() -> [URL] {
-    guard !hasRestoredProjects else { return [] }
-    hasRestoredProjects = true
-    let paths = UserDefaults.standard.stringArray(forKey: Self.openProjectsKey) ?? []
-    return paths.map { URL(fileURLWithPath: $0) }.filter {
-      var isDirectory: ObjCBool = false
-      return FileManager.default.fileExists(atPath: $0.path, isDirectory: &isDirectory)
-        && isDirectory.boolValue && workspace(for: $0) == nil
-    }
-  }
-
   /// Saves every open document and project session (quit, deactivation).
   func flushAll() {
     for case let workspace? in workspaces.values.map(\.workspace) {

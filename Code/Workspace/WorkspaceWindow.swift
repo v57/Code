@@ -23,28 +23,17 @@ struct WorkspaceWindow: View {
         WorkspaceView()
           .environment(model)
           .environment(model.workspace)
+          .frame(minWidth: 640, minHeight: 400)
       } else {
         WelcomeView { open($0) }
       }
     }
-    .background(WindowReader(reference: window))
-    .onAppear {
-      AppState.shared.openWindow = openWindow
-      restoreProjects()
-    }
+    .background(WindowReader(reference: window, isWelcome: model == nil))
+    .onAppear { AppState.shared.openWindow = openWindow }
     .onChange(of: root, initial: true) { _, root in makeModel(root) }
     .onOpenURL { open($0) }
     .onDisappear { if let workspace = model?.workspace { AppState.shared.unregister(workspace) } }
     .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
-  }
-
-  /// At launch, the first window reopens the projects open at the last quit:
-  /// it takes the first one itself (when it has no folder yet) and opens
-  /// windows for the rest.
-  private func restoreProjects() {
-    var folders = AppState.shared.takeProjectsToRestore()
-    if root == nil, !folders.isEmpty { root = folders.removeFirst() }
-    for folder in folders { openWindow(id: Self.id, value: folder) }
   }
 
   /// Opens a folder or file from Finder, the Dock, the Welcome screen or a
@@ -84,7 +73,7 @@ struct WorkspaceWindow: View {
       return
     }
     guard model?.workspace.root != root.standardizedFileURL else { return }
-    // A restored window whose folder is gone shows Welcome instead.
+    // A folder that is gone shows Welcome instead.
     var isDirectory: ObjCBool = false
     guard FileManager.default.fileExists(atPath: root.path, isDirectory: &isDirectory),
       isDirectory.boolValue
@@ -92,9 +81,8 @@ struct WorkspaceWindow: View {
       self.root = nil
       return
     }
-    // One window per folder. At launch a restored window and the window
-    // SwiftUI makes for a folder opened from Finder can both get it; the
-    // later one focuses the first and closes.
+    // One window per folder: a second window that gets an open folder
+    // focuses the first and closes.
     if AppState.shared.workspace(for: root) != nil {
       AppState.shared.focus(root)
       DispatchQueue.main.async { [window] in window.window?.close() }
@@ -116,23 +104,73 @@ struct WorkspaceWindow: View {
   weak var window: NSWindow?
 }
 
-/// Records its window in a `WindowReference`.
+/// Records its window in a `WindowReference`, keeps the window out of
+/// state restoration (Code launches to the Welcome window, never reopening
+/// the projects of the last session), and styles it for what it shows:
+/// Welcome is a fixed-size window without a title bar, as in Xcode; a
+/// project gets the title bar back and a full size.
 private struct WindowReader: NSViewRepresentable {
   let reference: WindowReference
+  let isWelcome: Bool
 
-  func makeNSView(context: Context) -> NSView { ReaderView(reference: reference) }
-  func updateNSView(_ view: NSView, context: Context) {}
+  func makeNSView(context: Context) -> NSView { ReaderView(reference: reference, isWelcome: isWelcome) }
+
+  func updateNSView(_ view: NSView, context: Context) {
+    guard let view = view as? ReaderView, view.isWelcome != isWelcome else { return }
+    view.isWelcome = isWelcome
+    view.applyStyle()
+  }
 
   private final class ReaderView: NSView {
     let reference: WindowReference
-    init(reference: WindowReference) {
+    var isWelcome: Bool
+    /// The style applied to the window, once it has one.
+    private var appliedWelcome: Bool?
+    /// SwiftUI's own style for the window, for a project.
+    private var projectStyle: (mask: NSWindow.StyleMask, transparentTitlebar: Bool)?
+
+    init(reference: WindowReference, isWelcome: Bool) {
       self.reference = reference
+      self.isWelcome = isWelcome
       super.init(frame: .zero)
     }
+
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
     override func viewDidMoveToWindow() {
       super.viewDidMoveToWindow()
       reference.window = window
+      window?.isRestorable = false
+      applyStyle()
+    }
+
+    func applyStyle() {
+      guard let window, appliedWelcome != isWelcome else { return }
+      let wasWelcome = appliedWelcome
+      appliedWelcome = isWelcome
+      let projectStyle = projectStyle ?? (window.styleMask, window.titlebarAppearsTransparent)
+      self.projectStyle = projectStyle
+      window.titlebarAppearsTransparent = isWelcome || projectStyle.transparentTitlebar
+      window.titleVisibility = isWelcome ? .hidden : .visible
+      window.isMovableByWindowBackground = isWelcome
+      window.titlebarSeparatorStyle = isWelcome ? .none : .automatic
+      window.toolbar?.isVisible = !isWelcome
+      for button in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+        window.standardWindowButton(button)?.isHidden = isWelcome
+      }
+      if isWelcome {
+        window.styleMask.insert(.fullSizeContentView)
+        window.styleMask.remove(.resizable)
+        window.setContentSize(WelcomeView.size)
+        window.center()
+      } else {
+        window.styleMask = projectStyle.mask
+        // A Welcome window becoming a project's grows to the usual size.
+        if wasWelcome == true {
+          window.setContentSize(NSSize(width: 1200, height: 800))
+          window.center()
+        }
+      }
     }
   }
 }

@@ -105,9 +105,14 @@ Architecture
   Each window shows one folder. Folders and files opened from Finder or the
   Dock arrive through `onOpenURL` with `handlesExternalEvents` accepting all
   events, as in the Markdown app. `AppState` keeps the registry of open
-  projects: opening a folder that is open focuses its window. The open
-  projects are saved at quit and reopened at launch; each project restores its
-  tabs and expanded folders.
+  projects: opening a folder that is open focuses its window. Launching
+  shows the Welcome window: projects aren't reopened (windows opt out of
+  state restoration), but a project opened again restores its tabs and
+  expanded folders. Welcome looks like Xcode's: a fixed 480-point window
+  without a title bar (a round close button instead), the icon, name and
+  version, capsule buttons and the recent projects with their Xcode project,
+  package or folder icons. The same window becomes the project's when one is
+  opened, getting its title bar back at full size.
 
   Actions. `ProjectScanner` lists the folder and its subfolders two levels
   down once and hands the entries to each detector, so a folder of several

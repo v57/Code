@@ -5,6 +5,8 @@ import AppKit
 /// `onOpenURL` in `WorkspaceWindow`.
 final class AppDelegate: NSObject, NSApplicationDelegate {
   func applicationDidFinishLaunching(_ notification: Notification) {
+    // Earlier versions saved the open projects here to reopen them.
+    UserDefaults.standard.removeObject(forKey: "openProjects")
     #if DEBUG
       DebugAutomation.start()
     #endif
@@ -14,11 +16,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     AppState.shared.flushAll()
   }
 
-  /// Runs before any window closes: the open projects are recorded while
-  /// every window still has one (closing windows unregister theirs).
+  /// Runs before any window closes, so every project's session is saved.
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
     AppState.shared.flushAll()
-    AppState.shared.saveOpenProjects()
     return .terminateNow
   }
 
