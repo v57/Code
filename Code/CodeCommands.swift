@@ -161,6 +161,13 @@ struct CodeCommands: Commands {
         .keyboardShortcut("]")
       Button("Outdent") { send(#selector(CodeTextView.shiftLeft(_:))) }
         .keyboardShortcut("[")
+      Divider()
+      Button("Show Completions") { send(#selector(NSTextView.complete(_:))) }
+        .keyboardShortcut(.space, modifiers: [.control])
+      Button("Select Next Placeholder") { send(#selector(CodeTextView.selectNextPlaceholder(_:))) }
+        .keyboardShortcut("/", modifiers: [.control])
+      Button("Select Previous Placeholder") { send(#selector(CodeTextView.selectPreviousPlaceholder(_:))) }
+        .keyboardShortcut("/", modifiers: [.control, .shift])
     }
 
     CommandGroup(after: .toolbar) {

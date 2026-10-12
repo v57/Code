@@ -24,6 +24,9 @@
     public var showsInlineIssues = true
     public var showsIssueMessages = true
     public var breakpointsEnabled = true
+    /// The completion list opens while typing (else only with Esc and
+    /// ⌃Space).
+    public var suggestsCompletions = true
 
     public init() {}
   }

@@ -32,6 +32,8 @@
     private var buffer = Data()
     private var nextID = 1
     private var pending: [Int: CheckedContinuation<JSONValue, Error>] = [:]
+    /// Requests cancelled before they were sent.
+    private var cancelled: Set<Int> = []
     private var isClosed = false
 
     /// Called with each notification's method and params.
@@ -78,24 +80,45 @@
     }
 
     /// Sends a request and waits for its result, or `timeout` seconds.
+    /// Cancelling the task cancels the request (`$/cancelRequest`).
     public func request(_ method: String, _ params: JSONValue, timeout: Double? = nil) async throws
       -> JSONValue
     {
-      try await withCheckedThrowingContinuation { continuation in
-        queue.async {
-          guard !self.isClosed else {
-            continuation.resume(throwing: Failure.notRunning)
-            return
-          }
-          let id = self.nextID
-          self.nextID += 1
-          self.pending[id] = continuation
-          if let timeout {
-            self.queue.asyncAfter(deadline: .now() + timeout) {
-              self.pending.removeValue(forKey: id)?.resume(throwing: Failure.timedOut)
+      let id = queue.sync {
+        let id = nextID
+        nextID += 1
+        return id
+      }
+      return try await withTaskCancellationHandler {
+        try await withCheckedThrowingContinuation { continuation in
+          queue.async {
+            guard !self.isClosed else {
+              continuation.resume(throwing: Failure.notRunning)
+              return
             }
+            if self.cancelled.remove(id) != nil {
+              continuation.resume(throwing: CancellationError())
+              return
+            }
+            self.pending[id] = continuation
+            if let timeout {
+              self.queue.asyncAfter(deadline: .now() + timeout) {
+                self.pending.removeValue(forKey: id)?.resume(throwing: Failure.timedOut)
+              }
+            }
+            self.write(
+              ["jsonrpc": "2.0", "id": .number(Double(id)), "method": .string(method), "params": params])
           }
-          self.write(["jsonrpc": "2.0", "id": .number(Double(id)), "method": .string(method), "params": params])
+        }
+      } onCancel: {
+        queue.async {
+          if let continuation = self.pending.removeValue(forKey: id) {
+            continuation.resume(throwing: CancellationError())
+            self.write(["jsonrpc": "2.0", "method": "$/cancelRequest", "params": ["id": .number(Double(id))]])
+          } else {
+            // Not sent yet: don't.
+            self.cancelled.insert(id)
+          }
         }
       }
     }

@@ -11,7 +11,8 @@
   /// Commands: `open:<path>[:line]`, `perform:run|build|test|clean`, `stop`,
   /// `scheme:<name>`, `destination:<name or id>`, `definition` (at the
   /// caret), `breakpoint` (toggle at the caret), `save`, `insert:<text>`,
-  /// `console:on|off`, `issues`, `back`, `quickhelp`.
+  /// `console:on|off`, `issues`, `back`, `quickhelp`, `type:<text>` (as if
+  /// typed: completions open), `complete` (Esc), `key:up|down|return|tab|esc`.
   @MainActor enum DebugAutomation {
     private static var observer: NSObjectProtocol?
 
@@ -75,6 +76,22 @@
         if let textView = document?.textView, let column = Int(argument) {
           textView.goTo(line: textView.currentSelection.line, column: column)
         }
+      case "type":
+        // Typed one character at a time, as from the keyboard.
+        if let textView = document?.textView {
+          for character in argument {
+            textView.insertText(String(character), replacementRange: textView.selectedRange())
+            textView.onTyping?(String(character))
+          }
+        }
+      case "complete": document?.textView?.complete(nil)
+      case "key":
+        let selectors: [String: Selector] = [
+          "up": #selector(NSResponder.moveUp(_:)), "down": #selector(NSResponder.moveDown(_:)),
+          "return": #selector(NSResponder.insertNewline(_:)), "tab": #selector(NSResponder.insertTab(_:)),
+          "backtab": #selector(NSResponder.insertBacktab(_:)), "esc": #selector(NSResponder.cancelOperation(_:)),
+        ]
+        if let selector = selectors[argument] { document?.textView?.doCommand(by: selector) }
       case "save": document?.save()
       case "insert": document?.textView?.insertText(argument, replacementRange: document!.textView!.selectedRange())
       case "console": model.isConsoleVisible = argument != "off"
@@ -102,6 +119,9 @@
           "execution: \(String(describing: services.executionLocation))",
           "debugger: \(String(describing: services.debugger?.state))",
           "status: \(services.statusMessage ?? "-")",
+          "completions: \(document?.completion?.shownItems.prefix(15).map(\.label).joined(separator: ", ") ?? "-")",
+          "selection: \(document?.textView.map { NSStringFromRange($0.selectedRange()) } ?? "-")",
+          "line text: \(document?.textView.map { view in let text = view.string as NSString; return text.substring(with: text.lineRange(for: view.selectedRange())) } ?? "-")",
         ]
         lines += services.issues.prefix(20).map { "  issue: \($0.url?.lastPathComponent ?? "-"):\($0.line ?? 0) \($0.message)" }
         if let textView = document?.textView {

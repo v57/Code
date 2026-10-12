@@ -170,6 +170,20 @@
             "hover": ["contentFormat": ["plaintext", "markdown"]],
             "publishDiagnostics": ["relatedInformation": false, "versionSupport": false],
             "documentSymbol": ["hierarchicalDocumentSymbolSupport": true],
+            "completion": [
+              "completionItem": [
+                "snippetSupport": true,
+                "documentationFormat": ["markdown", "plaintext"],
+                "deprecatedSupport": true,
+                "preselectSupport": true,
+                "tagSupport": ["valueSet": [1]],
+                "labelDetailsSupport": true,
+                "resolveSupport": ["properties": ["documentation", "detail", "additionalTextEdits"]],
+              ],
+              "completionItemKind": ["valueSet": .array((1...25).map { .number(Double($0)) })],
+              "completionList": ["itemDefaults": ["editRange", "insertTextFormat", "data"]],
+              "contextSupport": true,
+            ],
           ],
         ],
       ]
@@ -268,6 +282,43 @@
         return array.compactMap { $0.string ?? $0["value"].string }.joined(separator: "\n\n")
       }
       return nil
+    }
+
+    // MARK: - Completion
+
+    /// Whether the server completes code (it says so once running).
+    var supportsCompletion: Bool { status == .running && !capabilities["completionProvider"].isNull }
+
+    /// The characters that ask the server for completions when typed.
+    var completionTriggerCharacters: Set<String> {
+      Set((capabilities["completionProvider"]["triggerCharacters"].array ?? []).compactMap(\.string))
+    }
+
+    func completions(url: URL, position: LSPPosition, trigger: LSPCompletionTrigger) async throws
+      -> LSPCompletionList
+    {
+      guard supportsCompletion else { return LSPCompletionList(.null) }
+      var params = positionParams(url, position)
+      if case .object(var object) = params {
+        object["context"] = trigger.json
+        params = .object(object)
+      }
+      return LSPCompletionList(try await connection.request("textDocument/completion", params, timeout: 10))
+    }
+
+    /// The item with its documentation and edits, when the server fills
+    /// them in later.
+    func resolve(_ item: LSPCompletionItem) async throws -> LSPCompletionItem? {
+      guard supportsCompletion, capabilities["completionProvider"]["resolveProvider"].bool == true else {
+        return nil
+      }
+      let result = try await connection.request("completionItem/resolve", item.raw, timeout: 5)
+      guard var resolved = LSPCompletionItem(result, defaults: .null) else { return nil }
+      // Servers may leave out what didn't change.
+      if resolved.range == nil { resolved.range = item.range }
+      if result["insertTextFormat"].isNull { resolved.isSnippet = item.isSnippet }
+      if result["textEdit"].isNull && result["insertText"].isNull { resolved.insertText = item.insertText }
+      return resolved
     }
 
     func stop() async {

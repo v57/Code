@@ -118,6 +118,22 @@
     /// minimap redraws).
     public var onLayoutChange: (() -> Void)?
     var annotationPopover: NSPopover?
+
+    // MARK: Completion (see CodeAutocompletion)
+
+    /// Takes key commands (`moveUp:`, `insertNewline:`, `cancelOperation:`,
+    /// …) before the editor; returns true when it handled one. A completion
+    /// list uses it while shown.
+    public var commandHandler: ((Selector) -> Bool)?
+    /// Called after an edit typed at the keyboard: the typed text, or nil
+    /// for Backspace.
+    public var onTyping: ((String?) -> Void)?
+    /// Esc, ⌃Space or F5 (`complete:`) ask for completions; without a
+    /// handler AppKit's own completion runs.
+    public var onCompletionRequest: (() -> Void)?
+    /// Called when the editor stops being first responder or leaves its
+    /// window (a completion list closes).
+    public var onFocusLoss: (() -> Void)?
     private var colors: [SyntaxKind: NSColor] = [:]
     private var plainColor = NSColor.textColor
 
@@ -595,6 +611,7 @@
       let range = NSIntersectionRange(dirty, NSRange(location: 0, length: storage.length))
       guard range.length > 0 else { return }
       applyLineAttributes(in: range)
+      invalidatePlaceholderGlyphs(in: range)
       layoutManager?.invalidateDisplay(forCharacterRange: range)
       onLayoutChange?()
     }
@@ -627,6 +644,24 @@
         result[.foregroundColor] = run.color
       }
       return result
+    }
+
+    /// Placeholders' "<#" and "#>" get no glyphs.
+    public nonisolated func layoutManager(
+      _ layoutManager: NSLayoutManager, shouldGenerateGlyphs glyphs: UnsafePointer<CGGlyph>,
+      properties props: UnsafePointer<NSLayoutManager.GlyphProperty>,
+      characterIndexes charIndexes: UnsafePointer<Int>, font aFont: NSFont, forGlyphRange glyphRange: NSRange
+    ) -> Int {
+      nonisolated(unsafe) let glyphs = glyphs
+      nonisolated(unsafe) let props = props
+      nonisolated(unsafe) let charIndexes = charIndexes
+      nonisolated(unsafe) let layoutManager = layoutManager
+      nonisolated(unsafe) let font = aFont
+      return MainActor.assumeIsolated {
+        generatePlaceholderGlyphs(
+          layoutManager, glyphs: glyphs, properties: props, characterIndexes: charIndexes, font: font,
+          glyphRange: glyphRange)
+      }
     }
 
     /// Every line gets the same height with the text centered in it, whatever
@@ -719,6 +754,11 @@
       _ ranges: [NSValue], affinity: NSSelectionAffinity, stillSelecting: Bool
     ) {
       let oldLineRect = currentLineRect()
+      // A caret placed inside a placeholder selects all of it.
+      var ranges = ranges
+      if !stillSelecting, !isInEdit, ranges.count == 1, let placeholder = placeholder(around: ranges[0].rangeValue) {
+        ranges = [NSValue(range: placeholder)]
+      }
       super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelecting)
       if configuration.highlightCurrentLine {
         if let oldLineRect { setNeedsDisplay(oldLineRect) }
@@ -764,8 +804,11 @@
 
     public override func drawBackground(in rect: NSRect) {
       super.drawBackground(in: rect)
-      // Issue and debugger tints go over the current-line bar.
-      defer { drawLineTints(in: rect) }
+      // Placeholders, issue and debugger tints go over the current-line bar.
+      defer {
+        drawPlaceholderTokens(in: rect)
+        drawLineTints(in: rect)
+      }
       guard configuration.highlightCurrentLine, let lineRect = currentLineRect(),
         lineRect.intersects(rect)
       else { return }
@@ -801,17 +844,62 @@
       // Assists act on single characters typed at the keyboard; pastes,
       // dictation and their own edits go straight through.
       guard !isAssisting, NSApp.currentEvent?.type == .keyDown,
-        let typed = (string as? String) ?? (string as? NSAttributedString)?.string,
-        (typed as NSString).length == 1
+        let typed = (string as? String) ?? (string as? NSAttributedString)?.string
       else { return super.insertText(string, replacementRange: replacementRange) }
       let selection = replacementRange.location == NSNotFound ? selectedRange() : replacementRange
-      if !assistTyping((typed as NSString).character(at: 0), selection: selection) {
+      if (typed as NSString).length != 1
+        || !assistTyping((typed as NSString).character(at: 0), selection: selection)
+      {
         super.insertText(string, replacementRange: replacementRange)
       }
+      onTyping?(typed)
     }
 
     public override func deleteBackward(_ sender: Any?) {
-      if !assistDeleteBackward() { super.deleteBackward(sender) }
+      if !deletePlaceholder(forward: false), !assistDeleteBackward() { super.deleteBackward(sender) }
+      if NSApp.currentEvent?.type == .keyDown { onTyping?(nil) }
+    }
+
+    public override func deleteForward(_ sender: Any?) {
+      if !deletePlaceholder(forward: true) { super.deleteForward(sender) }
+    }
+
+    public override func doCommand(by selector: Selector) {
+      if commandHandler?(selector) == true { return }
+      super.doCommand(by: selector)
+    }
+
+    /// Esc asks for completions, as in Xcode.
+    public override func cancelOperation(_ sender: Any?) {
+      if onCompletionRequest != nil { complete(sender) } else { super.cancelOperation(sender) }
+    }
+
+    public override func complete(_ sender: Any?) {
+      guard let onCompletionRequest else { return super.complete(sender) }
+      onCompletionRequest()
+    }
+
+    public override func resignFirstResponder() -> Bool {
+      let resigned = super.resignFirstResponder()
+      if resigned { onFocusLoss?() }
+      return resigned
+    }
+
+    public override func viewWillMove(toWindow newWindow: NSWindow?) {
+      super.viewWillMove(toWindow: newWindow)
+      if newWindow == nil { onFocusLoss?() }
+    }
+
+    public override func keyDown(with event: NSEvent) {
+      // ⌃Space shows completions (when the system doesn't take it for
+      // switching input sources).
+      if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .control,
+        event.charactersIgnoringModifiers == " ", onCompletionRequest != nil
+      {
+        complete(nil)
+        return
+      }
+      super.keyDown(with: event)
     }
 
     public override func moveToBeginningOfLine(_ sender: Any?) {
@@ -837,6 +925,9 @@
     public override func selectionRange(
       forProposedRange proposedCharRange: NSRange, granularity: NSSelectionGranularity
     ) -> NSRange {
+      if granularity == .selectByWord, let placeholder = placeholder(around: proposedCharRange) {
+        return placeholder
+      }
       // A double-click on a bracket selects the bracketed block, as in Xcode.
       if granularity == .selectByWord, let block = delimitedBlock(at: proposedCharRange) {
         return block
@@ -918,6 +1009,7 @@
     }
 
     public override func insertTab(_ sender: Any?) {
+      if selectPlaceholder(forward: true, onlyNearby: true) { return }
       let selection = selectedRange()
       if selection.length > 0, selectedLines.count > 1 {
         shiftRight(sender)
@@ -930,7 +1022,9 @@
       insertText(String(repeating: " ", count: width - column % width), replacementRange: selection)
     }
 
-    public override func insertBacktab(_ sender: Any?) { shiftLeft(sender) }
+    public override func insertBacktab(_ sender: Any?) {
+      if !selectPlaceholder(forward: false, onlyNearby: true) { shiftLeft(sender) }
+    }
 
     /// Indents the selected lines by one level (⌘]).
     @objc public func shiftRight(_ sender: Any?) {

@@ -180,6 +180,38 @@
       return try? await server.hover(url: url, position: position)
     }
 
+    // MARK: - Completion
+
+    /// Whether this open file's server completes code.
+    public func supportsCompletion(_ url: URL) -> Bool {
+      server(ofOpen: url)?.supportsCompletion ?? false
+    }
+
+    /// The characters that ask this file's server for completions.
+    public func completionTriggerCharacters(_ url: URL) -> Set<String> {
+      server(ofOpen: url)?.completionTriggerCharacters ?? []
+    }
+
+    /// Completions at a position; nil when the file has no server that
+    /// completes code, or the request failed (or was cancelled).
+    public func completions(url: URL, position: LSPPosition, trigger: LSPCompletionTrigger) async
+      -> LSPCompletionList?
+    {
+      let url = url.standardizedFileURL
+      guard let server = server(ofOpen: url), server.supportsCompletion else { return nil }
+      return try? await server.completions(url: url, position: position, trigger: trigger)
+    }
+
+    public func resolve(_ item: LSPCompletionItem, url: URL) async -> LSPCompletionItem? {
+      guard let server = server(ofOpen: url) else { return nil }
+      return try? await server.resolve(item)
+    }
+
+    private func server(ofOpen url: URL) -> LanguageServer? {
+      guard let document = documents[url.standardizedFileURL] else { return nil }
+      return servers[document.server]
+    }
+
     // MARK: - Lifecycle
 
     /// The last lines a server wrote to standard error, for settings.

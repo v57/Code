@@ -42,6 +42,7 @@ private struct EditorSettingsView: View {
   @AppStorage(EditorSettings.showsMinimap) private var showsMinimap = true
   @AppStorage(EditorSettings.showsInlineIssues) private var showsInlineIssues = true
   @AppStorage(EditorSettings.showsIssueMessages) private var showsIssueMessages = true
+  @AppStorage(EditorSettings.suggestsCompletions) private var suggestsCompletions = true
 
   /// Installed fixed-pitch font families.
   private let monospacedFamilies: [String] = {
@@ -82,6 +83,7 @@ private struct EditorSettingsView: View {
       Toggle("Insert spaces when pressing Tab", isOn: $insertSpaces)
       Toggle("Automatically close brackets and quotes", isOn: $autoCloseDelimiters)
       Toggle("Trim trailing whitespace when saving", isOn: $trimTrailingWhitespace)
+      Toggle("Suggest completions while typing", isOn: $suggestsCompletions)
       Divider()
       Toggle("Wrap lines", isOn: $wrapLines)
       Toggle("Show line numbers", isOn: $showLineNumbers)

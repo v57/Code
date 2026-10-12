@@ -31,7 +31,8 @@ struct EditorArea: View {
         services: model.services, marks: marks(for: document),
         features: EditorFeatures(
           showsMinimap: services.showsMinimap, showsIssueMessages: services.showsIssueMessages,
-          breakpointsEnabled: services.breakpointsEnabled)
+          breakpointsEnabled: services.breakpointsEnabled,
+          suggestsCompletions: services.suggestsCompletions)
       ) { selection in
         model.selection = selection
       }

@@ -20,6 +20,7 @@ enum EditorSettings {
   static let showsInlineIssues = "editor.showsInlineIssues"
   static let showsIssueMessages = "editor.showsIssueMessages"
   static let breakpointsEnabled = "debug.breakpointsEnabled"
+  static let suggestsCompletions = "editor.suggestsCompletions"
   static let actionsEnabled = "actions.enabled"
   static let languageServersEnabled = "languages.enabled"
   static let disabledLanguageServers = "languages.disabled"  // comma-separated server IDs
@@ -75,6 +76,7 @@ extension EditorSettings {
     settings.showsInlineIssues = bool(showsInlineIssues)
     settings.showsIssueMessages = bool(showsIssueMessages)
     settings.breakpointsEnabled = bool(breakpointsEnabled)
+    settings.suggestsCompletions = bool(suggestsCompletions)
     return settings
   }
 }
@@ -92,6 +94,7 @@ struct ServiceSettingsReader: DynamicProperty {
   @AppStorage(EditorSettings.showsInlineIssues) private var showsInlineIssues = true
   @AppStorage(EditorSettings.showsIssueMessages) private var showsIssueMessages = true
   @AppStorage(EditorSettings.breakpointsEnabled) private var breakpointsEnabled = true
+  @AppStorage(EditorSettings.suggestsCompletions) private var suggestsCompletions = true
 
   var settings: ServiceSettings {
     var settings = ServiceSettings()
@@ -106,6 +109,7 @@ struct ServiceSettingsReader: DynamicProperty {
     settings.showsInlineIssues = showsInlineIssues
     settings.showsIssueMessages = showsIssueMessages
     settings.breakpointsEnabled = breakpointsEnabled
+    settings.suggestsCompletions = suggestsCompletions
     return settings
   }
 }

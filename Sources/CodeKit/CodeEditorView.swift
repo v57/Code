@@ -1,5 +1,6 @@
 #if canImport(AppKit)
   import AppKit
+  import CodeAutocompletion
   import CodeMinimap
   import SwiftUI
 
@@ -8,11 +9,18 @@
     public var showsMinimap = true
     public var showsIssueMessages = true
     public var breakpointsEnabled = true
+    /// The completion list opens while typing (else only with Esc and
+    /// ⌃Space).
+    public var suggestsCompletions = true
 
-    public init(showsMinimap: Bool = true, showsIssueMessages: Bool = true, breakpointsEnabled: Bool = true) {
+    public init(
+      showsMinimap: Bool = true, showsIssueMessages: Bool = true, breakpointsEnabled: Bool = true,
+      suggestsCompletions: Bool = true
+    ) {
       self.showsMinimap = showsMinimap
       self.showsIssueMessages = showsIssueMessages
       self.breakpointsEnabled = breakpointsEnabled
+      self.suggestsCompletions = suggestsCompletions
     }
   }
 
@@ -23,6 +31,8 @@
   @MainActor final class DocumentEditor {
     let scrollView: CodeEditorScrollView
     let container: EditorContainerView
+    let completion: CompletionController
+    private let completionProvider: DocumentCompletionProvider
     /// The document revision whose text the editor shows.
     var appliedRevision: Int
     private weak var services: ProjectServices?
@@ -35,6 +45,9 @@
         text: document.text, language: document.language,
         highlightsSyntax: document.highlightsSyntax, configuration: configuration)
       container = EditorContainerView(scrollView: scrollView)
+      completionProvider = DocumentCompletionProvider(textView: scrollView.textView)
+      completionProvider.document = document
+      completion = CompletionController(textView: scrollView.textView, provider: completionProvider)
       appliedRevision = document.revision
       attach(to: document)
       let source = MinimapAdapter(textView: scrollView.textView)
@@ -79,6 +92,7 @@
     func connect(_ services: ProjectServices, document: TextDocument) {
       guard self.services !== services else { return }
       self.services = services
+      completionProvider.services = services
       let textView = scrollView.textView
       textView.onTextChange = { [weak services, weak document, weak textView] edit in
         guard let services, let document, let textView else { return }
@@ -128,6 +142,7 @@
       container.showsMinimap = features.showsMinimap
       textView.showsAnnotationMessages = features.showsIssueMessages
       textView.allowsBreakpoints = features.breakpointsEnabled
+      completion.suggestsWhileTyping = features.suggestsCompletions
       container.minimap.theme = textView.theme
       guard let services else { return }
       let annotations = services.annotations(for: document.url)
@@ -359,6 +374,12 @@
     /// 1). Does nothing before the editor has been shown.
     public func goTo(line: Int, column: Int = 1) {
       textView?.goTo(line: line, column: column)
+    }
+
+    /// The completion list of this document's editor, once it has been
+    /// shown.
+    public var completion: CompletionController? {
+      (editorState as? DocumentEditor)?.completion
     }
 
     /// This document's text view, once its editor has been shown.

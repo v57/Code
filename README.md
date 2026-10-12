@@ -32,6 +32,10 @@ Libraries
     CodeMinimap        Xcode's minimap drawn as shapes, MARK sections, marks
     CodeFormatting     formatters run on the text before an explicit save
                        (swift-format, Prettier, gofmt, rustfmt, Ruff, …)
+    CodeAutocompletion Xcode's completion list over the editor: a provider
+                       protocol (a language server, or the file's words and
+                       the language's keywords), fuzzy ranking, LSP snippets
+                       as Xcode placeholders (AppKit; the model is neutral)
     CodeKit            re-exports them all; CodeEditorView(document:) edits a
                        workspace document (autosave, reload, ⌘S trimming,
                        minimap, issues, breakpoints); ProjectServices connects
@@ -49,16 +53,23 @@ Layout
                                 CodeEditorScrollView, CodeTextEditor,
                                 EditorConfiguration
     Sources/CodeEditor/         + CodeTextView+Annotations (inline issues,
-                                breakpoints, execution line, ⌘/⌥-click, format)
+                                breakpoints, execution line, ⌘/⌥-click, format),
+                                + Placeholders and EditorPlaceholder (<#…#>)
     Sources/CodeActions/        ActionScheme, ProjectScanner, Detectors/,
                                 RunDestination, ShellEnvironment, PTYProcess,
                                 BuildLog, ActionPlanner, ActionController
     Sources/CodeLSP/            JSONValue, LSPConnection, LanguageServerCatalog,
-                                LanguageServer, LanguageServerManager
+                                LanguageServer, LanguageServerManager,
+                                LSPCompletion
     Sources/CodeMinimap/        MinimapView
     Sources/CodeFormatting/     Formatter (catalog and FormattingService)
+    Sources/CodeAutocompletion/ CompletionItem (+ provider protocol),
+                                CompletionMatcher, Snippet,
+                                WordCompletionProvider, CompletionController,
+                                CompletionWindow
     Sources/CodeKit/            CodeKit (re-exports), CodeEditorView,
-                                ProjectServices, DebugSession, QuickHelpPopover
+                                ProjectServices, DebugSession, QuickHelpPopover,
+                                DocumentCompletion
     Code/                       the app
       CodeApp.swift, CodeCommands.swift, AppState.swift, AppDelegate.swift
       Welcome/, Workspace/ (+ ProjectToolbar, ConsoleView), Settings/
@@ -124,6 +135,19 @@ Architecture
   editor applies the result as one undoable "Format" edit touching only what
   changed, and the document writes once. Autosave doesn't format.
 
+  Completion. `CompletionController` attaches to a `CodeTextView` through
+  its hooks (`commandHandler` takes ↑ ↓ Return Tab Esc while the list shows,
+  `onTyping`, `onCompletionRequest` for Esc and ⌃Space) and asks a
+  `CompletionProvider` without blocking typing: the answer is filtered with
+  what was typed since, and an incomplete list is asked for again as the
+  word grows (a superseded request is cancelled with `$/cancelRequest`).
+  Items keep their range in the text as it was when asked; accepting shifts
+  its end by what was typed since. CodeKit's provider asks the file's
+  language server and falls back to the file's words and keywords while the
+  server starts or when there is none. Snippets become Xcode placeholders
+  (`<#name#>` in the text, markers drawn as null glyphs, a token behind),
+  which a click selects whole and Tab visits.
+
   Breakpoints are kept per project and move with edits; Run with
   breakpoints builds and runs the program under LLDB (the program on its own
   terminal), shows the stopped line in green and its variables in the
@@ -161,6 +185,13 @@ Features
   - Issues from the build and language servers in the editor: a tinted line
     and a message banner (click for all of the line's messages), counted
     once when both report them.
+  - Code completion as in Xcode: the list opens while typing an identifier
+    or after "." (or the server's trigger characters), Esc or ⌃Space opens
+    and closes it; fuzzy matching with the typed letters in bold, kind
+    badges, types and documentation; Return or Tab inserts, arguments as
+    placeholders (Tab and ⇧Tab, ⌃/ move between them; Backspace deletes
+    one whole); imports a server adds come with it in one undo. "Suggest
+    completions while typing" in Settings › Editor.
   - Jump to Definition (⌘-click, ⌃⌘J), Quick Help (⌥-click), Go Back and
     Forward (⌃⌘← ⌃⌘→).
   - The minimap (⌃⇧⌘M): runs of text as rounded bars in their syntax colors,

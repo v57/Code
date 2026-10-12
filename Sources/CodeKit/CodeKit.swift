@@ -1,5 +1,6 @@
 // CodeKit: every Code library in one import, plus what connects them.
 @_exported import CodeActions
+@_exported import CodeAutocompletion
 @_exported import CodeEditor
 @_exported import CodeFormatting
 @_exported import CodeHighlighting
