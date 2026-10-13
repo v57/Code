@@ -171,7 +171,8 @@ Features
     checklist button) puts a checkbox on every item to hide or show it in
     this project, overriding .gitignore, with a per-project .gitignore
     switch. Open Quickly's Hidden Files button (⇧⌘. while it's open)
-    searches them too, ranked below visible files.
+    searches them too, ranked below visible files. Add to .gitignore in an
+    item's context menu appends it to the project's .gitignore.
   - Tabs: preview tab on single click (italic), kept on double click or edit,
     unsaved dot, drag to reorder, Close Others/All.
   - Editor: line numbers, current-line highlight, Xcode's Default

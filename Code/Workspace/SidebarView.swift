@@ -160,12 +160,20 @@ struct SidebarView: View {
         } else {
           Button("Hide in Navigator") { workspace.setVisible(node.url, false) }
         }
+        if !isGitIgnored(node) {
+          Button("Add to .gitignore") { workspace.addToGitIgnore(node.url) }
+        }
       }
     } else {
       Divider()
       Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([workspace.root]) }
       Button("Reload") { workspace.tree.reloadAll() }
     }
+  }
+
+  private func isGitIgnored(_ node: FileNode) -> Bool {
+    if case .gitIgnore = workspace.tree.ruleReason(for: node) { return true }
+    return false
   }
 
   private func copy(_ string: String) {

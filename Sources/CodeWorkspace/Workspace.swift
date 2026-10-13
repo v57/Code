@@ -99,6 +99,52 @@ import Observation
     visibility = tree.visibility(setting: node, visible: visible)
   }
 
+  /// Adds a file or folder to the project's `.gitignore` (made if missing)
+  /// as a pattern anchored at the project ("/build/" for a folder) and
+  /// applies it. A choice to show the item anyway is dropped, so it hides.
+  @discardableResult
+  public func addToGitIgnore(_ url: URL) -> Bool {
+    guard let node = tree.node(for: url), node.url != root else { return false }
+    let path = tree.relativePath(of: node.url)
+    let pattern = "/" + Self.gitIgnoreEscaped(path) + (node.isDirectory ? "/" : "")
+    let file = root.appendingPathComponent(".gitignore")
+    var text = (try? String(contentsOf: file, encoding: .utf8)) ?? ""
+    guard !text.split(whereSeparator: \.isNewline).contains(Substring(pattern)) else { return false }
+    if !text.isEmpty && !text.hasSuffix("\n") { text += "\n" }
+    text += pattern + "\n"
+    do {
+      try text.write(to: file, atomically: true, encoding: .utf8)
+    } catch {
+      statusMessage = "Couldn’t write .gitignore: \(error.localizedDescription)"
+      return false
+    }
+    if visibility.shownPaths.contains(path) {
+      var visibility = visibility
+      visibility.shownPaths.remove(path)
+      self.visibility = visibility
+    }
+    // The watcher reports the change too, but the menu acts at once.
+    tree.reload(directory: root)
+    tree.reloadGitIgnore()
+    rulesDidChange()
+    return true
+  }
+
+  /// A path with the characters `.gitignore` treats specially escaped.
+  static func gitIgnoreEscaped(_ path: String) -> String {
+    var escaped = ""
+    for character in path {
+      if "*?[]\\!#".contains(character) { escaped.append("\\") }
+      escaped.append(character)
+    }
+    // Trailing spaces are dropped unless escaped.
+    while escaped.hasSuffix(" ") && !escaped.hasSuffix("\\ ") {
+      escaped.removeLast()
+      escaped += "\\ "
+    }
+    return escaped
+  }
+
   /// Forgets the project's hidden and shown items.
   public func restoreDefaultVisibility() {
     var visibility = visibility

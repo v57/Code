@@ -152,6 +152,28 @@ private final class TempFolder {
     #expect(hidden() == [])
   }
 
+  @Test func addToGitIgnore() throws {
+    let temp = try TempFolder()
+    try temp.file(".gitignore", "*.log")
+    try temp.file("build/out.o")
+    try temp.file("notes [draft].txt")
+    try temp.file("a.swift")
+    let defaults = UserDefaults(suiteName: "CodeKitTests-\(UUID().uuidString)")!
+    let workspace = Workspace(root: temp.url, defaults: defaults)
+    let tree = workspace.tree
+    func hidden() -> [String] { tree.root.children!.filter(\.isHidden).map(\.name) }
+    workspace.setVisible(temp.url.appendingPathComponent("build"), true)
+    #expect(workspace.addToGitIgnore(temp.url.appendingPathComponent("build")))
+    #expect(workspace.addToGitIgnore(temp.url.appendingPathComponent("notes [draft].txt")))
+    // Already there: nothing to add.
+    #expect(!workspace.addToGitIgnore(temp.url.appendingPathComponent("build")))
+    let text = try String(contentsOf: temp.url.appendingPathComponent(".gitignore"), encoding: .utf8)
+    #expect(text == "*.log\n/build/\n/notes \\[draft\\].txt\n")
+    // Showing it anyway is dropped, so it hides.
+    #expect(workspace.visibility.shownPaths.isEmpty)
+    #expect(hidden() == ["build", "notes [draft].txt"])
+  }
+
   @Test func indexListsHiddenFilesSeparately() throws {
     let temp = try TempFolder()
     try temp.file(".gitignore", "node_modules/\n")
