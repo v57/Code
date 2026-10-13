@@ -59,6 +59,24 @@ private func kind(of needle: String, in code: String, _ language: String) -> Syn
   @Test func sqlIsCaseInsensitive() {
     #expect(kind(of: "select", in: "select * from t", "sql") == .keyword)
     #expect(kind(of: "FROM", in: "SELECT * FROM t", "sql") == .keyword)
+    #expect(kind(of: "ilike", in: "SELECT * FROM t WHERE a ilike 'x%'", "postgresql") == .keyword)
+  }
+
+  @Test func cql() {
+    let code = "SELECT * FROM ks.t WHERE id = 1 ALLOW FILTERING; -- note"
+    #expect(kind(of: "SELECT", in: code, "cql") == .keyword)
+    #expect(kind(of: "FILTERING", in: code, "cql") == .keyword)
+    #expect(kind(of: "-- note", in: code, "cql") == .comment)
+  }
+
+  @Test func redisColorsTheCommandOfEachLine() {
+    let code = "SET user:1 \"Ada\"\n  hgetall user:1\n# a comment\nINCRBY count 5"
+    #expect(kind(of: "SET", in: code, "redis") == .keyword)
+    #expect(kind(of: "hgetall", in: code, "redis") == .keyword)
+    #expect(kind(of: "user:1", in: code, "redis") != .keyword)
+    #expect(kind(of: "\"Ada\"", in: code, "redis") == .string)
+    #expect(kind(of: "# a comment", in: code, "redis") == .comment)
+    #expect(kind(of: "5", in: code, "redis") == .number)
   }
 
   @Test func markdown() {

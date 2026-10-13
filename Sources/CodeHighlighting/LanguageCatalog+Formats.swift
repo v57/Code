@@ -6,7 +6,7 @@ import Foundation
 /// typical files.
 extension LanguageCatalog {
   static let formats: [LanguageSpec] = [
-    json, yaml, toml, html, css, sql, markdown, makefile, dockerfile,
+    json, yaml, toml, html, css, sql, cql, redis, markdown, makefile, dockerfile,
   ]
 
   // MARK: - JSON
@@ -89,7 +89,31 @@ extension LanguageCatalog {
       "TRANSACTION", "TRIGGER", "TRUE", "UNION", "UNIQUE", "UPDATE", "USING", "VALUES", "VIEW",
       "WHEN", "WHERE", "WITH", "INTEGER", "INT", "TEXT", "VARCHAR", "CHAR", "BOOLEAN", "REAL",
       "FLOAT", "DOUBLE", "DATE", "TIMESTAMP", "BLOB", "SERIAL", "AUTOINCREMENT", "REPLACE",
+      "ILIKE", "EXCEPT", "INTERSECT", "NATURAL", "LATERAL", "RECURSIVE", "OVER", "PARTITION",
+      "WINDOW", "INTERVAL", "TOP", "FETCH", "NEXT", "ROWS", "ONLY", "USE", "EXPLAIN", "ANALYZE",
+      "SCHEMA", "TEMPORARY", "MATERIALIZED", "TRUNCATE", "CASCADE", "GRANT", "REVOKE",
     ], keywordsCaseInsensitive: true)
+
+  // MARK: - CQL
+
+  /// Cassandra's query language: SQL's words plus its own.
+  static let cql = LanguageSpec(
+    name: "CQL", aliases: ["cql", "cassandra"], lineComments: ["--", "//"],
+    blockComments: [("/*", "*/")],
+    strings: [StringDelim(open: "'", escape: nil), StringDelim(open: "\"", escape: nil)],
+    keywords: sql.keywords.union([
+      "KEYSPACE", "KEYSPACES", "ALLOW", "FILTERING", "BATCH", "APPLY", "TTL", "WRITETIME",
+      "TOKEN", "CONTAINS", "FROZEN", "MAP", "LIST", "TUPLE", "COUNTER", "UUID", "TIMEUUID",
+    ]), keywordsCaseInsensitive: true)
+
+  // MARK: - Redis
+
+  /// redis-cli commands: the first word of each line is the command.
+  static let redis = LanguageSpec(
+    name: "Redis", aliases: ["redis", "redis-cli"], lineComments: ["#"],
+    strings: [StringDelim(open: "\""), StringDelim(open: "'", escape: nil)], memberAccess: false,
+    identifierPattern: #"[A-Za-z_][A-Za-z0-9_:.\-]*"#, lineCommentsAtLineStartOnly: true,
+    lineRules: [SyntaxRule(#"^\s*([A-Za-z][A-Za-z0-9_.\-]*)"#, .keyword)])
 
   // MARK: - Markdown
 

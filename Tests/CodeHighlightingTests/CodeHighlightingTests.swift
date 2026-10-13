@@ -23,7 +23,7 @@ private func kindAt(_ code: String, _ language: String, _ offset: Int) -> Syntax
     #expect(CodeHighlighter.spec(forLanguage: "swift linenums")?.name == "Swift")
     #expect(CodeHighlighter.spec(forLanguage: "language-python")?.name == "Python")
     #expect(CodeHighlighter.spec(forLanguage: "klingon") == nil)
-    #expect(CodeHighlighter.all.count == 29)
+    #expect(CodeHighlighter.all.count == 31)
     #expect(Set(CodeHighlighter.all.map(\.name)).count == CodeHighlighter.all.count)
     let names = Set(CodeHighlighter.all.map { $0.name })
     #expect(

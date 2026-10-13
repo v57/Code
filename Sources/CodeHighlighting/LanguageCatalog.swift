@@ -4,7 +4,7 @@ import Foundation
 /// (JavaScript, TypeScript, Python, Java, C#, C++, PHP, Shell, C, Ruby, Rust,
 /// Go, Kotlin, Dart, Swift, Objective-C, Scala, PowerShell, Lua, Haskell),
 /// followed by the data, markup and build formats a project folder also holds
-/// (LanguageCatalog+Formats.swift).
+/// and query languages a project folder also holds (LanguageCatalog+Formats.swift).
 public enum LanguageCatalog {
   public static let all: [LanguageSpec] = [
     javascript, typescript, python, java, csharp, cpp, php, shell, c, ruby, rust, go, kotlin, dart,

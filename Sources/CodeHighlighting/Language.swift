@@ -22,7 +22,7 @@ public enum Language {
     "psm1": "powershell", "psd1": "powershell", "lhs": "haskell", "cabal": "haskell",
     "entitlements": "xml", "xcscheme": "xml", "xcworkspacedata": "xml", "xcstrings": "json",
     "csproj": "xml", "resx": "xml", "xaml": "xml", "vue": "html",
-    "svelte": "html", "astro": "html", "markdown": "md", "mdown": "md", "ddl": "sql",
+    "svelte": "html", "astro": "html", "markdown": "md", "mdown": "md", "ddl": "sql", "cql": "cql", "redis": "redis",
     "dockerfile": "dockerfile", "mk": "makefile", "conf": "shell", "env": "shell",
   ]
 
