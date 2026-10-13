@@ -73,7 +73,7 @@
     /// Lines changed since the text was loaded; ⌘S trims their trailing
     /// whitespace.
     var editedLines = IndexSet()
-    /// Extra height below the last line, so it can scroll up to the top.
+    /// Extra height below the last line, so it can scroll up to the middle.
     private(set) var overscroll: CGFloat = 0
 
     // MARK: Line marks (see CodeTextView+Annotations.swift)
@@ -957,11 +957,12 @@
 
     // MARK: - Overscroll
 
-    /// Lets the last line scroll up to the top of the view, as in Xcode.
+    /// Lets the last line scroll up to the middle of the view: half a view
+    /// of empty space at most below it.
     func updateOverscroll() {
       guard let scrollView = enclosingScrollView else { return }
       let visible = scrollView.contentSize.height
-      let amount = max(0, visible - lineHeight - textContainerInset.height * 2)
+      let amount = max(0, (visible / 2).rounded() - textContainerInset.height)
       minSize = NSSize(width: 0, height: visible)
       guard abs(amount - overscroll) > 0.5 else { return }
       overscroll = amount

@@ -132,7 +132,7 @@
       #expect(abs(style.headIndent - space * 8) < 0.01)
     }
 
-    @Test func lastLineCanScrollToTheTop() {
+    @Test func lastLineCanScrollToTheMiddle() {
       let text = String(repeating: "line\n", count: 100)
       let scrollView = CodeEditorScrollView(text: text, language: nil)
       scrollView.frame = NSRect(x: 0, y: 0, width: 400, height: 300)
@@ -141,7 +141,7 @@
       textView.layoutManager!.ensureLayout(for: textView.textContainer!)
       textView.sizeToFit()
       let content = textView.layoutManager!.usedRect(for: textView.textContainer!).height
-      #expect(textView.overscroll > 200)
+      #expect(abs(textView.overscroll + textView.textContainerInset.height - 150) <= 1)
       #expect(textView.frame.height >= content + textView.overscroll)
     }
   }
