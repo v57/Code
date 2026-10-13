@@ -7,7 +7,8 @@ import UpdateKit
 @main struct CodeApp: App {
   @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
-  /// Updates from GitHub Releases (Code.zip): checked daily, installed in place with a relaunch.
+  /// Updates from GitHub Releases (Code.zip): checked daily once the user turns on automatic
+  /// checks (never before), installed in place with a relaunch.
   private let updater = AppUpdater(github: "v57/Code", assetName: "Code.zip")
 
   init() { updater.start() }
