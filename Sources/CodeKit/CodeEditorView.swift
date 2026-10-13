@@ -161,11 +161,11 @@
 
     /// Moves the caret where a jump asked for, once the text is shown.
     func applyPendingSelection(of document: TextDocument) {
-      guard let (line, column) = document.pendingSelection else { return }
+      guard let (line, column, length) = document.pendingSelection else { return }
       document.pendingSelection = nil
       // After layout, so the jump scrolls to the right place.
       DispatchQueue.main.async { [weak textView = scrollView.textView] in
-        textView?.goTo(line: line, column: column)
+        textView?.goTo(line: line, column: column, length: length)
       }
     }
 
@@ -373,9 +373,10 @@
 
   extension TextDocument {
     /// Moves the caret of this document's editor to `line` and `column` (from
-    /// 1). Does nothing before the editor has been shown.
-    public func goTo(line: Int, column: Int = 1) {
-      textView?.goTo(line: line, column: column)
+    /// 1), selecting `length` characters. Does nothing before the editor has
+    /// been shown.
+    public func goTo(line: Int, column: Int = 1, length: Int = 0) {
+      textView?.goTo(line: line, column: column, length: length)
     }
 
     /// The completion list of this document's editor, once it has been

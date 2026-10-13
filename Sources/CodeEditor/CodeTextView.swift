@@ -1155,14 +1155,16 @@
 
     // MARK: - Navigation
 
-    /// Moves the caret to `line` and `column` (from 1), scrolls it to the
-    /// middle of the view and flashes the line.
-    public func goTo(line: Int, column: Int = 1) {
+    /// Moves the caret to `line` and `column` (from 1), selecting `length`
+    /// characters on the line, scrolls it to the middle of the view and
+    /// flashes the line (or the selection).
+    public func goTo(line: Int, column: Int = 1, length: Int = 0) {
       guard let text = textStorage?.mutableString else { return }
       let lineNumber = min(max(line, 1), lineIndex.count) - 1
       let content = lineIndex.contentRange(ofLine: lineNumber, in: text)
       let location = content.location + min(max(column - 1, 0), content.length)
-      setSelectedRange(NSRange(location: location, length: 0))
+      let selection = NSRange(location: location, length: min(max(length, 0), NSMaxRange(content) - location))
+      setSelectedRange(selection)
       window?.makeFirstResponder(self)
       if let layoutManager, let textContainer {
         let glyphs = layoutManager.glyphRange(
@@ -1182,7 +1184,11 @@
           scroll(NSPoint(x: visible.minX, y: max(0, rect.midY - visible.height / 2)))
         }
       }
-      if content.length > 0 { showFindIndicator(for: content) }
+      if selection.length > 0 {
+        showFindIndicator(for: selection)
+      } else if content.length > 0 {
+        showFindIndicator(for: content)
+      }
     }
   }
 

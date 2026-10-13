@@ -71,8 +71,9 @@ import Observation
   /// Called after each successful write, with the text written.
   @ObservationIgnored public var didSave: (@MainActor (String) -> Void)?
   /// Where to put the caret once the editor shows the text (line and
-  /// column from 1): a jump to a definition in a file not shown yet.
-  @ObservationIgnored public var pendingSelection: (line: Int, column: Int)?
+  /// column from 1, and how many characters to select): a jump to a
+  /// definition or a search result in a file not shown yet.
+  @ObservationIgnored public var pendingSelection: (line: Int, column: Int, length: Int)?
   /// An explicit save is running its `preSave`.
   public private(set) var isSaving = false
 

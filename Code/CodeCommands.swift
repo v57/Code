@@ -180,6 +180,20 @@ struct CodeCommands: Commands {
       }
       .keyboardShortcut("0")
       .disabled(model == nil)
+      // Xcode's navigator shortcuts: ⌘1 files, ⌘3 Find.
+      Button("Show Project Navigator") {
+        model?.isNavigatorVisible = true
+        model?.navigator = .project
+      }
+      .keyboardShortcut("1")
+      .disabled(model == nil)
+      Button("Show Find Navigator") {
+        model?.isNavigatorVisible = true
+        model?.navigator = .find
+        model?.find.focus()
+      }
+      .keyboardShortcut("3")
+      .disabled(model == nil)
       Button(hiddenFilesTitle) { model?.toggleHiddenFiles() }
         .keyboardShortcut(".", modifiers: [.command, .shift])
         .disabled(model == nil)
@@ -213,6 +227,11 @@ struct CodeCommands: Commands {
     }
 
     TextEditingCommands()
+    CommandGroup(after: .textEditing) {
+      Button("Find in Project…") { model?.findInProject() }
+        .keyboardShortcut("f", modifiers: [.command, .shift])
+        .disabled(model == nil)
+    }
     SidebarCommands()
   }
 

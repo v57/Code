@@ -16,8 +16,8 @@ Libraries
     CodeHighlighting   languages, incremental highlighter, bracket matching,
                        themes (platform-neutral, no dependencies)
     CodeWorkspace      file tree, .gitignore and hidden files, file watching,
-                       Quick Open index, text documents with autosave, tabs
-                       and sessions (neutral)
+                       Quick Open index, Find in Project, text documents
+                       with autosave, tabs and sessions (neutral)
     CodeEditor         the AppKit editor: CodeTextView, line numbers,
                        CodeEditorScrollView, SwiftUI CodeTextEditor(text:)
     CodeActions        schemes found in a folder (Xcode, SwiftPM, Cargo, Go,
@@ -191,6 +191,11 @@ Features
     edited lines.
   - Open Quickly (⇧⌘O, fuzzy), Go to Line (⌘L, "line:column"), ⌘0 toggles
     the navigator, "Line: Col:" in the bottom bar.
+  - Find in Project (⇧⌘F, Xcode's Find navigator, ⌘3; ⌘1 back to the files):
+    Containing, Matching Word or Regular Expression, Ignoring or Matching
+    Case, over the files Open Quickly lists (open documents' unsaved edits
+    included); results by file as they come, a selection opens its match
+    selected. A selection in the editor becomes the query.
   - Binary files, files over 20 MB and unreadable files show a placeholder;
     files over 2 MB open without highlighting.
   - Xcode's toolbar: Run (⌘R; hold for Test, Build, Clean), Stop (⌘.), the

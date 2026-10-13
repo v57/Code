@@ -120,6 +120,24 @@
         model.isQuickOpenPresented = argument != "off"
         if argument != "off" { model.quickOpenQuery = argument }
       case "quickopenhidden": model.quickOpenIncludesHiddenFiles = argument != "off"
+      case "find":
+        model.findInProject()
+        model.find.text = argument
+        model.find.search(in: model.workspace)
+      case "findmode":
+        if let mode = SearchQuery.Mode(rawValue: argument) { model.find.mode = mode }
+      case "findcase": model.find.isCaseSensitive = argument != "off"
+      case "findopen":
+        let parts = argument.split(separator: ":").compactMap { Int($0) }
+        if parts.count == 2, model.find.results.indices.contains(parts[0]) {
+          let file = model.find.results[parts[0]]
+          if file.matches.indices.contains(parts[1]) {
+            let match = file.matches[parts[1]]
+            services.open(
+              model.workspace.root.appendingPathComponent(file.path), line: match.line,
+              column: match.column + 1, length: match.length)
+          }
+        }
       case "back": services.goBack()
       case "continue": services.debugger?.continueRunning()
       case "step": services.debugger?.stepOver()
@@ -154,6 +172,10 @@
           lines.append("  text length \(textView.string.count) visible \(textView.visibleRect) clip \(textView.enclosingScrollView?.contentView.bounds ?? .zero) container \(textView.textContainer?.size ?? .zero) inset \(textView.textContainerInset) origin \(textView.textContainerOrigin)")
         }
         lines.append("tabs: \(model.workspace.tabs.map(\.name))")
+        let find = model.find
+        lines.append(
+          "find: \(find.text) searching \(find.isSearching) \(find.matchCount) in \(find.results.count) files: "
+            + find.results.prefix(8).map { "\($0.path)×\($0.matches.count)" }.joined(separator: ", "))
         let index = model.workspace.index
         lines.append("index: \(index.paths.count) visible, \(index.hiddenPaths.count) hidden")
         lines.append(

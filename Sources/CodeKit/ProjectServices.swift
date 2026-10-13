@@ -410,9 +410,9 @@
       }
     }
 
-    /// Opens a file at a line and column (from 1), remembering where the
-    /// editor was for Go Back.
-    public func open(_ url: URL, line: Int, column: Int = 1, remember: Bool = true) {
+    /// Opens a file at a line and column (from 1), selecting `length`
+    /// characters, and remembers where the editor was for Go Back.
+    public func open(_ url: URL, line: Int, column: Int = 1, length: Int = 0, remember: Bool = true) {
       if remember, let current = currentPosition() {
         back.append(current)
         if back.count > 100 { back.removeFirst() }
@@ -420,9 +420,9 @@
       }
       let document = workspace.open(url)
       if document.content == .text, document.textView != nil {
-        document.goTo(line: line, column: column)
+        document.goTo(line: line, column: column, length: length)
       } else {
-        document.pendingSelection = (line, column)
+        document.pendingSelection = (line, column, length)
       }
     }
 

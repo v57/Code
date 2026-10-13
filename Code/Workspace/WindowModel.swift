@@ -42,6 +42,11 @@ import SwiftUI
   var sidebarSelection: URL?
   /// The navigator (sidebar) column, toggled with ⌘0.
   var isNavigatorVisible = true
+  /// What the navigator shows, as Xcode's navigator bar picks.
+  enum Navigator: Hashable { case project, find }
+  var navigator = Navigator.project
+  /// Find in Project, shown in the Find navigator.
+  let find = ProjectFind()
   var selection = EditorSelection()
 
   init(workspace: Workspace) {
@@ -80,6 +85,22 @@ import SwiftUI
     } else {
       workspace.visibility.showsHiddenFiles.toggle()
     }
+  }
+
+  /// ⇧⌘F: the Find navigator with the caret in its field. A selection on
+  /// one line becomes the query and is searched for.
+  func findInProject() {
+    isNavigatorVisible = true
+    navigator = .find
+    if let textView = workspace.selectedDocument?.textView, textView.window?.firstResponder === textView {
+      let range = textView.selectedRange()
+      let selected = (textView.string as NSString).substring(with: range)
+      if range.length > 0, range.length < 500, !selected.contains("\n") {
+        find.text = selected
+        find.search(in: workspace)
+      }
+    }
+    find.focus()
   }
 
   /// The folder new items go into: the selected folder, the selected file's

@@ -16,10 +16,21 @@ struct SidebarView: View {
   var body: some View {
     @Bindable var model = model
     VStack(spacing: 0) {
-      if model.isChoosingVisibleFiles { ChooseVisibleFilesHeader() }
-      tree
+      NavigatorBar()
       Divider()
-      bottomBar
+      switch model.navigator {
+      case .project:
+        if model.isChoosingVisibleFiles { ChooseVisibleFilesHeader() }
+        tree
+        Divider()
+        bottomBar
+      case .find:
+        FindNavigatorView()
+        Divider()
+        FindSummary()
+          .padding(.horizontal, 10)
+          .frame(height: StatusBar.height)
+      }
     }
     .dropDestination(for: URL.self) { urls, _ in
       // A folder dropped from Finder opens as a project.
@@ -160,6 +171,38 @@ struct SidebarView: View {
   private func copy(_ string: String) {
     NSPasteboard.general.clearContents()
     NSPasteboard.general.setString(string, forType: .string)
+  }
+}
+
+/// Xcode's navigator bar: the file tree or Find in Project.
+private struct NavigatorBar: View {
+  @Environment(WindowModel.self) private var model
+
+  var body: some View {
+    HStack(spacing: 2) {
+      item(.project, symbol: "folder", help: "Project Navigator (⌘1)")
+      item(.find, symbol: "magnifyingglass", help: "Find Navigator (⌘3)")
+    }
+    .frame(maxWidth: .infinity)
+    .frame(height: 28)
+  }
+
+  private func item(_ navigator: WindowModel.Navigator, symbol: String, help: String) -> some View {
+    let isOn = model.navigator == navigator
+    return Button {
+      model.navigator = navigator
+      if navigator == .find { model.find.focus() }
+    } label: {
+      Image(systemName: symbol)
+        .font(.system(size: 13, weight: isOn ? .semibold : .regular))
+        .foregroundStyle(isOn ? Color.accentColor : Color.secondary)
+        .frame(width: 30, height: 22)
+        .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .help(help)
+    .accessibilityLabel(help)
+    .accessibilityAddTraits(isOn ? .isSelected : [])
   }
 }
 
