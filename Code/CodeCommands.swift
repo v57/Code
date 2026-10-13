@@ -194,14 +194,22 @@ struct CodeCommands: Commands {
       }
       .keyboardShortcut("3")
       .disabled(model == nil)
-      Button(hiddenFilesTitle) { model?.toggleHiddenFiles() }
-        .keyboardShortcut(".", modifiers: [.command, .shift])
-        .disabled(model == nil)
-      Button("Edit Hidden Files") {
-        model?.isNavigatorVisible = true
-        model?.isChoosingVisibleFiles = true
+      Menu("Hidden Files") {
+        Button(hiddenFilesTitle) { model?.toggleHiddenFiles() }
+          .keyboardShortcut(".", modifiers: [.command, .shift])
+          .disabled(model == nil)
+        Button("Edit Hidden Files") {
+          model?.isNavigatorVisible = true
+          model?.navigator = .project
+          model?.isChoosingVisibleFiles = true
+        }
+        .disabled(model == nil || model?.isChoosingVisibleFiles == true)
+        Divider()
+        Toggle("Hide Files Listed in .gitignore", isOn: hidesIgnoredFiles)
+          .disabled(workspace == nil)
+        Button("Restore Defaults") { workspace?.restoreDefaultVisibility() }
+          .disabled(workspace?.visibility.isDefault != false)
       }
-      .disabled(model == nil || model?.isChoosingVisibleFiles == true)
       Divider()
       Toggle("Wrap Lines", isOn: $wrapLines)
         .keyboardShortcut("z", modifiers: [.option])
@@ -242,6 +250,13 @@ struct CodeCommands: Commands {
       return model.quickOpenIncludesHiddenFiles ? "Leave Out Hidden Files" : "Include Hidden Files"
     }
     return model.workspace.visibility.showsHiddenFiles ? "Hide Hidden Files" : "Show Hidden Files"
+  }
+
+  /// The project's choice of whether .gitignore hides files.
+  private var hidesIgnoredFiles: Binding<Bool> {
+    Binding(
+      get: { workspace?.tree.hidesIgnoredFiles ?? true },
+      set: { workspace?.visibility.hidesIgnoredFiles = $0 })
   }
 
   /// ⌘W closes the current tab, or the window when no tab is open, as in

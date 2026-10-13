@@ -22,8 +22,6 @@ struct SidebarView: View {
       case .project:
         if model.isChoosingVisibleFiles { ChooseVisibleFilesHeader() }
         tree
-        Divider()
-        bottomBar
       case .find:
         FindNavigatorView()
         Divider()
@@ -81,47 +79,6 @@ struct SidebarView: View {
     .onDeleteCommand {
       if let url = model.sidebarSelection { model.trashCandidate = url }
     }
-  }
-
-  /// Xcode's navigator footer: the "+" menu for new files and folders, and
-  /// the hidden-file buttons. While choosing visible files: Restore Defaults.
-  @ViewBuilder private var bottomBar: some View {
-    HStack(spacing: 6) {
-      if model.isChoosingVisibleFiles {
-        Button("Restore Defaults") { workspace.restoreDefaultVisibility() }
-          .controlSize(.small)
-          .disabled(workspace.visibility.isDefault)
-        Spacer()
-      } else {
-        Menu {
-          Button("New File…") { model.ask(.newFile(in: model.targetFolder)) }
-          Button("New Folder…") { model.ask(.newFolder(in: model.targetFolder)) }
-        } label: {
-          Image(systemName: "plus")
-            .font(.system(size: 13, weight: .medium))
-            .frame(width: 22, height: 22)
-            .background(Circle().fill(Color.primary.opacity(0.08)))
-        }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .help("Add a file or folder")
-        Spacer()
-        let showsHidden = workspace.visibility.showsHiddenFiles
-        FooterButton(
-          symbol: showsHidden ? "eye" : "eye.slash", isOn: showsHidden,
-          help: showsHidden ? "Hide Hidden Files (⇧⌘.)" : "Show Hidden Files (⇧⌘.)"
-        ) {
-          workspace.visibility.showsHiddenFiles.toggle()
-        }
-        FooterButton(symbol: "checklist", isOn: false, help: "Edit Hidden Files") {
-          model.isChoosingVisibleFiles = true
-        }
-      }
-    }
-    .padding(.horizontal, 10)
-    .frame(height: StatusBar.height)
   }
 
   /// Double click or Return: keep a file open, toggle a folder.
@@ -224,31 +181,8 @@ private struct NavigatorBar: View {
   }
 }
 
-/// A footer icon button, tinted while its option is on.
-private struct FooterButton: View {
-  let symbol: String
-  let isOn: Bool
-  let help: String
-  let action: () -> Void
-
-  var body: some View {
-    Button(action: action) {
-      Image(systemName: symbol)
-        .font(.system(size: 13))
-        .foregroundStyle(isOn ? Color.accentColor : Color.secondary)
-        .frame(width: 24, height: 22)
-        .background(
-          RoundedRectangle(cornerRadius: 5).fill(isOn ? Color.accentColor.opacity(0.15) : .clear))
-        .contentShape(Rectangle())
-    }
-    .buttonStyle(.plain)
-    .help(help)
-    .accessibilityLabel(help)
-  }
-}
-
 /// Above the tree while choosing visible files: what the checkboxes do,
-/// the project's `.gitignore` switch and Done.
+/// the project's `.gitignore` switch, Restore Defaults and Done.
 private struct ChooseVisibleFilesHeader: View {
   @Environment(WindowModel.self) private var model
   @Environment(Workspace.self) private var workspace
@@ -258,6 +192,9 @@ private struct ChooseVisibleFilesHeader: View {
       HStack {
         Text("Hidden Files").fontWeight(.semibold)
         Spacer()
+        Button("Restore Defaults") { workspace.restoreDefaultVisibility() }
+          .controlSize(.small)
+          .disabled(workspace.visibility.isDefault)
         Button("Done") { model.isChoosingVisibleFiles = false }
           .buttonStyle(.borderedProminent)
           .controlSize(.small)

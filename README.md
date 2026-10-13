@@ -166,11 +166,11 @@ Features
     Copy Path.
   - Hidden files: files matching .gitignore (the project's, those above it up
     to the repository root, and .git/info/exclude) and .git, .svn, .hg,
-    .DS_Store are hidden from the sidebar and Open Quickly. ⇧⌘. or the eye
-    in the sidebar footer shows them dimmed; Edit Hidden Files (the
-    checklist button, or an item's context menu) puts a checkbox on every
-    item to hide or show it in this project, overriding .gitignore, with a
-    per-project .gitignore switch. Open Quickly's Hidden Files button (⇧⌘. while it's open)
+    .DS_Store are hidden from the sidebar and Open Quickly. View › Hidden
+    Files: Show Hidden Files (⇧⌘.) lists them dimmed; Edit Hidden Files
+    (also in an item's context menu) puts a checkbox on every item to hide
+    or show it in this project, overriding .gitignore; Hide Files Listed in
+    .gitignore is the per-project switch; Restore Defaults. Open Quickly's Hidden Files button (⇧⌘. while it's open)
     searches them too, ranked below visible files. Add to .gitignore in an
     item's context menu appends it to the project's .gitignore.
   - Tabs: preview tab on single click (italic), kept on double click or edit,
