@@ -208,3 +208,39 @@ import Testing
     var texts: [String] { lock.withLock { lines } }
   }
 #endif
+
+@Suite struct XcodeCompilationDatabaseTests {
+  let settings = """
+    {"App": {
+      "/p/App/A.swift": {"swiftASTCommandArguments": ["-module-name", "App", "/p/App/A.swift", "/p/App/B c.swift",
+        "-target", "x86_64-apple-macos14.0", "-I/d/Objects-normal/x86_64", "-D", "X86_64_ONLY"]},
+      "/p/App/B c.swift": {"swiftASTCommandArguments": ["-module-name", "App"]},
+      "/p/App/Assets.xcassets": {"LanguageDialect": "other"}
+    }}
+    """
+
+  @Test func entriesShareATargetsResponseFile() throws {
+    let made = try #require(
+      XcodeCompilationDatabase.make(
+        fromIndexSettings: Data(settings.utf8), directory: URL(fileURLWithPath: "/cache"),
+        workingDirectory: URL(fileURLWithPath: "/p"), architecture: "arm64"))
+    let entries = try #require(try JSONSerialization.jsonObject(with: made.database) as? [[String: Any]])
+    #expect(entries.map { $0["file"] as? String } == ["/p/App/A.swift", "/p/App/B c.swift"])
+    let name = try #require(made.responseFiles.keys.first)
+    #expect(made.responseFiles.count == 1 && name.hasPrefix("App-") && name.hasSuffix(".resp"))
+    #expect(entries.allSatisfy { $0["arguments"] as? [String] == ["swiftc", "@/cache/" + name] })
+    #expect(entries.allSatisfy { $0["directory"] as? String == "/p" })
+    let lines = try #require(made.responseFiles[name]).split(separator: "\n")
+    #expect(lines.contains("\"/p/App/B c.swift\""))
+    // The Debug build's architecture, not the one xcodebuild happened to name.
+    #expect(lines.contains("arm64-apple-macos14.0"))
+    #expect(lines.contains("-I/d/Objects-normal/arm64"))
+    #expect(lines.contains("X86_64_ONLY"))
+  }
+
+  @Test func quoting() {
+    #expect(XcodeCompilationDatabase.quoted("-Onone") == "-Onone")
+    #expect(XcodeCompilationDatabase.quoted("a b") == "\"a b\"")
+    #expect(XcodeCompilationDatabase.quoted("say \"hi\"\\") == "\"say \\\"hi\\\"\\\\\"")
+  }
+}

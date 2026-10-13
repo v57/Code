@@ -96,6 +96,9 @@
 
     public let configuration: LanguageServerConfiguration
     public let root: URL
+    /// Workspace folders besides the root (a compilation database for
+    /// SourceKit-LSP).
+    public private(set) var extraFolders: [URL]
     public private(set) var status: Status = .starting
     /// What the server reports it is doing ("Indexing 40%"), if anything.
     public private(set) var activity: String?
@@ -112,13 +115,16 @@
     private var capabilities: JSONValue = .null
     private var queued: [() -> Void] = []
     private var progress: [String: String] = [:]
+    /// The extra folders the server has been told about.
+    private var announcedFolders: [URL] = []
 
     init(
       configuration: LanguageServerConfiguration, root: URL, executable: String,
-      environment: [String: String]
+      environment: [String: String], extraFolders: [URL] = []
     ) {
       self.configuration = configuration
       self.root = root
+      self.extraFolders = extraFolders
       initializationOptions = LanguageServerCatalog.initializationOptions(
         for: configuration, root: root, environment: environment)
       connection = LSPConnection(
@@ -132,6 +138,7 @@
     func start() async {
       do {
         try connection.start()
+        announcedFolders = extraFolders
         let result = try await connection.request("initialize", initializeParams, timeout: 60)
         capabilities = result["capabilities"]
         let sync = capabilities["textDocumentSync"]
@@ -154,7 +161,7 @@
         "clientInfo": ["name": "Code"],
         "rootUri": rootURI,
         "rootPath": .string(root.path),
-        "workspaceFolders": [["uri": rootURI, "name": .string(root.lastPathComponent)]],
+        "workspaceFolders": .array(([root] + extraFolders).map(Self.workspaceFolder)),
         "initializationOptions": initializationOptions,
         "capabilities": [
           "general": ["positionEncodings": ["utf-16"]],
@@ -187,6 +194,42 @@
           ],
         ],
       ]
+    }
+
+    private static func workspaceFolder(_ url: URL) -> JSONValue {
+      ["uri": .string(url.absoluteString), "name": .string(url.lastPathComponent)]
+    }
+
+    /// Replaces the extra workspace folders, telling a running server.
+    func setExtraFolders(_ folders: [URL]) {
+      guard folders != extraFolders else { return }
+      extraFolders = folders
+      whenRunning { [weak self] in self?.announceFolders() }
+    }
+
+    private func announceFolders() {
+      let added = extraFolders.filter { !announcedFolders.contains($0) }
+      let removed = announcedFolders.filter { !extraFolders.contains($0) }
+      guard !added.isEmpty || !removed.isEmpty else { return }
+      announcedFolders = extraFolders
+      connection.notify(
+        "workspace/didChangeWorkspaceFolders",
+        [
+          "event": [
+            "added": .array(added.map(Self.workspaceFolder)),
+            "removed": .array(removed.map(Self.workspaceFolder)),
+          ]
+        ])
+    }
+
+    /// Tells the server that files it may read changed on disk (a
+    /// compilation database was written again).
+    func filesChanged(_ urls: [URL]) {
+      whenRunning { [weak self] in
+        self?.connection.notify(
+          "workspace/didChangeWatchedFiles",
+          ["changes": .array(urls.map { ["uri": .string($0.absoluteString), "type": 2] })])
+      }
     }
 
     /// Runs `work` now when the server is running, or once it is.

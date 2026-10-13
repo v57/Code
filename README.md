@@ -208,7 +208,11 @@ Features
     one whole); imports a server adds come with it in one undo. "Suggest
     completions while typing" in Settings › Editor.
   - Jump to Definition (⌘-click, ⌃⌘J), Quick Help (⌥-click), Go Back and
-    Forward (⌃⌘← ⌃⌘→).
+    Forward (⌃⌘← ⌃⌘→). SourceKit-LSP doesn't read Xcode projects, so files
+    of Xcode targets get the selected Xcode scheme's compiler arguments
+    (`xcodebuild -showBuildSettingsForIndex`) as a compilation database in
+    Caches, written when the scheme or destination changes and after
+    builds; other modules resolve once the scheme has been built.
   - The minimap (⌃⇧⌘M): runs of text as rounded bars in their syntax colors,
     MARK sections as titles, issues, breakpoints and the debugger's line;
     click or drag to scroll. It replaces the vertical scroller while shown.

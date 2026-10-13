@@ -42,6 +42,8 @@
 
     @ObservationIgnored private var servers: [String: LanguageServer] = [:]
     @ObservationIgnored private var documents: [URL: (server: String, version: Int)] = [:]
+    /// Workspace folders added to a server's root, by server ID.
+    @ObservationIgnored private var extraFolders: [String: [URL]] = [:]
 
     public init(workspace: URL, environment: [String: String] = ProcessInfo.processInfo.environment) {
       self.workspace = workspace.standardizedFileURL
@@ -85,7 +87,8 @@
         return nil
       }
       let server = LanguageServer(
-        configuration: configuration, root: root, executable: executable, environment: environment)
+        configuration: configuration, root: root, executable: executable, environment: environment,
+        extraFolders: extraFolders[configuration.id] ?? [])
       server.onDiagnostics = { [weak self] url, diagnostics in
         self?.diagnostics[url] = diagnostics.isEmpty ? nil : diagnostics
       }
@@ -118,6 +121,19 @@
       activity = servers.values.compactMap { server in
         server.activity.map { "\(server.configuration.name): \($0)" }
       }.sorted().first
+    }
+
+    /// Adds workspace folders to a server's (SourceKit-LSP takes a
+    /// compilation database for Xcode targets as one), for its running and
+    /// future instances.
+    public func setExtraWorkspaceFolders(_ folders: [URL], forServer id: String) {
+      extraFolders[id] = folders.isEmpty ? nil : folders
+      for server in servers.values where server.configuration.id == id { server.setExtraFolders(folders) }
+    }
+
+    /// Tells a server's instances that files changed on disk.
+    public func filesChanged(_ urls: [URL], forServer id: String) {
+      for server in servers.values where server.configuration.id == id { server.filesChanged(urls) }
     }
 
     // MARK: - Documents

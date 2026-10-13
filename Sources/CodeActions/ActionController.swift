@@ -85,6 +85,9 @@
     @ObservationIgnored public var willPerform: (@MainActor () async -> Void)?
     /// Called when an action finishes, with whether it succeeded.
     @ObservationIgnored public var didFinish: (@MainActor (ActionKind, Bool) -> Void)?
+    /// More callbacks for finished actions, for services that follow the
+    /// builds (the language servers' compiler arguments).
+    @ObservationIgnored private var finishHandlers: [@MainActor (ActionKind, Bool) -> Void] = []
     /// Folder names never searched for projects.
     @ObservationIgnored public var excludedNames: Set<String> = []
     /// Runs the action instead of the planned steps when it returns some
@@ -229,7 +232,7 @@
       if cancelled {
         state = .stopped(kind, date)
         appendStatus("Stopped", kind: .status)
-        didFinish?(kind, false)
+        finished(kind, succeeded: false)
       } else if let failure {
         let message = (failure as? LocalizedError)?.errorDescription ?? failure.localizedDescription
         // The activity view says what failed in few words: the errors, or
@@ -240,15 +243,25 @@
         }
         state = .failed(kind, date, summary)
         appendStatus(message, kind: .failure)
-        didFinish?(kind, false)
+        finished(kind, succeeded: false)
       } else if kind != .run && errorCount > 0 {
         state = .failed(kind, date, "\(errorCount) error\(errorCount == 1 ? "" : "s")")
-        didFinish?(kind, false)
+        finished(kind, succeeded: false)
       } else {
         state = .succeeded(kind, date)
         appendStatus("\(kind.title) \(kind == .run ? "finished" : "succeeded")", kind: .status)
-        didFinish?(kind, true)
+        finished(kind, succeeded: true)
       }
+    }
+
+    /// Adds a callback for finished actions, called after `didFinish`.
+    public func addFinishHandler(_ handler: @escaping @MainActor (ActionKind, Bool) -> Void) {
+      finishHandlers.append(handler)
+    }
+
+    private func finished(_ kind: ActionKind, succeeded: Bool) {
+      didFinish?(kind, succeeded)
+      for handler in finishHandlers { handler(kind, succeeded) }
     }
 
     private func appendStatus(_ text: String, kind: ActionLog.Entry.Kind) {

@@ -90,6 +90,10 @@
     @ObservationIgnored private var resolvedPaths: [URL: URL] = [:]
     @ObservationIgnored private var back: [(url: URL, line: Int, column: Int)] = []
     @ObservationIgnored private var forward: [(url: URL, line: Int, column: Int)] = []
+    /// Writing the compilation database of the selected Xcode scheme, and
+    /// the scheme and destination it was last written for.
+    @ObservationIgnored var databaseTask: Task<Void, Never>?
+    @ObservationIgnored var databaseKey: String?
 
     public init(workspace: Workspace, settings: ServiceSettings = ServiceSettings()) {
       self.workspace = workspace
@@ -107,6 +111,11 @@
       actions.stepsOverride = { [weak self] kind, scheme, destination in
         self?.debugSteps(kind, scheme, destination)
       }
+      actions.addFinishHandler { [weak self] kind, _ in
+        // A build may follow files added to the project.
+        if kind != .clean { self?.updateCompilationDatabase(force: true) }
+      }
+      observeSchemeSelection()
       Task {
         // Reading the login shell's environment takes a moment; do it once,
         // off the main thread.
@@ -116,6 +125,8 @@
         languageServers.environment = environment
         formatting.environment = environment
         isReady = true
+        // The database from the last session, until the scheme's is read.
+        useCompilationDatabaseIfWritten()
         if settings.actionsEnabled { actions.scan() }
         for (url, box) in shown {
           if let textView = box.textView { languageServers.didOpen(url, text: textView.string) }
