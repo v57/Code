@@ -16,8 +16,9 @@ Libraries
     CodeHighlighting   languages, incremental highlighter, bracket matching,
                        themes (platform-neutral, no dependencies)
     CodeWorkspace      file tree, .gitignore and hidden files, file watching,
-                       Quick Open index, Find in Project, text documents
-                       with autosave, tabs and sessions (neutral)
+                       Quick Open index, Find in Project, package
+                       dependencies, text documents with autosave, tabs
+                       and sessions (neutral)
     CodeEditor         the AppKit editor: CodeTextView, line numbers,
                        CodeEditorScrollView, SwiftUI CodeTextEditor(text:)
     CodeActions        schemes found in a folder (Xcode, SwiftPM, Cargo, Go,
@@ -173,6 +174,16 @@ Features
     .gitignore is the per-project switch; Restore Defaults. Open Quickly's Hidden Files button (⇧⌘. while it's open)
     searches them too, ranked below visible files. Add to .gitignore in an
     item's context menu appends it to the project's .gitignore.
+  - Package Dependencies under the file tree, as in Xcode: each package with
+    its version or "local", expanding to browse its sources where they are
+    on disk. Read from manifests and lockfiles (nothing is resolved):
+    Swift packages (Package.swift, Xcode projects' package references and
+    Package.resolved, with checkouts in .build or Xcode's DerivedData),
+    npm/Yarn/pnpm, Cargo (workspaces too), Go modules, Python (pyproject,
+    requirements; the project's virtual environment), RubyGems, Composer,
+    pub (Dart, Flutter), CocoaPods, Hex (Elixir), NuGet and Gradle/Maven.
+    Swift lists every resolved package as Xcode does; the others list
+    direct dependencies. They update when a manifest or lockfile changes.
   - Tabs: preview tab on single click (italic), kept on double click or edit,
     unsaved dot, drag to reorder, Close Others/All.
   - Editor: line numbers, current-line highlight, Xcode's Default

@@ -26,11 +26,15 @@ import Observation
   public private(set) var previewTabID: TextDocument.ID?
   /// A transient message for the status bar (a failed file operation).
   public var statusMessage: String?
+  /// The packages the project depends on, from its manifests and
+  /// lockfiles (the navigator's Package Dependencies).
+  public private(set) var dependencies: [PackageDependency] = []
   /// Called with documents whose tabs closed (language servers close them).
   @ObservationIgnored public var onCloseDocuments: (([TextDocument]) -> Void)?
 
   @ObservationIgnored private var watcher: FileWatcher?
   @ObservationIgnored private var indexRebuild: Task<Void, Never>?
+  @ObservationIgnored private var dependencyScan: Task<Void, Never>?
   @ObservationIgnored private let defaults: UserDefaults
   @ObservationIgnored private var isRestoring = false
   /// The root with symlinks resolved: FSEvents reports real paths
@@ -52,6 +56,7 @@ import Observation
     index.rebuild()
     watcher = FileWatcher(root: root) { [weak self] changes in self?.filesChanged(changes) }
     restoreSession()
+    reloadDependencies()
   }
 
   public var name: String { root.lastPathComponent }
@@ -339,8 +344,10 @@ import Observation
     var directories: Set<URL> = []
     var structural = false
     var gitIgnoreChanged = false
+    var manifestChanged = false
     for change in changes {
       let url = localURL(for: change.url)
+      if change.rescan || DependencyScanner.isManifest(url.lastPathComponent) { manifestChanged = true }
       if url.lastPathComponent == ".gitignore" || url.path.hasSuffix("/.git/info/exclude") {
         gitIgnoreChanged = true
       }
@@ -361,6 +368,21 @@ import Observation
     for directory in directories { tree.reload(directory: directory) }
     if gitIgnoreChanged { tree.reloadGitIgnore() }
     if structural || gitIgnoreChanged { scheduleIndexRebuild() }
+    if manifestChanged { reloadDependencies(after: .seconds(1)) }
+  }
+
+  /// Finds the project's package dependencies again, off the main thread
+  /// (after `delay`, so an install writing many manifests scans once).
+  public func reloadDependencies(after delay: Duration = .zero) {
+    dependencyScan?.cancel()
+    let root = root
+    dependencyScan = Task { [weak self] in
+      if delay > .zero { try? await Task.sleep(for: delay) }
+      guard !Task.isCancelled else { return }
+      let found = await Task.detached(priority: .utility) { DependencyScanner.scan(root) }.value
+      guard !Task.isCancelled, let self, found != self.dependencies else { return }
+      self.dependencies = found
+    }
   }
 
   /// Maps a real path from FSEvents back under `root` as the user opened it.

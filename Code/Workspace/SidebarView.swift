@@ -58,6 +58,7 @@ struct SidebarView: View {
           }
           .help(workspace.root.abbreviatedPath)
         }
+        if !model.isChoosingVisibleFiles { PackageDependenciesSection() }
       }
       .listStyle(.sidebar)
       .environment(\.sidebarRowSize, .small)
@@ -73,17 +74,35 @@ struct SidebarView: View {
       for url in urls { activate(url) }
     }
     .onChange(of: model.sidebarSelection) { _, url in
-      guard let url, let node = workspace.tree.node(for: url), !node.isDirectory else { return }
+      guard let url, isFile(url) else { return }
       workspace.open(url, preview: true)
     }
     .onDeleteCommand {
-      if let url = model.sidebarSelection { model.trashCandidate = url }
+      // Only the project's own files: not a package's.
+      if let url = model.sidebarSelection, url != workspace.root, workspace.tree.node(for: url) != nil {
+        model.trashCandidate = url
+      }
     }
+  }
+
+  /// A file in the tree, or in a package under Package Dependencies.
+  private func isFile(_ url: URL) -> Bool {
+    if let node = workspace.tree.node(for: url) { return !node.isDirectory }
+    var isDirectory: ObjCBool = false
+    return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) && !isDirectory.boolValue
   }
 
   /// Double click or Return: keep a file open, toggle a folder.
   private func activate(_ url: URL) {
-    guard let node = workspace.tree.node(for: url) else { return }
+    guard let node = workspace.tree.node(for: url) else {
+      // A package's file or folder.
+      if isFile(url) {
+        workspace.open(url, preview: false)
+      } else {
+        model.dependencyFolderExpansion(url).wrappedValue.toggle()
+      }
+      return
+    }
     if node.isDirectory {
       workspace.tree.setExpanded(node, !workspace.tree.expanded.contains(url))
     } else {
@@ -93,6 +112,28 @@ struct SidebarView: View {
 
   @ViewBuilder private func menu(for url: URL?) -> some View {
     let node = url.flatMap { workspace.tree.node(for: $0) }
+    if let url, node == nil {
+      dependencyMenu(for: url)
+    } else {
+      projectMenu(for: url, node: node)
+    }
+  }
+
+  /// A package's file or folder: open, reveal and copy, nothing that
+  /// changes it.
+  @ViewBuilder private func dependencyMenu(for url: URL) -> some View {
+    if isFile(url) {
+      Button("Open in New Tab") { workspace.open(url) }
+      Button("Open with Default App") { NSWorkspace.shared.open(url) }
+    }
+    Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+    Divider()
+    Button("Copy Path") { copy(url.path) }
+    Divider()
+    Button("Refresh Package Dependencies") { workspace.reloadDependencies() }
+  }
+
+  @ViewBuilder private func projectMenu(for url: URL?, node: FileNode?) -> some View {
     let folder =
       node.map { $0.isDirectory ? $0.url : $0.url.deletingLastPathComponent() } ?? workspace.root
     Button("New File…") { model.ask(.newFile(in: folder)) }

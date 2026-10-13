@@ -47,6 +47,20 @@ import SwiftUI
   var navigator = Navigator.project
   /// Find in Project, shown in the Find navigator.
   let find = ProjectFind()
+  /// Expanded packages and folders under Package Dependencies.
+  var expandedDependencyFolders: Set<URL> = []
+
+  func dependencyFolderExpansion(_ url: URL) -> Binding<Bool> {
+    Binding(
+      get: { self.expandedDependencyFolders.contains(url) },
+      set: { expanded in
+        if expanded {
+          self.expandedDependencyFolders.insert(url)
+        } else {
+          self.expandedDependencyFolders.remove(url)
+        }
+      })
+  }
   var selection = EditorSelection()
 
   init(workspace: Workspace) {
