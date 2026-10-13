@@ -18,7 +18,10 @@
   /// `quickopenhidden:on|off`, `scroll:<lines>` (a scroll-wheel event over
   /// the editor; negative scrolls down), `find:<query>` (Find in Project),
   /// `findmode:containing|matchingWord|regularExpression`, `findcase:on|off`,
-  /// `findopen:<file index>:<match index>` (opens a result).
+  /// `findopen:<file index>:<match index>` (opens a result),
+  /// `dependency:<folder path>` (expands it under Package Dependencies),
+  /// `select:<path>` (selects a navigator row, as a click does),
+  /// `folder:<relative path>:on|off` (expands or collapses a tree folder).
   ///
   /// Launched with `-DebugAutomationName <name>`, the app listens for that
   /// name instead, so other Debug instances ignore the commands.
@@ -154,6 +157,16 @@
               column: match.column + 1, length: match.length)
           }
         }
+      case "dependency":
+        model.expandedDependencyFolders.insert(URL(fileURLWithPath: argument))
+      case "select": model.sidebarSelection = URL(fileURLWithPath: argument)
+      case "folder":
+        if let colon = argument.lastIndex(of: ":"),
+          let node = model.workspace.tree.node(
+            for: model.workspace.root.appendingPathComponent(String(argument[..<colon])))
+        {
+          model.workspace.tree.setExpanded(node, argument[argument.index(after: colon)...] != "off")
+        }
       case "back": services.goBack()
       case "continue": services.debugger?.continueRunning()
       case "step": services.debugger?.stepOver()
@@ -188,6 +201,10 @@
           lines.append("  text length \(textView.string.count) visible \(textView.visibleRect) clip \(textView.enclosingScrollView?.contentView.bounds ?? .zero) container \(textView.textContainer?.size ?? .zero) inset \(textView.textContainerInset) origin \(textView.textContainerOrigin)")
         }
         lines.append("tabs: \(model.workspace.tabs.map(\.name))")
+        lines.append(
+          "dependencies: "
+            + model.workspace.dependencies.map { "\($0.name) \($0.detail) \($0.location?.path ?? "-")" }
+            .joined(separator: ", "))
         let find = model.find
         lines.append(
           "find: \(find.text) searching \(find.isSearching) \(find.matchCount) in \(find.results.count) files: "
