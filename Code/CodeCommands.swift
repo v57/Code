@@ -197,7 +197,7 @@ struct CodeCommands: Commands {
       Button(hiddenFilesTitle) { model?.toggleHiddenFiles() }
         .keyboardShortcut(".", modifiers: [.command, .shift])
         .disabled(model == nil)
-      Button("Choose Visible Files") {
+      Button("Edit Hidden Files") {
         model?.isNavigatorVisible = true
         model?.isChoosingVisibleFiles = true
       }

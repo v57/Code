@@ -115,7 +115,7 @@ struct SidebarView: View {
         ) {
           workspace.visibility.showsHiddenFiles.toggle()
         }
-        FooterButton(symbol: "checklist", isOn: false, help: "Choose Visible Files") {
+        FooterButton(symbol: "checklist", isOn: false, help: "Edit Hidden Files") {
           model.isChoosingVisibleFiles = true
         }
       }
@@ -153,8 +153,8 @@ struct SidebarView: View {
       Divider()
       Button("Rename…") { model.ask(.rename(node.url)) }
       Button("Move to Trash") { model.trashCandidate = node.url }
+      Divider()
       if !node.isInHiddenFolder {
-        Divider()
         if node.hiddenReason != nil {
           Button("Show in List") { workspace.setVisible(node.url, true) }
         } else {
@@ -164,10 +164,20 @@ struct SidebarView: View {
           Button("Add to .gitignore") { workspace.addToGitIgnore(node.url) }
         }
       }
+      editHiddenFilesButton
     } else {
       Divider()
       Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([workspace.root]) }
       Button("Reload") { workspace.tree.reloadAll() }
+      Divider()
+      editHiddenFilesButton
+    }
+  }
+
+  /// Puts a checkbox on every item to choose what the project hides.
+  @ViewBuilder private var editHiddenFilesButton: some View {
+    if !model.isChoosingVisibleFiles {
+      Button("Edit Hidden Files") { model.isChoosingVisibleFiles = true }
     }
   }
 
@@ -246,7 +256,7 @@ private struct ChooseVisibleFilesHeader: View {
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
       HStack {
-        Text("Visible Files").fontWeight(.semibold)
+        Text("Hidden Files").fontWeight(.semibold)
         Spacer()
         Button("Done") { model.isChoosingVisibleFiles = false }
           .buttonStyle(.borderedProminent)

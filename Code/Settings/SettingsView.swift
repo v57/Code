@@ -107,7 +107,7 @@ private struct FilesSettingsView: View {
       Toggle("Show file extensions", isOn: $showExtensions)
       Divider()
       Toggle("Hide files listed in .gitignore", isOn: $hidesIgnoredFiles)
-      Text("For projects that haven’t chosen. Choose a project’s visible files from its navigator (View › Choose Visible Files); ⇧⌘. shows hidden files.")
+      Text("For projects that haven’t chosen. Choose a project’s visible files from its navigator (View › Edit Hidden Files); ⇧⌘. shows hidden files.")
         .font(.caption)
         .foregroundStyle(.secondary)
     }
