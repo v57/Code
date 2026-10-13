@@ -78,6 +78,7 @@
       let textView = scrollView.textView
       textView.onEdit = { [weak document, weak self] in
         document?.markEdited()
+        self?.container.minimap.invalidateContent()
         self?.scheduleSections()
       }
       document.willSave = { [weak textView] in textView?.trimTrailingWhitespace() ?? false }
@@ -173,7 +174,7 @@
 
     private func layoutChanged() {
       updateMarks()
-      container.minimap.refresh()
+      container.minimap.invalidateContent()
     }
 
     private func updateMarks() {

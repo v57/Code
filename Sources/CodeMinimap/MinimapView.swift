@@ -63,10 +63,10 @@
   /// issues and breakpoints. Click or drag to scroll.
   @MainActor public final class MinimapView: NSView {
     public weak var dataSource: MinimapDataSource? {
-      didSet { needsDisplay = true }
+      didSet { invalidateContent() }
     }
     public var theme: EditorTheme = .xcodeLight {
-      didSet { if theme != oldValue { needsDisplay = true } }
+      didSet { if theme != oldValue { invalidateContent() } }
     }
     public var marks: [MinimapMark] = [] {
       didSet { if marks != oldValue { needsDisplay = true } }
@@ -76,21 +76,46 @@
     }
 
     /// Height of a line, of its bar, and width of a column.
-    public var rowHeight: CGFloat = 3
-    public var barHeight: CGFloat = 2
-    public var columnWidth: CGFloat = 1.25
+    public var rowHeight: CGFloat = 3 {
+      didSet { invalidateContent() }
+    }
+    public var barHeight: CGFloat = 2 {
+      didSet { invalidateContent() }
+    }
+    public var columnWidth: CGFloat = 1.25 {
+      didSet { invalidateContent() }
+    }
     public static let defaultWidth: CGFloat = 120
     static let leadingInset: CGFloat = 8
 
     /// Offset into the drawn lines when they are taller than the view.
     private var dragOffset: CGFloat?
 
+    /// The bars of `tileLines` lines each, drawn once into a bitmap: scrolling
+    /// only copies them, where drawing every bar again took a frame's time.
+    private var tiles: [Int: CGImage] = [:]
+    /// What the tiles were drawn for: width, backing scale and line count.
+    private var tileKey: (width: CGFloat, scale: CGFloat, lines: Int)?
+    static let tileLines = 128
+
     public override var isFlipped: Bool { true }
     public override var isOpaque: Bool { true }
     public override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    /// Redraws after the editor scrolled or changed.
+    /// Redraws after the editor scrolled.
     public func refresh() { needsDisplay = true }
+
+    /// Redraws after the editor's text or colors changed.
+    public func invalidateContent() {
+      tiles.removeAll()
+      needsDisplay = true
+    }
+
+    public override func viewDidMoveToWindow() {
+      super.viewDidMoveToWindow()
+      // A tab in the background keeps no bitmaps.
+      if window == nil { tiles.removeAll() }
+    }
 
     // MARK: - Geometry
 
@@ -138,41 +163,81 @@
       // A hairline between the editor and the minimap.
       NSColor.separatorColor.withAlphaComponent(0.4).setFill()
       NSRect(x: 0, y: dirtyRect.minY, width: 1, height: dirtyRect.height).fill()
-      guard let dataSource else { return }
+      guard let dataSource, let context = NSGraphicsContext.current?.cgContext else { return }
       let count = dataSource.minimapLineCount
       guard count > 0 else { return }
-      let offset = scrollOffset
+      // On whole device pixels, so the tiles are copied without blurring.
+      let scale = window?.backingScaleFactor ?? 2
+      let offset = (scrollOffset * scale).rounded() / scale
       let first = max(0, Int(line(atY: dirtyRect.minY, offset: offset)))
       let last = min(count - 1, Int(line(atY: dirtyRect.maxY, offset: offset)) + 1)
       guard first <= last else { return }
 
       drawMarks(lines: first...last, offset: offset, behind: true)
 
-      // Bars, one path per color.
-      var paths: [UInt32: NSBezierPath] = [:]
-      let maxX = bounds.maxX - 4
-      for lineNumber in first...last {
-        let top = y(ofLine: Double(lineNumber), offset: offset) + (rowHeight - barHeight) / 2
-        for run in dataSource.minimapRuns(ofLine: lineNumber) {
-          let x = Self.leadingInset + CGFloat(run.column) * columnWidth
-          guard x < maxX else { break }
-          let width = min(CGFloat(run.length) * columnWidth, maxX - x)
-          let color = theme.syntax.color(for: run.kind)
-          let path = paths[color] ?? NSBezierPath()
-          path.appendRoundedRect(
-            NSRect(x: x, y: top, width: max(width, 1), height: barHeight), xRadius: 0.8, yRadius: 0.8)
-          paths[color] = path
-        }
-      }
-      let alpha: CGFloat = theme.isDark ? 0.75 : 0.6
-      for (color, path) in paths {
-        NSColor(hex: color).withAlphaComponent(alpha).setFill()
-        path.fill()
+      if let key = tileKey, key != (bounds.width, scale, count) { tiles.removeAll() }
+      tileKey = (bounds.width, scale, count)
+      let tileRange = first / Self.tileLines...last / Self.tileLines
+      // Only the tiles around the visible ones stay.
+      tiles = tiles.filter { tileRange.lowerBound - 2...tileRange.upperBound + 2 ~= $0.key }
+      for index in tileRange {
+        guard let image = tiles[index] ?? drawTile(index, scale: scale) else { continue }
+        tiles[index] = image
+        let top = y(ofLine: Double(index * Self.tileLines), offset: offset)
+        let height = CGFloat(Self.tileLines) * rowHeight
+        // The view is flipped; the image's rows run bottom-up.
+        context.saveGState()
+        context.translateBy(x: 0, y: top + height)
+        context.scaleBy(x: 1, y: -1)
+        context.draw(image, in: CGRect(x: 0, y: 0, width: bounds.width, height: height))
+        context.restoreGState()
       }
 
       drawMarks(lines: first...last, offset: offset, behind: false)
       drawSections(offset: offset, in: dirtyRect)
       drawViewport(offset: offset)
+    }
+
+    /// The bars of tile `index`'s lines, over a clear background, at the
+    /// backing scale: one path per color. (NSBezierPath slows down with each
+    /// rounded rect added; a page of prose took most of a second.)
+    private func drawTile(_ index: Int, scale: CGFloat) -> CGImage? {
+      guard let dataSource else { return nil }
+      let first = index * Self.tileLines
+      let end = min(first + Self.tileLines, dataSource.minimapLineCount)
+      let height = CGFloat(Self.tileLines) * rowHeight
+      guard first < end,
+        let context = CGContext(
+          data: nil, width: Int((bounds.width * scale).rounded(.up)), height: Int((height * scale).rounded(.up)),
+          bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+          bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+      else { return nil }
+      // Top-down, in points.
+      context.translateBy(x: 0, y: height * scale)
+      context.scaleBy(x: scale, y: -scale)
+
+      var paths: [UInt32: CGMutablePath] = [:]
+      let maxX = bounds.maxX - 4
+      for lineNumber in first..<end {
+        let top = CGFloat(lineNumber - first) * rowHeight + (rowHeight - barHeight) / 2
+        for run in dataSource.minimapRuns(ofLine: lineNumber) {
+          let x = Self.leadingInset + CGFloat(run.column) * columnWidth
+          guard x < maxX else { break }
+          let width = min(CGFloat(run.length) * columnWidth, maxX - x)
+          let color = theme.syntax.color(for: run.kind)
+          let path = paths[color] ?? CGMutablePath()
+          path.addRoundedRect(
+            in: CGRect(x: x, y: top, width: max(width, 1), height: barHeight), cornerWidth: 0.8, cornerHeight: 0.8)
+          paths[color] = path
+        }
+      }
+      let alpha: CGFloat = theme.isDark ? 0.75 : 0.6
+      for (color, path) in paths {
+        context.setFillColor(NSColor(hex: color).withAlphaComponent(alpha).cgColor)
+        context.addPath(path)
+        context.fillPath()
+      }
+      return context.makeImage()
     }
 
     private func drawMarks(lines: ClosedRange<Int>, offset: CGFloat, behind: Bool) {
