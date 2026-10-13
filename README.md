@@ -210,7 +210,7 @@ Features
     Forward (⌃⌘← ⌃⌘→).
   - The minimap (⌃⇧⌘M): runs of text as rounded bars in their syntax colors,
     MARK sections as titles, issues, breakpoints and the debugger's line;
-    click or drag to scroll.
+    click or drag to scroll. It replaces the vertical scroller while shown.
   - Breakpoints: click a line number (⌘\\ at the caret), ⌘Y deactivates
     them; F6/F7/F8 step.
   - Settings turn each part off: toolbar actions, language servers (each),

@@ -232,6 +232,8 @@
       // No minimap in a narrow editor.
       let width = showsMinimap && bounds.width > 500 ? MinimapView.defaultWidth : 0
       minimap.isHidden = width == 0
+      // The minimap shows where the editor is; the scroller would repeat it.
+      scrollView.hasVerticalScroller = width == 0
       scrollView.frame = NSRect(x: 0, y: 0, width: bounds.width - width, height: bounds.height)
       minimap.frame = NSRect(x: bounds.width - width, y: 0, width: width, height: bounds.height)
     }
