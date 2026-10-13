@@ -23,6 +23,10 @@
       borderType = .noBorder
       drawsBackground = true
       documentView = textView
+      // Attaching lays the text out before the clip view takes on the text
+      // view's flippedness, and the layout manager moves the view to keep
+      // its top edge in place in unflipped coordinates.
+      textView.setFrameOrigin(.zero)
       verticalRulerView = ruler
       ruler.clientView = textView
       hasVerticalRuler = true

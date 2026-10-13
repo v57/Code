@@ -22,6 +22,9 @@
     /// Smaller files are scanned synchronously when opened, so they never
     /// show uncolored; larger ones are scanned off the main thread.
     static let synchronousScanLimit = 200_000
+    /// Longer texts are laid out as they come into view, with estimated
+    /// heights for the rest (UTF-16 units).
+    static let contiguousLayoutLimit = 500_000
 
     public private(set) var lineIndex: LineIndex
     public private(set) var spec: LanguageSpec?
@@ -145,7 +148,11 @@
       lineIndex = LineIndex(text)
       let storage = NSTextStorage(string: text)
       let layoutManager = NSLayoutManager()
-      layoutManager.allowsNonContiguousLayout = true
+      // Non-contiguous layout estimates the height of text it hasn't laid
+      // out (badly, for wrapped lines), and the text in view can shift when
+      // the real height arrives. Laying out everything is exact but takes a
+      // while in long files, so only those get estimates.
+      layoutManager.allowsNonContiguousLayout = storage.length > Self.contiguousLayoutLimit
       storage.addLayoutManager(layoutManager)
       let container = NSTextContainer(
         size: NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude))
