@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		C0DE00000000000000000A05 /* CodeKit in Frameworks */ = {isa = PBXBuildFile; productRef = C0DE00000000000000000A04 /* CodeKit */; };
+		D5C0DE000000000000000003 /* UpdateKit in Frameworks */ = {isa = PBXBuildFile; productRef = D5C0DE000000000000000002 /* UpdateKit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -27,6 +28,7 @@
 			isa = PBXFrameworksBuildPhase;
 			files = (
 				C0DE00000000000000000A05 /* CodeKit in Frameworks */,
+				D5C0DE000000000000000003 /* UpdateKit in Frameworks */,
 			);
 		};
 /* End PBXFrameworksBuildPhase section */
@@ -67,6 +69,7 @@
 			name = Code;
 			packageProductDependencies = (
 				C0DE00000000000000000A04 /* CodeKit */,
+				D5C0DE000000000000000002 /* UpdateKit */,
 			);
 			productName = Code;
 			productReference = 000000000000000000000120 /* Code.app */;
@@ -98,6 +101,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				C0DE00000000000000000A03 /* XCLocalSwiftPackageReference "." */,
+				D5C0DE000000000000000001 /* XCLocalSwiftPackageReference "../UpdateKit" */,
 			);
 			preferredProjectObjectVersion = 90;
 			productRefGroup = 000000000000000000000020 /* Products */;
@@ -350,12 +354,20 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = .;
 		};
+		D5C0DE000000000000000001 /* XCLocalSwiftPackageReference "../UpdateKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../UpdateKit;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		C0DE00000000000000000A04 /* CodeKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = CodeKit;
+		};
+		D5C0DE000000000000000002 /* UpdateKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = UpdateKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
