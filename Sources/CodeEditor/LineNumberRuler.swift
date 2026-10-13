@@ -160,8 +160,10 @@
       let visible = textView.visibleRect
       let glyphs = layoutManager.glyphRange(forBoundingRect: visible, in: container)
       let chars = layoutManager.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
-      let firstLine = lines.line(containing: chars.location)
-      let lastLine = lines.line(containing: NSMaxRange(chars))
+      // No glyphs in view: scrolled to the end, where only the empty last
+      // line (the extra line fragment) shows.
+      let firstLine = glyphs.length == 0 ? lines.count - 1 : lines.line(containing: chars.location)
+      let lastLine = glyphs.length == 0 ? lines.count - 1 : lines.line(containing: NSMaxRange(chars))
       let right = ruleThickness - Self.trailingSpace
 
       let breakpoints = textView.breakpoints
