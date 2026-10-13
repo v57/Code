@@ -15,14 +15,21 @@
   /// typed: completions open), `complete` (Esc), `key:up|down|return|tab|esc`,
   /// `hidden:on|off` (Show Hidden Files), `choose:on|off` (Choose Visible
   /// Files), `setvisible:<relative path>:on|off`, `quickopen:<query>|off`,
-  /// `quickopenhidden:on|off`.
+  /// `quickopenhidden:on|off`, `scroll:<lines>` (a scroll-wheel event over
+  /// the editor; negative scrolls down), `find:<query>` (Find in Project),
+  /// `findmode:containing|matchingWord|regularExpression`, `findcase:on|off`,
+  /// `findopen:<file index>:<match index>` (opens a result).
+  ///
+  /// Launched with `-DebugAutomationName <name>`, the app listens for that
+  /// name instead, so other Debug instances ignore the commands.
   @MainActor enum DebugAutomation {
     private static var observer: NSObjectProtocol?
 
     static func start() {
       guard observer == nil else { return }
       observer = DistributedNotificationCenter.default().addObserver(
-        forName: Notification.Name("dev.v57.code.debug"), object: nil, queue: .main
+        forName: Notification.Name(UserDefaults.standard.string(forKey: "DebugAutomationName") ?? "dev.v57.code.debug"),
+        object: nil, queue: .main
       ) { note in
         guard let command = note.object as? String else { return }
         MainActor.assumeIsolated { run(command) }
@@ -88,6 +95,15 @@
           }
         }
       case "complete": document?.textView?.complete(nil)
+      case "scroll":
+        // A line-based wheel event, as from a mouse, sent through the scroll view.
+        if let scrollView = document?.textView?.enclosingScrollView, let lines = Int32(argument),
+          let cgEvent = CGEvent(
+            scrollWheelEvent2Source: nil, units: .line, wheelCount: 1, wheel1: lines, wheel2: 0, wheel3: 0),
+          let event = NSEvent(cgEvent: cgEvent)
+        {
+          scrollView.scrollWheel(with: event)
+        }
       case "key":
         let selectors: [String: Selector] = [
           "up": #selector(NSResponder.moveUp(_:)), "down": #selector(NSResponder.moveDown(_:)),
