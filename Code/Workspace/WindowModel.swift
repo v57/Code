@@ -22,6 +22,14 @@ import SwiftUI
   /// Schemes and actions, language servers, formatting, issues, breakpoints.
   let services: ProjectServices
   var isQuickOpenPresented = false
+  /// Open Quickly's search text, cleared when it opens.
+  var quickOpenQuery = ""
+  /// Open Quickly also lists hidden files (its Hidden Files button, ⇧⌘.).
+  var quickOpenIncludesHiddenFiles = UserDefaults.standard.bool(forKey: "quickOpen.includesHiddenFiles") {
+    didSet { UserDefaults.standard.set(quickOpenIncludesHiddenFiles, forKey: "quickOpen.includesHiddenFiles") }
+  }
+  /// The navigator shows a checkbox per item to choose what the project hides.
+  var isChoosingVisibleFiles = false
   /// The console under the editor (Xcode's debug area, ⇧⌘Y).
   var isConsoleVisible = false
   var isIssuesPresented = false
@@ -62,6 +70,16 @@ import SwiftUI
     guard services.settings.actionsEnabled else { return }
     if kind == .run || kind == .test { isConsoleVisible = true }
     services.actions.perform(kind)
+  }
+
+  /// ⇧⌘., as in Finder: in Open Quickly, includes or leaves out hidden
+  /// files; elsewhere, shows or hides them in the navigator.
+  func toggleHiddenFiles() {
+    if isQuickOpenPresented {
+      quickOpenIncludesHiddenFiles.toggle()
+    } else {
+      workspace.visibility.showsHiddenFiles.toggle()
+    }
   }
 
   /// The folder new items go into: the selected folder, the selected file's

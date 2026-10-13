@@ -53,6 +53,11 @@
   /// actions, language servers, formatters, issues, breakpoints and
   /// navigation between definitions.
   @MainActor @Observable public final class ProjectServices {
+    /// Folders never searched for schemes (build output, dependencies).
+    static let unscannedFolders: Set<String> = [
+      ".git", ".svn", ".hg", ".build", ".swiftpm", "DerivedData", "node_modules", "xcuserdata",
+    ]
+
     public let workspace: Workspace
     public let actions: ActionController
     public let languageServers: LanguageServerManager
@@ -91,7 +96,7 @@
       self.settings = settings
       actions = ActionController(root: workspace.root)
       languageServers = LanguageServerManager(workspace: workspace.root)
-      actions.excludedNames = workspace.excludedNames
+      actions.excludedNames = Self.unscannedFolders
       breakpointsActive = !defaults.bool(forKey: key("breakpointsInactive"))
       loadBreakpoints()
       applySettings(previous: nil)

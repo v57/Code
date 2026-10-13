@@ -12,7 +12,10 @@
   /// `scheme:<name>`, `destination:<name or id>`, `definition` (at the
   /// caret), `breakpoint` (toggle at the caret), `save`, `insert:<text>`,
   /// `console:on|off`, `issues`, `back`, `quickhelp`, `type:<text>` (as if
-  /// typed: completions open), `complete` (Esc), `key:up|down|return|tab|esc`.
+  /// typed: completions open), `complete` (Esc), `key:up|down|return|tab|esc`,
+  /// `hidden:on|off` (Show Hidden Files), `choose:on|off` (Choose Visible
+  /// Files), `setvisible:<relative path>:on|off`, `quickopen:<query>|off`,
+  /// `quickopenhidden:on|off`.
   @MainActor enum DebugAutomation {
     private static var observer: NSObjectProtocol?
 
@@ -99,6 +102,24 @@
         if !argument.isEmpty { UserDefaults.standard.set(argument, forKey: "settings.tab") }
         AppState.shared.debugOpenSettings?()
       case "issues": model.isIssuesPresented.toggle()
+      case "hidden":
+        // The navigator's Show Hidden Files: hidden:on|off.
+        model.workspace.visibility.showsHiddenFiles = argument != "off"
+      case "choose":
+        // Choose Visible Files: choose:on|off.
+        model.isChoosingVisibleFiles = argument != "off"
+      case "setvisible":
+        // setvisible:<relative path>:on|off.
+        if let colon = argument.lastIndex(of: ":") {
+          let url = model.workspace.root.appendingPathComponent(String(argument[..<colon]))
+          model.workspace.tree.reveal(url)
+          model.workspace.setVisible(url, argument[argument.index(after: colon)...] != "off")
+        }
+      case "quickopen":
+        // Opens Open Quickly with a query; quickopen:off closes it.
+        model.isQuickOpenPresented = argument != "off"
+        if argument != "off" { model.quickOpenQuery = argument }
+      case "quickopenhidden": model.quickOpenIncludesHiddenFiles = argument != "off"
       case "back": services.goBack()
       case "continue": services.debugger?.continueRunning()
       case "step": services.debugger?.stepOver()
@@ -133,6 +154,12 @@
           lines.append("  text length \(textView.string.count) visible \(textView.visibleRect) clip \(textView.enclosingScrollView?.contentView.bounds ?? .zero) container \(textView.textContainer?.size ?? .zero) inset \(textView.textContainerInset) origin \(textView.textContainerOrigin)")
         }
         lines.append("tabs: \(model.workspace.tabs.map(\.name))")
+        let index = model.workspace.index
+        lines.append("index: \(index.paths.count) visible, \(index.hiddenPaths.count) hidden")
+        lines.append(
+          "quick open: "
+            + index.search(model.quickOpenQuery, includingHidden: model.quickOpenIncludesHiddenFiles, limit: 10)
+            .map { $0.path + ($0.isHidden ? " (hidden)" : "") }.joined(separator: ", "))
         lines.append("log tail:")
         lines += actions.log.entries.suffix(15).map { "  " + $0.text }
         try? lines.joined(separator: "\n").write(

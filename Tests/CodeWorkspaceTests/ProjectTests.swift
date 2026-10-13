@@ -22,7 +22,7 @@ private final class TempFolder {
 }
 
 @MainActor @Suite struct ProjectTests {
-  @Test func treeSortsFoldersFirstAndHidesExcluded() throws {
+  @Test func treeSortsFoldersFirstAndMarksHidden() throws {
     let temp = try TempFolder()
     try temp.file("b.swift")
     try temp.file("A10.txt")
@@ -31,8 +31,9 @@ private final class TempFolder {
     try temp.file(".git/HEAD")
     try temp.file(".gitignore")
     let tree = FileTree(root: temp.url)
-    #expect(tree.root.children?.map(\.name) == ["Sources", ".gitignore", "A9.txt", "A10.txt", "b.swift"])
-    let sources = tree.root.children![0]
+    #expect(tree.root.children?.map(\.name) == [".git", "Sources", ".gitignore", "A9.txt", "A10.txt", "b.swift"])
+    #expect(tree.root.children?.filter(\.isHidden).map(\.name) == [".git"])
+    let sources = tree.root.children![1]
     #expect(sources.children == nil)
     tree.setExpanded(sources, true)
     #expect(sources.children?.map(\.name) == ["x.swift"])
@@ -75,13 +76,103 @@ private final class TempFolder {
     #expect(tree.relativePath(of: node!.url) == "a/b/c.swift")
   }
 
-  @Test func indexSkipsExcludedFolders() throws {
+  @Test func gitIgnorePatterns() throws {
+    func ignored(_ lines: String, _ path: String, directory: Bool = false) throws -> Bool {
+      let temp = try TempFolder()
+      try temp.file(".gitignore", lines)
+      var ignore = GitIgnore(root: temp.url)
+      if let slash = path.lastIndex(of: "/") { ignore.load(folder: String(path[..<slash])) }
+      return ignore.rule(ignoring: path, isDirectory: directory) != nil
+    }
+    #expect(try ignored("build/", "build", directory: true))
+    #expect(try !ignored("build/", "build"))
+    #expect(try ignored("build/", "Sources/build", directory: true))
+    #expect(try !ignored("/build", "Sources/build"))
+    #expect(try ignored("*.log", "a/b/x.log"))
+    #expect(try !ignored("*.log\n!keep.log", "keep.log"))
+    #expect(try ignored("doc/*.txt", "doc/a.txt"))
+    #expect(try !ignored("doc/*.txt", "doc/sub/a.txt"))
+    #expect(try ignored("doc/**/a.txt", "doc/a.txt"))
+    #expect(try ignored("doc/**/a.txt", "doc/x/y/a.txt"))
+    #expect(try ignored("**/cache", "a/b/cache", directory: true))
+    #expect(try ignored("x/**", "x/y/z"))
+    #expect(try ignored("file[0-9].txt", "file7.txt"))
+    #expect(try !ignored("file[!0-9].txt", "file7.txt"))
+    #expect(try ignored("# comment\n\n.DS_Store  ", ".DS_Store"))
+  }
+
+  @Test func gitIgnoreOutsideARepositoryStopsAtTheRoot() {
+    // Looking for the repository walked "/" → "/.." forever once.
+    let ignore = GitIgnore(root: URL(fileURLWithPath: "/"))
+    #expect(ignore.rule(ignoring: "x.swift", isDirectory: false) == nil)
+  }
+
+  @Test func nestedGitIgnoreOverridesParent() throws {
     let temp = try TempFolder()
+    try temp.file(".gitignore", "*.gen\n")
+    try temp.file("Sources/.gitignore", "!keep.gen\n")
+    try temp.file("Sources/keep.gen")
+    try temp.file("Sources/drop.gen")
+    let tree = FileTree(root: temp.url)
+    let sources = tree.root.children!.first { $0.name == "Sources" }!
+    tree.setExpanded(sources, true)
+    #expect(sources.children?.filter(\.isHidden).map(\.name) == ["drop.gen"])
+  }
+
+  @Test func userChoicesOverrideRules() throws {
+    let temp = try TempFolder()
+    try temp.file(".gitignore", "build/\nCLAUDE.md\n")
+    try temp.file("build/out.o")
+    try temp.file("CLAUDE.md")
+    try temp.file("Tests/a.swift")
+    let defaults = UserDefaults(suiteName: "CodeKitTests-\(UUID().uuidString)")!
+    let workspace = Workspace(root: temp.url, defaults: defaults)
+    let tree = workspace.tree
+    func hidden() -> [String] { tree.root.children!.filter(\.isHidden).map(\.name) }
+    #expect(hidden() == ["build", "CLAUDE.md"])
+    #expect(tree.root.children!.first { $0.name == "build" }?.hiddenReason == .gitIgnore("build/"))
+
+    workspace.setVisible(temp.url.appendingPathComponent("CLAUDE.md"), true)
+    workspace.setVisible(temp.url.appendingPathComponent("Tests"), false)
+    #expect(hidden() == ["build", "Tests"])
+    #expect(workspace.visibility.shownPaths == ["CLAUDE.md"])
+    #expect(workspace.visibility.hiddenPaths == ["Tests"])
+
+    // Saved per project.
+    let reopened = Workspace(root: temp.url, defaults: defaults)
+    #expect(reopened.tree.root.children!.filter(\.isHidden).map(\.name) == ["build", "Tests"])
+
+    var visibility = workspace.visibility
+    visibility.hidesIgnoredFiles = false
+    workspace.visibility = visibility
+    #expect(hidden() == ["Tests"])
+    workspace.restoreDefaultVisibility()
+    #expect(hidden() == ["build", "CLAUDE.md"])
+    workspace.hidesIgnoredFilesByDefault = false
+    #expect(hidden() == [])
+  }
+
+  @Test func indexListsHiddenFilesSeparately() throws {
+    let temp = try TempFolder()
+    try temp.file(".gitignore", "node_modules/\n")
     try temp.file("Sources/a.swift")
     try temp.file("node_modules/x/index.js")
     try temp.file(".git/HEAD")
-    let result = FileIndex.enumerate(temp.url, excluding: FileTree.defaultExcludedNames)
-    #expect(result.paths == ["Sources/a.swift"])
+    let rules = VisibilityRules(visibility: FileVisibility(), hidesIgnoredFiles: true)
+    let visible = FileIndex.enumerate(temp.url, rules: rules, includingHidden: false)
+    #expect(visible.paths == [".gitignore", "Sources/a.swift"])
+    #expect(visible.hiddenPaths.isEmpty)
+    // The inside of .git stays out even with hidden files.
+    let all = FileIndex.enumerate(temp.url, rules: rules, includingHidden: true)
+    #expect(all.paths == visible.paths)
+    #expect(all.hiddenPaths == ["node_modules/x/index.js"])
+  }
+
+  @Test func searchRanksHiddenFilesBelowVisibleOnes() {
+    let results = FileIndex.search(
+      "demo", in: ["Sources/DemoKit/Demo.swift"], hidden: [".build/debug/Demo"], limit: 10)
+    #expect(results.map(\.path) == ["Sources/DemoKit/Demo.swift", ".build/debug/Demo"])
+    #expect(results.map(\.isHidden) == [false, true])
   }
 
   @Test func fuzzyMatchRanksWordStartsAndFileNames() {

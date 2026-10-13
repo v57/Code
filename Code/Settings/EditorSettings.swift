@@ -14,7 +14,7 @@ enum EditorSettings {
   static let highlightCurrentLine = "editor.highlightCurrentLine"
   static let autoCloseDelimiters = "editor.autoCloseDelimiters"
   static let trimTrailingWhitespace = "editor.trimTrailingWhitespace"
-  static let excludedNames = "files.excludedNames"
+  static let hidesIgnoredFiles = "files.hidesIgnoredFiles"
   static let showExtensions = "files.showExtensions"
   static let showsMinimap = "editor.showsMinimap"
   static let showsInlineIssues = "editor.showsInlineIssues"
@@ -30,18 +30,10 @@ enum EditorSettings {
   static let formatterCommands = "formatting.commands"  // JSON {id: path}
 
   static let defaultFontSize = 13.0
-  static let defaultExcludedNames = FileTree.defaultExcludedNames.sorted().joined(separator: ", ")
 
-  /// "a, b,c" → ["a", "b", "c"].
-  static func excludedNames(from text: String) -> Set<String> {
-    Set(
-      text.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-        .filter { !$0.isEmpty })
-  }
-
-  /// The excluded names as currently stored.
-  static var storedExcludedNames: Set<String> {
-    excludedNames(from: UserDefaults.standard.string(forKey: excludedNames) ?? defaultExcludedNames)
+  /// Whether `.gitignore` hides files, as currently stored (on by default).
+  static var storedHidesIgnoredFiles: Bool {
+    UserDefaults.standard.object(forKey: hidesIgnoredFiles) as? Bool ?? true
   }
 }
 

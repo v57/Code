@@ -6,8 +6,7 @@ import SwiftUI
 struct WorkspaceView: View {
   @Environment(WindowModel.self) private var model
   @Environment(Workspace.self) private var workspace
-  @AppStorage(EditorSettings.excludedNames) private var excludedNames =
-    EditorSettings.defaultExcludedNames
+  @AppStorage(EditorSettings.hidesIgnoredFiles) private var hidesIgnoredFiles = true
   @AppStorage("console.height") private var consoleHeight = 220.0
   private let serviceSettings = ServiceSettingsReader()
   #if DEBUG
@@ -82,8 +81,8 @@ struct WorkspaceView: View {
     } message: {
       Text("You can restore it from the Trash.")
     }
-    .onChange(of: excludedNames) { _, names in
-      workspace.excludedNames = EditorSettings.excludedNames(from: names)
+    .onChange(of: hidesIgnoredFiles) { _, hides in
+      workspace.hidesIgnoredFilesByDefault = hides
     }
     .onChange(of: workspace.selectedTabID, initial: true) { _, _ in
       // Follow the selected tab in the sidebar.

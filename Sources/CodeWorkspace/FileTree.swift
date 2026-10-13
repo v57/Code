@@ -9,26 +9,45 @@ import Observation
 /// keeps the nodes of entries that still exist, so expansion and selection
 /// survive.
 @MainActor @Observable public final class FileTree {
-  /// Names hidden from the tree and from Quick Open.
-  public static let defaultExcludedNames: Set<String> = [
-    ".git", ".svn", ".hg", ".DS_Store", ".build", ".swiftpm", "DerivedData", "node_modules",
-    "xcuserdata",
-  ]
-
   public let root: FileNode
   /// Expanded folders. The sidebar binds disclosure state to this.
   public var expanded: Set<URL> = []
-  public var excludedNames: Set<String> {
+  /// The project's hidden-file choices. Changing them updates every loaded
+  /// node's `hiddenReason`.
+  public var visibility: FileVisibility {
     didSet {
-      guard excludedNames != oldValue else { return }
-      reloadAll()
+      guard visibility != oldValue else { return }
+      refreshHidden()
     }
   }
+  /// The app's setting, for projects that haven't chosen
+  /// (`visibility.hidesIgnoredFiles` is nil).
+  public var hidesIgnoredFilesByDefault: Bool {
+    didSet {
+      guard hidesIgnoredFilesByDefault != oldValue else { return }
+      refreshHidden()
+    }
+  }
+  /// Whether `.gitignore` hides files in this project.
+  public var hidesIgnoredFiles: Bool { visibility.hidesIgnoredFiles ?? hidesIgnoredFilesByDefault }
 
-  public init(root url: URL, excludedNames: Set<String> = FileTree.defaultExcludedNames) {
-    self.excludedNames = excludedNames
-    root = FileNode(url: url.standardizedFileURL, isDirectory: true, parent: nil)
+  @ObservationIgnored private var gitIgnore: GitIgnore
+
+  public init(
+    root url: URL, visibility: FileVisibility = FileVisibility(),
+    hidesIgnoredFilesByDefault: Bool = true
+  ) {
+    self.visibility = visibility
+    self.hidesIgnoredFilesByDefault = hidesIgnoredFilesByDefault
+    let url = url.standardizedFileURL
+    gitIgnore = GitIgnore(root: url)
+    root = FileNode(url: url, isDirectory: true, parent: nil)
     loadChildren(of: root)
+  }
+
+  /// The rules as they are now, for the index to enumerate with.
+  var rules: VisibilityRules {
+    VisibilityRules(visibility: visibility, hidesIgnoredFiles: hidesIgnoredFiles)
   }
 
   // MARK: - Reading
@@ -36,7 +55,9 @@ import Observation
   /// Lists `node`'s children if it is a folder that has not been read yet.
   public func loadChildren(of node: FileNode) {
     guard node.isDirectory, node.children == nil else { return }
-    node.children = list(node)
+    let children = list(node)
+    updateHidden(children)
+    node.children = children
   }
 
   /// Expands or collapses a folder, reading it first when it expands.
@@ -72,6 +93,7 @@ import Observation
       if let old = existing[listed.name], old.isDirectory == listed.isDirectory { return old }
       return listed
     }
+    updateHidden(fresh)
     if fresh.map(\.id) != (node.children ?? []).map(\.id) { node.children = fresh }
   }
 
@@ -142,25 +164,72 @@ import Observation
   }
 
   private func list(_ node: FileNode) -> [FileNode] {
-    Self.listDirectory(node.url, excluding: excludedNames).map {
+    let folder = node === root ? "" : relativePath(of: node.url)
+    gitIgnore.load(folder: folder)
+    return Self.listDirectory(node.url).map {
       FileNode(url: $0.url, isDirectory: $0.isDirectory, parent: node)
     }
   }
 
-  /// The entries of `directory`: hidden files included (projects live on
-  /// dotfiles), `excluded` names left out, folders first, then Finder order.
-  /// A symlink to a folder counts as a folder.
-  public nonisolated static func listDirectory(_ directory: URL, excluding excluded: Set<String>)
-    -> [(url: URL, isDirectory: Bool)]
+  /// Sets `hiddenReason` on `nodes` from the current rules.
+  private func updateHidden(_ nodes: [FileNode]) {
+    let rules = rules
+    for node in nodes {
+      let reason = rules.reason(
+        for: relativePath(of: node.url), isDirectory: node.isDirectory, gitIgnore: gitIgnore)
+      if node.hiddenReason != reason { node.hiddenReason = reason }
+    }
+  }
+
+  /// Applies the rules again to every loaded node.
+  private func refreshHidden() {
+    func walk(_ node: FileNode) {
+      guard let children = node.children else { return }
+      updateHidden(children)
+      for child in children where child.isDirectory { walk(child) }
+    }
+    walk(root)
+  }
+
+  /// Re-reads every `.gitignore` (one changed on disk) and applies them.
+  public func reloadGitIgnore() {
+    gitIgnore.reload()
+    refreshHidden()
+  }
+
+  // MARK: - Hidden files
+
+  /// Why the rules hide `node`, even when the user shows it anyway.
+  public func ruleReason(for node: FileNode) -> HiddenReason? {
+    rules.ruleReason(for: relativePath(of: node.url), isDirectory: node.isDirectory, gitIgnore: gitIgnore)
+  }
+
+  /// The visibility with `node` shown or hidden: hiding adds it to the
+  /// user's hidden paths; showing one that a rule hides adds it to the shown
+  /// paths. (`Workspace.setVisible` applies and saves it.)
+  public func visibility(setting node: FileNode, visible: Bool) -> FileVisibility {
+    let path = relativePath(of: node.url)
+    var visibility = visibility
+    visibility.hiddenPaths.remove(path)
+    visibility.shownPaths.remove(path)
+    let rules = VisibilityRules(visibility: visibility, hidesIgnoredFiles: hidesIgnoredFiles)
+    let isRuled =
+      rules.ruleReason(for: path, isDirectory: node.isDirectory, gitIgnore: gitIgnore) != nil
+    if visible && isRuled { visibility.shownPaths.insert(path) }
+    if !visible && !isRuled { visibility.hiddenPaths.insert(path) }
+    return visibility
+  }
+
+  /// The entries of `directory`, dotfiles included, folders first, then
+  /// Finder order. A symlink to a folder counts as a folder.
+  public nonisolated static func listDirectory(_ directory: URL) -> [(url: URL, isDirectory: Bool)]
   {
     let keys: [URLResourceKey] = [.isDirectoryKey, .isSymbolicLinkKey]
     guard
       let urls = try? FileManager.default.contentsOfDirectory(
         at: directory, includingPropertiesForKeys: keys)
     else { return [] }
-    let entries = urls.compactMap { url -> (url: URL, isDirectory: Bool)? in
-      let name = url.lastPathComponent
-      guard !excluded.contains(name) else { return nil }
+    let entries = urls.map { url -> (url: URL, isDirectory: Bool) in
       let values = try? url.resourceValues(forKeys: Set(keys))
       var isDirectory = values?.isDirectory ?? false
       if values?.isSymbolicLink == true {
@@ -216,6 +285,10 @@ import Observation
     let newURL = try destination(named: name, in: url.deletingLastPathComponent())
     try FileManager.default.moveItem(at: url, to: newURL)
     if expanded.remove(url) != nil { expanded.insert(newURL) }
+    let oldPath = relativePath(of: url)
+    let newPath = relativePath(of: newURL)
+    if visibility.hiddenPaths.remove(oldPath) != nil { visibility.hiddenPaths.insert(newPath) }
+    if visibility.shownPaths.remove(oldPath) != nil { visibility.shownPaths.insert(newPath) }
     node(for: url)?.relocate(to: newURL)
     reload(directory: url.deletingLastPathComponent())
     return newURL

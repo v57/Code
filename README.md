@@ -15,8 +15,9 @@ Libraries
 
     CodeHighlighting   languages, incremental highlighter, bracket matching,
                        themes (platform-neutral, no dependencies)
-    CodeWorkspace      file tree, file watching, Quick Open index, text
-                       documents with autosave, tabs and sessions (neutral)
+    CodeWorkspace      file tree, .gitignore and hidden files, file watching,
+                       Quick Open index, text documents with autosave, tabs
+                       and sessions (neutral)
     CodeEditor         the AppKit editor: CodeTextView, line numbers,
                        CodeEditorScrollView, SwiftUI CodeTextEditor(text:)
     CodeActions        schemes found in a folder (Xcode, SwiftPM, Cargo, Go,
@@ -160,9 +161,17 @@ Architecture
 
 Features
 
-  - Sidebar file tree: lazy folders, live updates from disk, hidden names
-    (.git, node_modules, … configurable), New File/Folder (paths with "/"
-    create folders), Rename, Move to Trash, Show in Finder, Copy Path.
+  - Sidebar file tree: lazy folders, live updates from disk, New File/Folder
+    (paths with "/" create folders), Rename, Move to Trash, Show in Finder,
+    Copy Path.
+  - Hidden files: files matching .gitignore (the project's, those above it up
+    to the repository root, and .git/info/exclude) and .git, .svn, .hg,
+    .DS_Store are hidden from the sidebar and Open Quickly. ⇧⌘. or the eye
+    in the sidebar footer shows them dimmed; Choose Visible Files (the
+    checklist button) puts a checkbox on every item to hide or show it in
+    this project, overriding .gitignore, with a per-project .gitignore
+    switch. Open Quickly's Hidden Files button (⇧⌘. while it's open)
+    searches them too, ranked below visible files.
   - Tabs: preview tab on single click (italic), kept on double click or edit,
     unsaved dot, drag to reorder, Close Others/All.
   - Editor: line numbers, current-line highlight, Xcode's Default

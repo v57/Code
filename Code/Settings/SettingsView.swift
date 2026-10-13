@@ -99,20 +99,17 @@ private struct EditorSettingsView: View {
 }
 
 private struct FilesSettingsView: View {
-  @AppStorage(EditorSettings.excludedNames) private var excludedNames =
-    EditorSettings.defaultExcludedNames
+  @AppStorage(EditorSettings.hidesIgnoredFiles) private var hidesIgnoredFiles = true
   @AppStorage(EditorSettings.showExtensions) private var showExtensions = false
 
   var body: some View {
     Form {
       Toggle("Show file extensions", isOn: $showExtensions)
       Divider()
-      TextField("Hidden names:", text: $excludedNames, axis: .vertical)
-        .lineLimit(3...6)
-      Text("Files and folders with these names are hidden from the sidebar and Quick Open. Separate names with commas.")
+      Toggle("Hide files listed in .gitignore", isOn: $hidesIgnoredFiles)
+      Text("For projects that haven’t chosen. Choose a project’s visible files from its navigator (View › Choose Visible Files); ⇧⌘. shows hidden files.")
         .font(.caption)
         .foregroundStyle(.secondary)
-      Button("Restore Defaults") { excludedNames = EditorSettings.defaultExcludedNames }
     }
     .padding(20)
   }

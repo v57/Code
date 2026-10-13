@@ -48,7 +48,10 @@ struct CodeCommands: Commands {
     }
 
     CommandMenu("Go") {
-      Button("Open Quickly…") { model?.isQuickOpenPresented = true }
+      Button("Open Quickly…") {
+        model?.quickOpenQuery = ""
+        model?.isQuickOpenPresented = true
+      }
         .keyboardShortcut("o", modifiers: [.command, .shift])
         .disabled(model == nil)
       Button("Go to Line…") { model?.isGoToLinePresented = true }
@@ -177,6 +180,14 @@ struct CodeCommands: Commands {
       }
       .keyboardShortcut("0")
       .disabled(model == nil)
+      Button(hiddenFilesTitle) { model?.toggleHiddenFiles() }
+        .keyboardShortcut(".", modifiers: [.command, .shift])
+        .disabled(model == nil)
+      Button("Choose Visible Files") {
+        model?.isNavigatorVisible = true
+        model?.isChoosingVisibleFiles = true
+      }
+      .disabled(model == nil || model?.isChoosingVisibleFiles == true)
       Divider()
       Toggle("Wrap Lines", isOn: $wrapLines)
         .keyboardShortcut("z", modifiers: [.option])
@@ -203,6 +214,15 @@ struct CodeCommands: Commands {
 
     TextEditingCommands()
     SidebarCommands()
+  }
+
+  /// ⇧⌘. acts on Open Quickly while it is open, else on the navigator.
+  private var hiddenFilesTitle: String {
+    guard let model else { return "Show Hidden Files" }
+    if model.isQuickOpenPresented {
+      return model.quickOpenIncludesHiddenFiles ? "Leave Out Hidden Files" : "Include Hidden Files"
+    }
+    return model.workspace.visibility.showsHiddenFiles ? "Hide Hidden Files" : "Show Hidden Files"
   }
 
   /// ⌘W closes the current tab, or the window when no tab is open, as in

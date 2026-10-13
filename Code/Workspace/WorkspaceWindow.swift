@@ -88,7 +88,7 @@ struct WorkspaceWindow: View {
       DispatchQueue.main.async { [window] in window.window?.close() }
       return
     }
-    let workspace = Workspace(root: root, excludedNames: EditorSettings.storedExcludedNames)
+    let workspace = Workspace(root: root, hidesIgnoredFiles: EditorSettings.storedHidesIgnoredFiles)
     AppState.shared.register(workspace, window: window)
     AppState.shared.recents.add(root)
     for file in AppState.shared.takePendingFiles(for: root) {

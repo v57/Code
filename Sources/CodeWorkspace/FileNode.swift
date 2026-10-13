@@ -11,6 +11,9 @@ import Observation
   /// Nil until loaded; always nil for files.
   public internal(set) var children: [FileNode]?
   @ObservationIgnored public internal(set) weak var parent: FileNode?
+  /// Why this item is hidden on its own; nil when its rules show it (it may
+  /// still be inside a hidden folder: see `isHidden`).
+  public internal(set) var hiddenReason: HiddenReason?
 
   init(url: URL, isDirectory: Bool, parent: FileNode?) {
     self.url = url
@@ -20,6 +23,12 @@ import Observation
 
   public nonisolated var id: ObjectIdentifier { ObjectIdentifier(self) }
   public var name: String { url.lastPathComponent }
+
+  /// Hidden on its own or inside a hidden folder.
+  public var isHidden: Bool { hiddenReason != nil || isInHiddenFolder }
+
+  /// Inside a hidden folder.
+  public var isInHiddenFolder: Bool { parent?.isHidden ?? false }
 
   /// Moves this node and its loaded descendants to `newURL` (after a rename).
   func relocate(to newURL: URL) {

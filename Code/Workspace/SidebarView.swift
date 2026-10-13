@@ -3,6 +3,11 @@ import SwiftUI
 
 /// The project's file tree. A click opens a file in the preview tab; a
 /// double click (or Return) keeps it open.
+///
+/// Hidden files (`.gitignore` matches, `.git`, items the user hid) are left
+/// out unless Show Hidden Files (⇧⌘.) is on, which lists them dimmed. Choose
+/// Visible Files puts a checkbox on every item to change what the project
+/// hides.
 struct SidebarView: View {
   @Environment(WindowModel.self) private var model
   @Environment(Workspace.self) private var workspace
@@ -10,11 +15,28 @@ struct SidebarView: View {
 
   var body: some View {
     @Bindable var model = model
-    ScrollViewReader { proxy in
+    VStack(spacing: 0) {
+      if model.isChoosingVisibleFiles { ChooseVisibleFilesHeader() }
+      tree
+      Divider()
+      bottomBar
+    }
+    .dropDestination(for: URL.self) { urls, _ in
+      // A folder dropped from Finder opens as a project.
+      for url in urls where url.isFileURL && !url.path.hasPrefix(workspace.root.path + "/") {
+        AppState.shared.open(url)
+      }
+      return true
+    }
+  }
+
+  private var tree: some View {
+    @Bindable var model = model
+    return ScrollViewReader { proxy in
       // The project is the top row, expanded, as in Xcode's navigator.
       List(selection: $model.sidebarSelection) {
         DisclosureGroup(isExpanded: $isRootExpanded) {
-          ForEach(workspace.tree.root.children ?? []) { node in
+          ForEach(visibleChildren(of: workspace.tree.root)) { node in
             FileTreeRow(node: node)
           }
         } label: {
@@ -48,34 +70,44 @@ struct SidebarView: View {
     .onDeleteCommand {
       if let url = model.sidebarSelection { model.trashCandidate = url }
     }
-    .safeAreaInset(edge: .bottom, spacing: 0) { bottomBar }
-    .dropDestination(for: URL.self) { urls, _ in
-      // A folder dropped from Finder opens as a project.
-      for url in urls where url.isFileURL && !url.path.hasPrefix(workspace.root.path + "/") {
-        AppState.shared.open(url)
-      }
-      return true
-    }
   }
 
-  /// Xcode's navigator footer: the "+" menu for new files and folders.
-  private var bottomBar: some View {
-    HStack {
-      Menu {
-        Button("New File…") { model.ask(.newFile(in: model.targetFolder)) }
-        Button("New Folder…") { model.ask(.newFolder(in: model.targetFolder)) }
-      } label: {
-        Image(systemName: "plus")
-          .font(.system(size: 13, weight: .medium))
-          .frame(width: 22, height: 22)
-          .background(Circle().fill(Color.primary.opacity(0.08)))
+  /// Xcode's navigator footer: the "+" menu for new files and folders, and
+  /// the hidden-file buttons. While choosing visible files: Restore Defaults.
+  @ViewBuilder private var bottomBar: some View {
+    HStack(spacing: 6) {
+      if model.isChoosingVisibleFiles {
+        Button("Restore Defaults") { workspace.restoreDefaultVisibility() }
+          .controlSize(.small)
+          .disabled(workspace.visibility.isDefault)
+        Spacer()
+      } else {
+        Menu {
+          Button("New File…") { model.ask(.newFile(in: model.targetFolder)) }
+          Button("New Folder…") { model.ask(.newFolder(in: model.targetFolder)) }
+        } label: {
+          Image(systemName: "plus")
+            .font(.system(size: 13, weight: .medium))
+            .frame(width: 22, height: 22)
+            .background(Circle().fill(Color.primary.opacity(0.08)))
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("Add a file or folder")
+        Spacer()
+        let showsHidden = workspace.visibility.showsHiddenFiles
+        FooterButton(
+          symbol: showsHidden ? "eye" : "eye.slash", isOn: showsHidden,
+          help: showsHidden ? "Hide Hidden Files (⇧⌘.)" : "Show Hidden Files (⇧⌘.)"
+        ) {
+          workspace.visibility.showsHiddenFiles.toggle()
+        }
+        FooterButton(symbol: "checklist", isOn: false, help: "Choose Visible Files") {
+          model.isChoosingVisibleFiles = true
+        }
       }
-      .menuStyle(.button)
-      .buttonStyle(.plain)
-      .menuIndicator(.hidden)
-      .fixedSize()
-      .help("Add a file or folder")
-      Spacer()
     }
     .padding(.horizontal, 10)
     .frame(height: StatusBar.height)
@@ -110,6 +142,14 @@ struct SidebarView: View {
       Divider()
       Button("Rename…") { model.ask(.rename(node.url)) }
       Button("Move to Trash") { model.trashCandidate = node.url }
+      if !node.isInHiddenFolder {
+        Divider()
+        if node.hiddenReason != nil {
+          Button("Show in Navigator") { workspace.setVisible(node.url, true) }
+        } else {
+          Button("Hide in Navigator") { workspace.setVisible(node.url, false) }
+        }
+      }
     } else {
       Divider()
       Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([workspace.root]) }
@@ -123,16 +163,77 @@ struct SidebarView: View {
   }
 }
 
+/// A footer icon button, tinted while its option is on.
+private struct FooterButton: View {
+  let symbol: String
+  let isOn: Bool
+  let help: String
+  let action: () -> Void
+
+  var body: some View {
+    Button(action: action) {
+      Image(systemName: symbol)
+        .font(.system(size: 13))
+        .foregroundStyle(isOn ? Color.accentColor : Color.secondary)
+        .frame(width: 24, height: 22)
+        .background(
+          RoundedRectangle(cornerRadius: 5).fill(isOn ? Color.accentColor.opacity(0.15) : .clear))
+        .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .help(help)
+    .accessibilityLabel(help)
+  }
+}
+
+/// Above the tree while choosing visible files: what the checkboxes do,
+/// the project's `.gitignore` switch and Done.
+private struct ChooseVisibleFilesHeader: View {
+  @Environment(WindowModel.self) private var model
+  @Environment(Workspace.self) private var workspace
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      HStack {
+        Text("Visible Files").fontWeight(.semibold)
+        Spacer()
+        Button("Done") { model.isChoosingVisibleFiles = false }
+          .buttonStyle(.borderedProminent)
+          .controlSize(.small)
+      }
+      Text("Uncheck what this project shouldn’t show. Hidden files stay out of the navigator and Open Quickly.")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .lineLimit(3)
+      Toggle("Hide files listed in .gitignore", isOn: hidesIgnoredFiles)
+        .toggleStyle(.checkbox)
+        .font(.callout)
+    }
+    .padding(.horizontal, 12)
+    .padding(.vertical, 10)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .overlay(alignment: .bottom) { Divider() }
+  }
+
+  /// The project's choice; following the app's setting until changed.
+  private var hidesIgnoredFiles: Binding<Bool> {
+    Binding(
+      get: { workspace.tree.hidesIgnoredFiles },
+      set: { workspace.visibility.hidesIgnoredFiles = $0 })
+  }
+}
+
 /// A file, or a folder with its children when expanded.
 struct FileTreeRow: View {
   let node: FileNode
   @Environment(Workspace.self) private var workspace
+  @Environment(WindowModel.self) private var model
   @AppStorage(EditorSettings.showExtensions) private var showExtensions = false
 
   var body: some View {
     if node.isDirectory {
       DisclosureGroup(isExpanded: isExpanded) {
-        ForEach(node.children ?? []) { child in
+        ForEach(visibleChildren(of: node)) { child in
           FileTreeRow(node: child)
         }
       } label: {
@@ -147,16 +248,57 @@ struct FileTreeRow: View {
   }
 
   private var label: some View {
-    Label {
-      Text(FileIcon.displayName(node.url, showExtensions: showExtensions))
-        .lineLimit(1)
-        .truncationMode(.middle)
-    } icon: {
-      Image(systemName: FileIcon.symbol(for: node.url, isDirectory: node.isDirectory))
-        .foregroundStyle(FileIcon.tint(for: node.url, isDirectory: node.isDirectory))
+    let isHidden = node.isHidden
+    return HStack(spacing: 6) {
+      if model.isChoosingVisibleFiles {
+        Toggle("Show \(node.name)", isOn: isVisible)
+          .toggleStyle(.checkbox)
+          .labelsHidden()
+          .disabled(node.isInHiddenFolder)
+      }
+      Label {
+        Text(FileIcon.displayName(node.url, showExtensions: showExtensions))
+          .lineLimit(1)
+          .truncationMode(.middle)
+          .foregroundStyle(isHidden ? .secondary : .primary)
+      } icon: {
+        Image(systemName: FileIcon.symbol(for: node.url, isDirectory: node.isDirectory))
+          .foregroundStyle(FileIcon.tint(for: node.url, isDirectory: node.isDirectory))
+          .opacity(isHidden ? 0.45 : 1)
+      }
+      Spacer(minLength: 0)
+      if model.isChoosingVisibleFiles {
+        if case .gitIgnore(let line) = workspace.tree.ruleReason(for: node) {
+          Text(".gitignore")
+            .font(.system(size: 10, design: .monospaced))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 4)
+            .background(RoundedRectangle(cornerRadius: 3).fill(Color.primary.opacity(0.07)))
+            .help("Matches .gitignore: \(line)")
+        }
+      } else if let reason = node.hiddenReason {
+        Image(systemName: "eye.slash")
+          .font(.system(size: 10))
+          .foregroundStyle(.secondary)
+          .help(reason.description)
+          .accessibilityLabel("Hidden")
+      }
     }
-    .help(workspace.tree.relativePath(of: node.url))
+    .help(help)
     .draggable(node.url)
+  }
+
+  private var help: String {
+    let path = workspace.tree.relativePath(of: node.url)
+    if let reason = node.hiddenReason { return path + " — " + reason.description }
+    if node.isInHiddenFolder { return path + " — In a hidden folder" }
+    return path
+  }
+
+  private var isVisible: Binding<Bool> {
+    Binding(
+      get: { !node.isHidden },
+      set: { workspace.setVisible(node.url, $0) })
   }
 
   private var isExpanded: Binding<Bool> {
@@ -166,5 +308,25 @@ struct FileTreeRow: View {
         workspace.tree.setExpanded(node, expanded)
         workspace.saveSession()
       })
+  }
+
+  private func visibleChildren(of node: FileNode) -> [FileNode] {
+    SidebarView.visibleChildren(of: node, workspace: workspace, model: model)
+  }
+}
+
+extension SidebarView {
+  /// `node`'s children, without hidden ones unless the navigator shows them
+  /// or the user is choosing what to show.
+  fileprivate func visibleChildren(of node: FileNode) -> [FileNode] {
+    Self.visibleChildren(of: node, workspace: workspace, model: model)
+  }
+
+  fileprivate static func visibleChildren(
+    of node: FileNode, workspace: Workspace, model: WindowModel
+  ) -> [FileNode] {
+    let children = node.children ?? []
+    if workspace.visibility.showsHiddenFiles || model.isChoosingVisibleFiles { return children }
+    return children.filter { !$0.isHidden }
   }
 }

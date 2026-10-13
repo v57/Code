@@ -37,16 +37,18 @@ import Observation
   /// ("/private/tmp/…" for "/tmp/…").
   @ObservationIgnored private let resolvedRootPath: String
 
-  public init(
-    root: URL, excludedNames: Set<String> = FileTree.defaultExcludedNames,
-    defaults: UserDefaults = .standard
-  ) {
+  /// `hidesIgnoredFiles` is the app's setting, for projects that haven't
+  /// chosen whether `.gitignore` hides files.
+  public init(root: URL, hidesIgnoredFiles: Bool = true, defaults: UserDefaults = .standard) {
     let root = root.standardizedFileURL
     self.root = root
     self.defaults = defaults
     resolvedRootPath = FileTree.realPath(of: root)
-    tree = FileTree(root: root, excludedNames: excludedNames)
-    index = FileIndex(root: root, excludedNames: excludedNames)
+    let visibility =
+      defaults.data(forKey: Self.visibilityKey(root))
+      .flatMap { try? JSONDecoder().decode(FileVisibility.self, from: $0) } ?? FileVisibility()
+    tree = FileTree(root: root, visibility: visibility, hidesIgnoredFilesByDefault: hidesIgnoredFiles)
+    index = FileIndex(root: root, rules: tree.rules)
     index.rebuild()
     watcher = FileWatcher(root: root) { [weak self] changes in self?.filesChanged(changes) }
     restoreSession()
@@ -65,13 +67,64 @@ import Observation
 
   public func isPreview(_ document: TextDocument) -> Bool { document.id == previewTabID }
 
-  /// The excluded names for the tree and Quick Open.
-  public var excludedNames: Set<String> {
-    get { tree.excludedNames }
+  // MARK: - Hidden files
+
+  /// The project's hidden-file choices, saved for the next time it opens.
+  /// The navigator and Quick Open follow changes.
+  public var visibility: FileVisibility {
+    get { tree.visibility }
     set {
-      tree.excludedNames = newValue
-      index.rebuild(excludedNames: newValue)
+      guard newValue != tree.visibility else { return }
+      let rulesChanged = !Self.sameRules(newValue, tree.visibility)
+      tree.visibility = newValue
+      saveVisibility()
+      if rulesChanged { rulesDidChange() }
     }
+  }
+
+  /// The app's setting, for projects that haven't chosen whether
+  /// `.gitignore` hides files.
+  public var hidesIgnoredFilesByDefault: Bool {
+    get { tree.hidesIgnoredFilesByDefault }
+    set {
+      guard newValue != tree.hidesIgnoredFilesByDefault else { return }
+      tree.hidesIgnoredFilesByDefault = newValue
+      if tree.visibility.hidesIgnoredFiles == nil { rulesDidChange() }
+    }
+  }
+
+  /// Shows or hides a file or folder in this project.
+  public func setVisible(_ url: URL, _ visible: Bool) {
+    guard let node = tree.node(for: url) else { return }
+    visibility = tree.visibility(setting: node, visible: visible)
+  }
+
+  /// Forgets the project's hidden and shown items.
+  public func restoreDefaultVisibility() {
+    var visibility = visibility
+    visibility.hidesIgnoredFiles = nil
+    visibility.hiddenPaths = []
+    visibility.shownPaths = []
+    self.visibility = visibility
+  }
+
+  private var visibilityKey: String { Self.visibilityKey(root) }
+  private static func visibilityKey(_ root: URL) -> String { "CodeKit.visibility:" + root.path }
+
+  private func saveVisibility() {
+    if let data = try? JSONEncoder().encode(tree.visibility) { defaults.set(data, forKey: visibilityKey) }
+  }
+
+  /// Whether `a` and `b` hide the same files (the navigator toggle aside).
+  private static func sameRules(_ a: FileVisibility, _ b: FileVisibility) -> Bool {
+    var a = a
+    a.showsHiddenFiles = b.showsHiddenFiles
+    return a == b
+  }
+
+  private func rulesDidChange() {
+    index.rules = tree.rules
+    index.rebuild()
   }
 
   // MARK: - Tabs
@@ -196,6 +249,7 @@ import Observation
     perform {
       for document in tabs where Self.contains(url, document.url) { document.flush() }
       let newURL = try tree.rename(url, to: name)
+      saveVisibility()
       let oldPath = url.standardizedFileURL.path
       for document in tabs where Self.contains(url, document.url) {
         let suffix = document.url.path.dropFirst(oldPath.count)
@@ -238,8 +292,12 @@ import Observation
   private func filesChanged(_ changes: [FileWatcher.Change]) {
     var directories: Set<URL> = []
     var structural = false
+    var gitIgnoreChanged = false
     for change in changes {
       let url = localURL(for: change.url)
+      if url.lastPathComponent == ".gitignore" || url.path.hasSuffix("/.git/info/exclude") {
+        gitIgnoreChanged = true
+      }
       if change.rescan {
         tree.reloadAll()
         structural = true
@@ -255,7 +313,8 @@ import Observation
       }
     }
     for directory in directories { tree.reload(directory: directory) }
-    if structural { scheduleIndexRebuild() }
+    if gitIgnoreChanged { tree.reloadGitIgnore() }
+    if structural || gitIgnoreChanged { scheduleIndexRebuild() }
   }
 
   /// Maps a real path from FSEvents back under `root` as the user opened it.
