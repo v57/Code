@@ -156,9 +156,9 @@ struct SidebarView: View {
       if !node.isInHiddenFolder {
         Divider()
         if node.hiddenReason != nil {
-          Button("Show in Navigator") { workspace.setVisible(node.url, true) }
+          Button("Show in List") { workspace.setVisible(node.url, true) }
         } else {
-          Button("Hide in Navigator") { workspace.setVisible(node.url, false) }
+          Button("Hide from List") { workspace.setVisible(node.url, false) }
         }
         if !isGitIgnored(node) {
           Button("Add to .gitignore") { workspace.addToGitIgnore(node.url) }
