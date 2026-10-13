@@ -38,10 +38,7 @@
       super.tile()
       // A wrapped container must follow width changes (window resize,
       // sidebar toggle, ruler width change); the overscroll follows height.
-      if textView.configuration.wrapLines,
-        let container = textView.textContainer,
-        abs(container.size.width - contentSize.width) > 0.5
-      {
+      if textView.configuration.wrapLines, abs(textView.frame.width - textView.visibleWidth) > 0.5 {
         textView.applyWrapping()
       }
       textView.updateOverscroll()

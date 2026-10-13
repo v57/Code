@@ -399,19 +399,32 @@
       minSize = NSSize(width: 0, height: contentSize.height)
       autoresizingMask = [.width]
       if configuration.wrapLines {
+        // Exactly as wide as the visible area: wider, and lines would wrap
+        // out of sight and the text could slide sideways.
+        let width = visibleWidth
         isHorizontallyResizable = false
         container.widthTracksTextView = true
-        container.size = NSSize(width: contentSize.width, height: CGFloat.greatestFiniteMagnitude)
-        setFrameSize(NSSize(width: contentSize.width, height: frame.height))
+        setFrameSize(NSSize(width: width, height: frame.height))
+        container.size = NSSize(
+          width: width - textContainerInset.width * 2, height: CGFloat.greatestFiniteMagnitude)
         enclosingScrollView?.hasHorizontalScroller = false
+        enclosingScrollView?.horizontalScrollElasticity = .none
       } else {
         container.widthTracksTextView = false
         container.size = NSSize(
           width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         isHorizontallyResizable = true
         enclosingScrollView?.hasHorizontalScroller = true
+        enclosingScrollView?.horizontalScrollElasticity = .automatic
         sizeToFit()
       }
+    }
+
+    /// The width the scroll view shows of the text. The clip view runs under
+    /// the line numbers, which inset it, so its own width is too wide.
+    var visibleWidth: CGFloat {
+      guard let clip = enclosingScrollView?.contentView else { return bounds.width }
+      return max(0, clip.bounds.width - clip.contentInsets.left - clip.contentInsets.right)
     }
 
     // MARK: - Language and text

@@ -177,7 +177,8 @@ Features
   - Editor: line numbers, current-line highlight, Xcode's Default
     (Light/Dark) themes (default; exact colors, per-kind fonts such as bold
     keywords and proportional doc comments, Xcode's 18 pt lines at 13 pt) and
-    GitHub Light/Dark, font and size, wrap toggle, soft tabs, auto-indent (and
+    GitHub Light/Dark, font and size, line wrapping (⌥Z, on by default: the
+    editor then scrolls only vertically), soft tabs, auto-indent (and
     bracket split), Tab/⇧Tab block indent, ⌘/ comment toggle, find bar (⌘F).
   - Editing like Xcode's source editor (its edit assists, by name):
     overscroll past the last line; auto-closed ( [ and quotes with type-over
