@@ -92,6 +92,7 @@ struct WorkspaceView: View {
       }
     }
     .onDisappear {
+      AppState.shared.closeDetachedWindows(of: workspace)
       workspace.flushAll()
       workspace.saveSession()
       model.services.shutDown()

@@ -64,7 +64,9 @@
     public func show(_ editor: NSView, focusing textView: NSView) {
       guard editor !== current else { return }
       let hadFocus = window?.firstResponder is CodeTextView
-      current?.removeFromSuperview()
+      // The editor may have moved to another host since (a document opened
+      // in its own window); leave it there.
+      if current?.superview === self { current?.removeFromSuperview() }
       editor.frame = bounds
       editor.autoresizingMask = [.width, .height]
       addSubview(editor)

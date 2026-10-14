@@ -19,10 +19,13 @@ import SwiftUI
   /// Files to open once their folder's window is up, by folder.
   @ObservationIgnored private var pendingFiles: [URL: [URL]] = [:]
   @ObservationIgnored private var workspaces: [ObjectIdentifier: WeakWorkspace] = [:]
+  /// The windows of documents opened in their own window, by document.
+  @ObservationIgnored private var detachedWindows: [UUID: WindowReference] = [:]
 
   private struct WeakWorkspace {
-    weak var workspace: Workspace?
+    weak var model: WindowModel?
     let window: WindowReference
+    var workspace: Workspace? { model?.workspace }
   }
 
   /// What opening `url` means: the project folder, and the file to show in
@@ -85,9 +88,9 @@ import SwiftUI
     pendingFiles[folder.standardizedFileURL, default: []].append(file)
   }
 
-  func register(_ workspace: Workspace, window: WindowReference) {
+  func register(_ model: WindowModel, window: WindowReference) {
     workspaces = workspaces.filter { $0.value.workspace != nil }
-    workspaces[ObjectIdentifier(workspace)] = WeakWorkspace(workspace: workspace, window: window)
+    workspaces[ObjectIdentifier(model.workspace)] = WeakWorkspace(model: model, window: window)
   }
 
   func unregister(_ workspace: Workspace) {
@@ -96,6 +99,34 @@ import SwiftUI
 
   func workspace(for folder: URL) -> Workspace? {
     entry(for: folder)?.workspace
+  }
+
+  /// The project window model whose workspace shows `document` in its own
+  /// window.
+  func model(detaching document: UUID) -> WindowModel? {
+    workspaces.values.lazy.compactMap(\.model).first {
+      $0.workspace.detachedDocuments.contains { $0.id == document }
+    }
+  }
+
+  func registerDetachedWindow(_ window: WindowReference, for document: UUID) {
+    detachedWindows[document] = window
+  }
+
+  func unregisterDetachedWindow(for document: UUID) {
+    detachedWindows.removeValue(forKey: document)
+  }
+
+  /// Brings a document's own window to the front.
+  func focusDetachedWindow(for document: UUID) {
+    detachedWindows[document]?.window?.makeKeyAndOrderFront(nil)
+  }
+
+  /// Closes the own windows of a closing project's documents.
+  func closeDetachedWindows(of workspace: Workspace) {
+    for document in workspace.detachedDocuments {
+      detachedWindows[document.id]?.window?.close()
+    }
   }
 
   private func entry(for folder: URL) -> WeakWorkspace? {

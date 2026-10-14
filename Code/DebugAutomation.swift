@@ -167,6 +167,13 @@
         {
           model.workspace.tree.setExpanded(node, argument[argument.index(after: colon)...] != "off")
         }
+      case "newwindow":
+        // Open in New Window: the selected document, or newwindow:<path>.
+        if !argument.isEmpty {
+          model.openInNewWindow(URL(fileURLWithPath: argument))
+        } else if let document {
+          model.openInNewWindow(document)
+        }
       case "back": services.goBack()
       case "continue": services.debugger?.continueRunning()
       case "step": services.debugger?.stepOver()
@@ -201,6 +208,12 @@
           lines.append("  text length \(textView.string.count) visible \(textView.visibleRect) clip \(textView.enclosingScrollView?.contentView.bounds ?? .zero) container \(textView.textContainer?.size ?? .zero) inset \(textView.textContainerInset) origin \(textView.textContainerOrigin)")
         }
         lines.append("tabs: \(model.workspace.tabs.map(\.name))")
+        lines.append(
+          "detached: "
+            + model.workspace.detachedDocuments.map { document in
+              let window = document.textView?.window
+              return "\(document.name) window \(window?.title ?? "-") level \(window?.level.rawValue ?? -1)"
+            }.joined(separator: ", "))
         lines.append(
           "dependencies: "
             + model.workspace.dependencies.map { "\($0.name) \($0.detail) \($0.location?.path ?? "-")" }

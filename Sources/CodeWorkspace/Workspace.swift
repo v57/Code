@@ -29,8 +29,15 @@ import Observation
   /// The packages the project depends on, from its manifests and
   /// lockfiles (the navigator's Package Dependencies).
   public private(set) var dependencies: [PackageDependency] = []
+  /// Documents shown in their own window (Open in New Window) instead of a
+  /// tab. They stay open (language servers, autosave, reloads from disk)
+  /// and go back to the tabs with `reattach(_:)` when their window closes.
+  public private(set) var detachedDocuments: [TextDocument] = []
   /// Called with documents whose tabs closed (language servers close them).
   @ObservationIgnored public var onCloseDocuments: (([TextDocument]) -> Void)?
+  /// Called when `open(_:)` asks for a document that has its own window, so
+  /// the app can bring that window to the front.
+  @ObservationIgnored public var onOpenDetached: ((TextDocument) -> Void)?
 
   @ObservationIgnored private var watcher: FileWatcher?
   @ObservationIgnored private var indexRebuild: Task<Void, Never>?
@@ -67,8 +74,11 @@ import Observation
 
   public func document(for url: URL) -> TextDocument? {
     let url = url.standardizedFileURL
-    return tabs.first { $0.url == url }
+    return openDocuments.first { $0.url == url }
   }
+
+  /// The tabs and the documents in their own windows.
+  private var openDocuments: [TextDocument] { tabs + detachedDocuments }
 
   public func isPreview(_ document: TextDocument) -> Bool { document.id == previewTabID }
 
@@ -185,6 +195,10 @@ import Observation
   @discardableResult
   public func open(_ url: URL, preview: Bool = false) -> TextDocument {
     let url = url.standardizedFileURL
+    if let detached = detachedDocuments.first(where: { $0.url == url }) {
+      onOpenDetached?(detached)
+      return detached
+    }
     if let existing = document(for: url) {
       if !preview { keep(existing) }
       selectedTabID = existing.id
@@ -200,10 +214,8 @@ import Observation
       let replaced = tabs[i]
       tabs[i] = document
       onCloseDocuments?([replaced])
-    } else if let selected = selectedTabID, let i = tabs.firstIndex(where: { $0.id == selected }) {
-      tabs.insert(document, at: i + 1)
     } else {
-      tabs.append(document)
+      insertTab(document)
     }
     previewTabID = preview ? document.id : (previewTabID == document.id ? nil : previewTabID)
     selectedTabID = document.id
@@ -218,16 +230,57 @@ import Observation
   }
 
   public func close(_ document: TextDocument) {
-    guard let i = tabs.firstIndex(where: { $0.id == document.id }) else { return }
+    if let i = detachedDocuments.firstIndex(where: { $0.id == document.id }) {
+      document.flush()
+      detachedDocuments.remove(at: i)
+      onCloseDocuments?([document])
+      saveSession()
+      return
+    }
+    guard removeTab(document) else { return }
+    onCloseDocuments?([document])
+    saveSession()
+  }
+
+  /// Takes a tab out of the tab bar to show it in its own window; the
+  /// document stays open.
+  public func detach(_ document: TextDocument) {
+    guard removeTab(document) else { return }
+    detachedDocuments.append(document)
+    saveSession()
+  }
+
+  /// Puts a document from its own window back in the tabs, after the
+  /// selected tab.
+  public func reattach(_ document: TextDocument) {
+    guard let i = detachedDocuments.firstIndex(where: { $0.id == document.id }) else { return }
+    detachedDocuments.remove(at: i)
+    insertTab(document)
+    if selectedTabID == nil { selectedTabID = document.id }
+    saveSession()
+  }
+
+  /// Adds a tab after the selected one.
+  private func insertTab(_ document: TextDocument) {
+    if let selected = selectedTabID, let i = tabs.firstIndex(where: { $0.id == selected }) {
+      tabs.insert(document, at: i + 1)
+    } else {
+      tabs.append(document)
+    }
+  }
+
+  /// Removes a tab, selecting a neighbor if it was selected. False when
+  /// `document` has no tab.
+  private func removeTab(_ document: TextDocument) -> Bool {
+    guard let i = tabs.firstIndex(where: { $0.id == document.id }) else { return false }
     document.flush()
     tabs.remove(at: i)
-    onCloseDocuments?([document])
     if previewTabID == document.id { previewTabID = nil }
     if selectedTabID == document.id {
       // Select the neighbor, as editors do: the tab to the right, else left.
       selectedTabID = tabs.isEmpty ? nil : tabs[min(i, tabs.count - 1)].id
     }
-    saveSession()
+    return true
   }
 
   public func closeOthers(_ document: TextDocument) {
@@ -264,12 +317,12 @@ import Observation
 
   /// Saves every document with pending edits.
   public func flushAll() {
-    for document in tabs { document.flush() }
+    for document in openDocuments { document.flush() }
   }
 
   /// Save All (⌥⌘S): an explicit save of every open document.
   public func saveAll() {
-    for document in tabs { document.save() }
+    for document in openDocuments { document.save() }
   }
 
   // MARK: - File operations
@@ -298,11 +351,11 @@ import Observation
   @discardableResult
   public func rename(_ url: URL, to name: String) -> URL? {
     perform {
-      for document in tabs where Self.contains(url, document.url) { document.flush() }
+      for document in openDocuments where Self.contains(url, document.url) { document.flush() }
       let newURL = try tree.rename(url, to: name)
       saveVisibility()
       let oldPath = url.standardizedFileURL.path
-      for document in tabs where Self.contains(url, document.url) {
+      for document in openDocuments where Self.contains(url, document.url) {
         let suffix = document.url.path.dropFirst(oldPath.count)
         document.move(to: URL(fileURLWithPath: newURL.path + suffix))
       }
@@ -314,9 +367,9 @@ import Observation
   /// Moves a file or folder to the Trash and closes its documents.
   public func trash(_ url: URL) {
     _ = perform {
-      for document in tabs where Self.contains(url, document.url) { document.flush() }
+      for document in openDocuments where Self.contains(url, document.url) { document.flush() }
       try tree.trash(url)
-      for document in tabs where Self.contains(url, document.url) { close(document) }
+      for document in openDocuments where Self.contains(url, document.url) { close(document) }
       return url
     }
   }
@@ -422,7 +475,8 @@ import Observation
   public func saveSession() {
     guard !isRestoring else { return }
     let session = Session(
-      tabs: tabs.filter { $0.id != previewTabID }.map { tree.relativePath(of: $0.url) },
+      // Documents in their own windows come back as tabs.
+      tabs: openDocuments.filter { $0.id != previewTabID }.map { tree.relativePath(of: $0.url) },
       selected: selectedDocument.map { tree.relativePath(of: $0.url) },
       expanded: tree.expanded.map { tree.relativePath(of: $0) }.sorted())
     if let data = try? JSONEncoder().encode(session) { defaults.set(data, forKey: sessionKey) }

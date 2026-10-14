@@ -23,6 +23,13 @@ import UpdateKit
       UpdaterCommands(updater: updater)
     }
 
+    // A document opened in a window of its own (Open in New Window).
+    WindowGroup(id: DetachedEditorWindow.id, for: UUID.self) { $documentID in
+      if let documentID { DetachedEditorWindow(documentID: documentID) }
+    }
+    .defaultSize(width: 720, height: 560)
+    .windowToolbarStyle(.unifiedCompact)
+
     Settings {
       SettingsView()
     }

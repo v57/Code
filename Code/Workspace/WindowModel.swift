@@ -66,6 +66,7 @@ import SwiftUI
   init(workspace: Workspace) {
     self.workspace = workspace
     services = ProjectServices(workspace: workspace, settings: EditorSettings.storedServiceSettings)
+    workspace.onOpenDetached = { AppState.shared.focusDetachedWindow(for: $0.id) }
     installObserver = NotificationCenter.default.addObserver(
       forName: .codeToolInstalled, object: nil, queue: .main
     ) { [weak self] note in
@@ -89,6 +90,26 @@ import SwiftUI
     guard services.settings.actionsEnabled else { return }
     if kind == .run || kind == .test { isConsoleVisible = true }
     services.actions.perform(kind)
+  }
+
+  /// Open in New Window: shows a file in a window of its own with only its
+  /// editor, as Shell detaches a session. It leaves the tabs until that
+  /// window closes.
+  func openInNewWindow(_ url: URL) {
+    let selected = workspace.selectedTabID
+    let document = workspace.open(url)
+    openInNewWindow(document)
+    // Opening it selected its tab for a moment; keep the tab that was.
+    if let selected, workspace.tabs.contains(where: { $0.id == selected }) {
+      workspace.selectedTabID = selected
+    }
+  }
+
+  func openInNewWindow(_ document: TextDocument) {
+    // Already in its own window: `open` brought that forward.
+    guard workspace.tabs.contains(where: { $0.id == document.id }) else { return }
+    workspace.detach(document)
+    AppState.shared.openWindow?(id: DetachedEditorWindow.id, value: document.id)
   }
 
   /// ⇧⌘., as in Finder: in Open Quickly, includes or leaves out hidden
@@ -164,4 +185,6 @@ import SwiftUI
 
 extension FocusedValues {
   @Entry var windowModel: WindowModel?
+  /// The document of a key window of its own (Open in New Window).
+  @Entry var detachedDocument: TextDocument?
 }

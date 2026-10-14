@@ -124,6 +124,7 @@ struct SidebarView: View {
   @ViewBuilder private func dependencyMenu(for url: URL) -> some View {
     if isFile(url) {
       Button("Open in New Tab") { workspace.open(url) }
+      Button("Open in New Window") { model.openInNewWindow(url) }
       Button("Open with Default App") { NSWorkspace.shared.open(url) }
     }
     Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
@@ -142,6 +143,7 @@ struct SidebarView: View {
       Divider()
       if !node.isDirectory {
         Button("Open in New Tab") { workspace.open(node.url) }
+        Button("Open in New Window") { model.openInNewWindow(node.url) }
         Button("Open with Default App") { NSWorkspace.shared.open(node.url) }
       }
       Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([node.url]) }

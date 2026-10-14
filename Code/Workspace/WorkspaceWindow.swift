@@ -89,13 +89,14 @@ struct WorkspaceWindow: View {
       return
     }
     let workspace = Workspace(root: root, hidesIgnoredFiles: EditorSettings.storedHidesIgnoredFiles)
-    AppState.shared.register(workspace, window: window)
+    let model = WindowModel(workspace: workspace)
+    AppState.shared.register(model, window: window)
     AppState.shared.recents.add(root)
     for file in AppState.shared.takePendingFiles(for: root) {
       workspace.tree.reveal(file)
       workspace.open(file)
     }
-    model = WindowModel(workspace: workspace)
+    self.model = model
   }
 }
 

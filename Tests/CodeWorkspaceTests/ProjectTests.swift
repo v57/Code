@@ -235,6 +235,45 @@ private final class TempFolder {
     #expect(restored.tabs.map(\.name) == ["b.swift"])
     #expect(restored.selectedDocument?.name == "b.swift")
   }
+
+  @Test func detachedDocumentsLeaveTheTabsAndComeBack() async throws {
+    let temp = try TempFolder()
+    try temp.file("a.swift", "let a = 1\n")
+    try temp.file("b.swift", "let b = 2\n")
+    let defaults = UserDefaults(suiteName: "CodeKitTests-\(UUID().uuidString)")!
+    let workspace = Workspace(root: temp.url, defaults: defaults)
+    var closed: [String] = []
+    workspace.onCloseDocuments = { closed += $0.map(\.name) }
+    var focused: [String] = []
+    workspace.onOpenDetached = { focused.append($0.name) }
+    let a = workspace.open(temp.url.appendingPathComponent("a.swift"))
+    let b = workspace.open(temp.url.appendingPathComponent("b.swift"))
+
+    workspace.detach(b)
+    #expect(workspace.tabs.map(\.name) == ["a.swift"])
+    #expect(workspace.selectedDocument === a)
+    #expect(workspace.detachedDocuments.map(\.name) == ["b.swift"])
+    #expect(closed.isEmpty)  // still open with its language server
+    // Opening it again brings its window forward instead of adding a tab.
+    #expect(workspace.open(b.url) === b)
+    #expect(focused == ["b.swift"])
+    #expect(workspace.tabs.count == 1)
+    // Close All leaves the windows alone; the session keeps them as tabs.
+    workspace.closeAll()
+    #expect(workspace.detachedDocuments.count == 1)
+    #expect(Workspace(root: temp.url, defaults: defaults).tabs.map(\.name) == ["b.swift"])
+
+    workspace.reattach(b)
+    #expect(workspace.detachedDocuments.isEmpty)
+    #expect(workspace.tabs.map(\.name) == ["b.swift"])
+    #expect(workspace.selectedDocument === b)
+
+    // Trashing a detached file closes it.
+    workspace.detach(b)
+    workspace.trash(b.url)
+    #expect(workspace.detachedDocuments.isEmpty)
+    #expect(closed.contains("b.swift"))
+  }
 }
 
 @MainActor @Suite struct TextDocumentTests {

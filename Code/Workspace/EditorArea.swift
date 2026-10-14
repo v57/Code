@@ -4,6 +4,9 @@ import SwiftUI
 /// The selected document's editor, or what to show instead (nothing open,
 /// still loading, a binary or oversized file).
 struct EditorArea: View {
+  /// The document of a window of its own (Open in New Window), shown
+  /// instead of the selected tab.
+  var detachedDocument: TextDocument?
   @Environment(Workspace.self) private var workspace
   @Environment(WindowModel.self) private var model
   private let settings = EditorConfigurationReader()
@@ -11,7 +14,7 @@ struct EditorArea: View {
 
   var body: some View {
     Group {
-      if let document = workspace.selectedDocument {
+      if let document = detachedDocument ?? workspace.selectedDocument {
         content(for: document)
       } else {
         emptyState
@@ -34,7 +37,8 @@ struct EditorArea: View {
           breakpointsEnabled: services.breakpointsEnabled,
           suggestsCompletions: services.suggestsCompletions)
       ) { selection in
-        model.selection = selection
+        // The status bar shows the project window's editor.
+        if detachedDocument == nil { model.selection = selection }
       }
 
     case .binary:

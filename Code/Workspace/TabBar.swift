@@ -95,6 +95,8 @@ private struct TabItem: View {
         Button("Keep Open") { workspace.keep(document) }
       }
       Divider()
+      Button("Open in New Window") { model.openInNewWindow(document) }
+      Divider()
       Button("Reveal in Sidebar") {
         workspace.tree.reveal(document.url)
         model.sidebarSelection = document.url

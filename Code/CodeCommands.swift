@@ -6,6 +6,7 @@ import SwiftUI
 /// additions. Window-specific commands act on the key window's workspace.
 struct CodeCommands: Commands {
   @FocusedValue(\.windowModel) private var model
+  @FocusedValue(\.detachedDocument) private var detachedDocument
   @Environment(\.openWindow) private var openWindow
   @AppStorage(EditorSettings.fontSize) private var fontSize = EditorSettings.defaultFontSize
   @AppStorage(EditorSettings.wrapLines) private var wrapLines = true
@@ -34,13 +35,19 @@ struct CodeCommands: Commands {
     }
 
     CommandGroup(replacing: .saveItem) {
-      Button("Save") { workspace?.selectedDocument?.save() }
+      Button("Save") { (detachedDocument ?? workspace?.selectedDocument)?.save() }
         .keyboardShortcut("s")
-        .disabled(workspace?.selectedDocument == nil)
+        .disabled(detachedDocument == nil && workspace?.selectedDocument == nil)
       Button("Save All") { workspace?.saveAll() }
         .keyboardShortcut("s", modifiers: [.command, .option])
         .disabled(workspace == nil)
       Divider()
+      Button("Open in New Window") {
+        guard let model, let document = model.workspace.selectedDocument else { return }
+        model.openInNewWindow(document)
+      }
+      .keyboardShortcut("d", modifiers: [.command, .shift])
+      .disabled(workspace?.selectedDocument == nil)
       Button("Close Tab") { closeTab() }
         .keyboardShortcut("w")
       Button("Close Window") { NSApp.keyWindow?.performClose(nil) }
