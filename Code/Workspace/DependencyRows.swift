@@ -112,12 +112,11 @@ private struct DependencyEntryRow: View {
 
   private var label: some View {
     Label {
-      Text(FileIcon.displayName(url, showExtensions: showExtensions))
+      Text(FileName.display(url, showExtensions: showExtensions))
         .lineLimit(1)
         .truncationMode(.middle)
     } icon: {
-      Image(systemName: FileIcon.symbol(for: url, isDirectory: isDirectory))
-        .foregroundStyle(FileIcon.tint(for: url, isDirectory: isDirectory))
+      FileIconView(for: url, isDirectory: isDirectory)
     }
     .help(url.abbreviatedPath)
   }

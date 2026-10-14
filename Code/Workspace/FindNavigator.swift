@@ -256,9 +256,8 @@ private struct FileRow: View {
   var body: some View {
     let url = URL(fileURLWithPath: file.path)
     HStack(spacing: 6) {
-      Image(systemName: FileIcon.symbol(for: url, isDirectory: false))
-        .foregroundStyle(FileIcon.tint(for: url, isDirectory: false))
-      Text(FileIcon.displayName(url, showExtensions: showExtensions))
+      FileIconView(for: url)
+      Text(FileName.display(url, showExtensions: showExtensions))
         .fontWeight(.medium)
         .lineLimit(1)
       Text(file.folder)

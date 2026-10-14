@@ -298,13 +298,12 @@ struct FileTreeRow: View {
           .disabled(node.isInHiddenFolder)
       }
       Label {
-        Text(FileIcon.displayName(node.url, showExtensions: showExtensions))
+        Text(FileName.display(node.url, showExtensions: showExtensions))
           .lineLimit(1)
           .truncationMode(.middle)
           .foregroundStyle(isHidden ? .secondary : .primary)
       } icon: {
-        Image(systemName: FileIcon.symbol(for: node.url, isDirectory: node.isDirectory))
-          .foregroundStyle(FileIcon.tint(for: node.url, isDirectory: node.isDirectory))
+        FileIconView(for: node.url, isDirectory: node.isDirectory)
           .opacity(isHidden ? 0.45 : 1)
       }
       Spacer(minLength: 0)

@@ -38,9 +38,9 @@ struct TabBar: View {
 
   /// The display name, plus its folder when another tab has the same name.
   private func title(for document: TextDocument) -> String {
-    let name = FileIcon.displayName(document.url, showExtensions: showExtensions)
+    let name = FileName.display(document.url, showExtensions: showExtensions)
     let twins = workspace.tabs.filter {
-      FileIcon.displayName($0.url, showExtensions: showExtensions) == name
+      FileName.display($0.url, showExtensions: showExtensions) == name
     }
     guard twins.count > 1 else { return name }
     return name + " — " + document.url.deletingLastPathComponent().lastPathComponent
@@ -59,9 +59,7 @@ private struct TabItem: View {
 
   var body: some View {
     HStack(spacing: 5) {
-      Image(systemName: FileIcon.symbol(for: document.url, isDirectory: false))
-        .foregroundStyle(FileIcon.tint(for: document.url, isDirectory: false))
-        .imageScale(.small)
+      FileIconView(for: document.url, size: 14)
       Text(title)
         .italic(workspace.isPreview(document))
         .strikethrough(document.isMissing)

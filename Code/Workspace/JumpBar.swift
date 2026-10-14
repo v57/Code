@@ -58,11 +58,9 @@ struct JumpBar: View {
             .resizable()
             .frame(width: 16, height: 16)
         } else {
-          Image(systemName: FileIcon.symbol(for: url, isDirectory: !isFile))
-            .foregroundStyle(FileIcon.tint(for: url, isDirectory: !isFile))
-            .imageScale(.small)
+          FileIconView(for: url, isDirectory: !isFile, size: 14)
         }
-        Text(isProject ? workspace.name : FileIcon.displayName(url, showExtensions: showExtensions))
+        Text(isProject ? workspace.name : FileName.display(url, showExtensions: showExtensions))
       }
       .contentShape(Rectangle())
     }

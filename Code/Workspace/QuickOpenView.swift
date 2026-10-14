@@ -97,10 +97,8 @@ struct QuickOpenView: View {
     let nameStart = (path as NSString).length - (name as NSString).length
     let url = workspace.root.appendingPathComponent(path)
     return HStack(spacing: 8) {
-      Image(systemName: FileIcon.symbol(for: url, isDirectory: false))
-        .foregroundStyle(FileIcon.tint(for: url, isDirectory: false))
+      FileIconView(for: url)
         .opacity(result.isHidden ? 0.45 : 1)
-        .frame(width: 16)
       Text(highlighted(name, positions: result.match.positions, offset: nameStart))
       Text(folder)
         .foregroundStyle(.secondary)
