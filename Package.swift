@@ -23,6 +23,9 @@ let swiftSettings: [SwiftSetting] = [.enableUpcomingFeature("ApproachableConcurr
 /// - CodeAutocompletion: Xcode's completion list over the editor, fed by a
 ///   provider (a language server, or the file's words and the language's
 ///   keywords), fuzzy matching, snippets as placeholders (AppKit).
+/// - CodeIcons: file icons for languages, data and project files: an SF
+///   Symbol, else one to three letters in the language's color (SwiftUI,
+///   platform-neutral).
 /// - CodeKit: all of the above, plus what connects them (an editor for a
 ///   workspace's documents with language services, issues and breakpoints).
 let package = Package(
@@ -41,6 +44,7 @@ let package = Package(
     .library(name: "CodeMinimap", targets: ["CodeMinimap"]),
     .library(name: "CodeFormatting", targets: ["CodeFormatting"]),
     .library(name: "CodeAutocompletion", targets: ["CodeAutocompletion"]),
+    .library(name: "CodeIcons", targets: ["CodeIcons"]),
   ],
   targets: [
     .target(name: "CodeHighlighting", swiftSettings: swiftSettings),
@@ -50,6 +54,7 @@ let package = Package(
     .target(name: "CodeLSP", swiftSettings: swiftSettings),
     .target(name: "CodeMinimap", dependencies: ["CodeHighlighting"], swiftSettings: swiftSettings),
     .target(name: "CodeFormatting", swiftSettings: swiftSettings),
+    .target(name: "CodeIcons", swiftSettings: swiftSettings),
     .target(
       name: "CodeAutocompletion", dependencies: ["CodeHighlighting", "CodeEditor"],
       swiftSettings: swiftSettings),
@@ -57,7 +62,7 @@ let package = Package(
       name: "CodeKit",
       dependencies: [
         "CodeHighlighting", "CodeWorkspace", "CodeEditor", "CodeActions", "CodeLSP", "CodeMinimap",
-        "CodeFormatting", "CodeAutocompletion",
+        "CodeFormatting", "CodeAutocompletion", "CodeIcons",
       ],
       swiftSettings: swiftSettings),
 
@@ -74,6 +79,7 @@ let package = Package(
     .testTarget(
       name: "CodeAutocompletionTests", dependencies: ["CodeAutocompletion"],
       swiftSettings: swiftSettings),
+    .testTarget(name: "CodeIconsTests", dependencies: ["CodeIcons"], swiftSettings: swiftSettings),
     .testTarget(
       name: "CodeFormattingTests", dependencies: ["CodeFormatting"], swiftSettings: swiftSettings),
   ])

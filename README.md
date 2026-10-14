@@ -40,6 +40,9 @@ Libraries
                        protocol (a language server, or the file's words and
                        the language's keywords), fuzzy ranking, LSP snippets
                        as Xcode placeholders (AppKit; the model is neutral)
+    CodeIcons          file icons for languages, data and project files:
+                       FileIcon by name or extension, FileIconView (an SF
+                       Symbol, else 1-3 colored letters) (SwiftUI, neutral)
     CodeKit            re-exports them all; CodeEditorView(document:) edits a
                        workspace document (autosave, reload, ⌘S trimming,
                        minimap, issues, breakpoints); ProjectServices connects
@@ -72,6 +75,7 @@ Layout
                                 CompletionMatcher, Snippet,
                                 WordCompletionProvider, CompletionController,
                                 CompletionWindow
+    Sources/CodeIcons/          FileIcon (the icons, +Lookup), FileIconView
     Sources/CodeKit/            CodeKit (re-exports), CodeEditorView,
                                 ProjectServices, DebugSession, QuickHelpPopover,
                                 DocumentCompletion
@@ -241,6 +245,17 @@ Features
   - Settings turn each part off: toolbar actions, language servers (each),
     formatting (each formatter, "only with a config file", a custom command
     such as a local swift-format build), minimap, inline issues, breakpoints.
+
+File icons
+
+  Every icon is an SF Symbol where one fits (the Swift bird, a gear for
+  settings, a lock for lockfiles, a box for package manifests in the
+  ecosystem's color) or one to three letters ("PY", "C++") in the language's
+  color. Letters also stand in for a symbol the system lacks (older macOS, or
+  platforms without SF Symbols), so every icon has both. Brand colors are kept
+  as they are and adjusted for contrast when drawn (JavaScript's yellow
+  darkens on light backgrounds). A new icon: an entry in FileIcon.catalog and
+  the names or extensions that use it in FileIcon+Lookup.swift.
 
 Verification
 
