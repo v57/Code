@@ -29,7 +29,11 @@ struct WorkspaceWindow: View {
       }
     }
     .background(WindowReader(reference: window, isWelcome: model == nil))
-    .onAppear { AppState.shared.openWindow = openWindow }
+    .onAppear {
+      AppState.shared.openWindow = openWindow
+      // The screenshot demo's project, in the first window.
+      if root == nil, let folder = ScreenshotDemo.folder, AppState.shared.workspace(for: folder) == nil { open(folder) }
+    }
     .onChange(of: root, initial: true) { _, root in makeModel(root) }
     .onOpenURL { open($0) }
     .onDisappear { if let workspace = model?.workspace { AppState.shared.unregister(workspace) } }

@@ -12,7 +12,7 @@ import SwiftUI
     @ObservationIgnored var debugOpenSettings: (() -> Void)?
   #endif
 
-  let recents = RecentProjects()
+  let recents = RecentProjects(defaults: ScreenshotDemo.isOn ? ScreenshotDemo.defaults : .standard)
   /// Captured from the windows; opens project windows from menus outside a
   /// window's view tree (the Dock menu).
   @ObservationIgnored var openWindow: OpenWindowAction?

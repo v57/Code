@@ -39,7 +39,7 @@
       }
     }
 
-    private static func run(_ command: String) {
+    static func run(_ command: String) {
       if command.hasPrefix("window:") {
         let name = String(command.dropFirst("window:".count))
         AppState.shared.debugModel =

@@ -11,7 +11,10 @@ import UpdateKit
   /// checks (never before), installed in place with a relaunch.
   private let updater = AppUpdater(github: "v57/Code", assetName: "Code.zip")
 
-  init() { updater.start() }
+  init() {
+    updater.start()
+    if ScreenshotDemo.isOn { ScreenshotDemo.prepare() }
+  }
 
   var body: some Scene {
     WindowGroup(id: WorkspaceWindow.id, for: URL.self) { $root in

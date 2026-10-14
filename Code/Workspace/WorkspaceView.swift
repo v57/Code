@@ -62,6 +62,7 @@ struct WorkspaceView: View {
         AppState.shared.debugModel = model
         AppState.shared.debugModels.append(WeakWindowModel(model: model))
         AppState.shared.debugOpenSettings = { openSettings() }
+        ScreenshotDemo.runCommands()
       }
     #endif
     .focusedSceneValue(\.windowModel, model)

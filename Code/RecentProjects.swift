@@ -7,9 +7,11 @@ import Observation
   static let limit = 20
 
   private(set) var folders: [URL]
+  @ObservationIgnored private let defaults: UserDefaults
 
-  init() {
-    let paths = UserDefaults.standard.stringArray(forKey: Self.key) ?? []
+  init(defaults: UserDefaults = .standard) {
+    self.defaults = defaults
+    let paths = defaults.stringArray(forKey: Self.key) ?? []
     folders = paths.map { URL(fileURLWithPath: $0) }
   }
 
@@ -37,7 +39,7 @@ import Observation
   }
 
   private func save() {
-    UserDefaults.standard.set(folders.map(\.path), forKey: Self.key)
+    defaults.set(folders.map(\.path), forKey: Self.key)
   }
 }
 
