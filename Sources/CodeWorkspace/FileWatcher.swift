@@ -6,7 +6,9 @@ import Foundation
 
 /// Watches a folder tree for changes with FSEvents and reports them on the
 /// main queue, batched (`latency`) so a `git checkout` arrives as a few
-/// callbacks rather than thousands. A no-op where FSEvents does not exist.
+/// callbacks rather than thousands. Without `fileEvents`, a change is the
+/// folder whose items changed: far fewer events in a busy tree. A no-op
+/// where FSEvents does not exist.
 public final class FileWatcher: @unchecked Sendable {
   /// One changed path. `structural` is true when an item was created, removed
   /// or renamed (the tree and Quick Open index need a re-read), false for a
@@ -24,12 +26,14 @@ public final class FileWatcher: @unchecked Sendable {
     private var stream: FSEventStreamRef?
   #endif
 
-  public init(root: URL, latency: TimeInterval = 0.3, handler: @escaping @MainActor ([Change]) -> Void)
-  {
+  public init(
+    root: URL, latency: TimeInterval = 0.3, fileEvents: Bool = true,
+    handler: @escaping @MainActor ([Change]) -> Void
+  ) {
     self.root = root
     self.handler = handler
     #if os(macOS)
-      start(latency: latency)
+      start(latency: latency, fileEvents: fileEvents)
     #endif
   }
 
@@ -44,7 +48,7 @@ public final class FileWatcher: @unchecked Sendable {
   }
 
   #if os(macOS)
-    private func start(latency: TimeInterval) {
+    private func start(latency: TimeInterval, fileEvents: Bool) {
       var context = FSEventStreamContext(
         version: 0, info: Unmanaged.passUnretained(self).toOpaque(), retain: nil, release: nil,
         copyDescription: nil)
@@ -68,8 +72,8 @@ public final class FileWatcher: @unchecked Sendable {
         MainActor.assumeIsolated { watcher.handler(changes) }
       }
       let flags = FSEventStreamCreateFlags(
-        kFSEventStreamCreateFlagUseCFTypes | kFSEventStreamCreateFlagFileEvents
-          | kFSEventStreamCreateFlagWatchRoot)
+        kFSEventStreamCreateFlagUseCFTypes | kFSEventStreamCreateFlagWatchRoot
+          | (fileEvents ? kFSEventStreamCreateFlagFileEvents : 0))
       guard
         let stream = FSEventStreamCreate(
           nil, callback, &context, [root.path] as CFArray,

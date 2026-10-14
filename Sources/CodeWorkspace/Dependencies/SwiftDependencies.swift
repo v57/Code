@@ -57,9 +57,12 @@ extension DependencyScanner {
     return found
   }
 
-  /// `.package(path: "../X")` and `.package(name: "X", path: "../X")`.
+  /// `.package(path: "../X")` and `.package(name: "X", path: "../X")`,
+  /// without interpolated paths (`"../\(name)"` in a manifest's helper),
+  /// which only running the manifest would tell.
   static func localPackagePaths(inManifest manifest: String) -> [String] {
     manifest.matches(#"\.package\s*\((?:\s*name\s*:\s*"[^"]*"\s*,)?\s*path\s*:\s*"([^"]+)""#).map { $0[0] }
+      .filter { !$0.contains("\\(") }
   }
 
   /// The `relativePath` of each XCLocalSwiftPackageReference.

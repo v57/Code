@@ -40,6 +40,9 @@ import Observation
   @ObservationIgnored public var onOpenDetached: ((TextDocument) -> Void)?
 
   @ObservationIgnored private var watcher: FileWatcher?
+  /// Watches Xcode's DerivedData for package checkouts, which a build in
+  /// Xcode adds outside the project (Swift projects only).
+  @ObservationIgnored private var checkoutsWatcher: FileWatcher?
   @ObservationIgnored private var indexRebuild: Task<Void, Never>?
   @ObservationIgnored private var dependencyScan: Task<Void, Never>?
   @ObservationIgnored private let defaults: UserDefaults
@@ -433,8 +436,22 @@ import Observation
       if delay > .zero { try? await Task.sleep(for: delay) }
       guard !Task.isCancelled else { return }
       let found = await Task.detached(priority: .utility) { DependencyScanner.scan(root) }.value
-      guard !Task.isCancelled, let self, found != self.dependencies else { return }
+      guard !Task.isCancelled, let self else { return }
+      if self.checkoutsWatcher == nil, found.contains(where: { $0.ecosystem == .swift }) {
+        self.watchPackageCheckouts()
+      }
+      guard found != self.dependencies else { return }
       self.dependencies = found
+    }
+  }
+
+  private func watchPackageCheckouts() {
+    let derivedData = URL(fileURLWithPath: NSHomeDirectory())
+      .appendingPathComponent("Library/Developer/Xcode/DerivedData")
+    checkoutsWatcher = FileWatcher(root: derivedData, latency: 1, fileEvents: false) { [weak self] changes in
+      guard changes.contains(where: { $0.rescan || $0.url.path.contains("/SourcePackages/checkouts") })
+      else { return }
+      self?.reloadDependencies(after: .seconds(1))
     }
   }
 

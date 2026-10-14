@@ -40,7 +40,10 @@ private func summary(_ dependencies: [PackageDependency]) -> [String] {
     let fixture = try Fixture()
     try fixture.file(
       "Package.swift",
-      #"let package = Package(name: "App", dependencies: [.package(path: "../Kit"), .package(url: "x", from: "1.0.0")])"#)
+      #"""
+      func v57(_ name: String) -> Package.Dependency { .package(path: "../\(name)") }
+      let package = Package(name: "App", dependencies: [.package(path: "../Kit"), .package(url: "x", from: "1.0.0")])
+      """#)
     try fixture.file("../Kit/Package.swift", #"let package = Package(\#n  name: "KitPackage")"#)
     try fixture.file(
       "App.xcodeproj/project.pbxproj",
