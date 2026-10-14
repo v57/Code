@@ -31,8 +31,10 @@ struct WorkspaceWindow: View {
     .background(WindowReader(reference: window, isWelcome: model == nil))
     .onAppear {
       AppState.shared.openWindow = openWindow
-      // The screenshot demo's project, in the first window.
-      if root == nil, let folder = ScreenshotDemo.folder, AppState.shared.workspace(for: folder) == nil { open(folder) }
+      #if DEBUG
+        // The screenshot demo's scenes, in the first window.
+        ScreenshotDemo.attach { root = $0 }
+      #endif
     }
     .onChange(of: root, initial: true) { _, root in makeModel(root) }
     .onOpenURL { open($0) }
@@ -73,6 +75,8 @@ struct WorkspaceWindow: View {
 
   private func makeModel(_ root: URL?) {
     guard let root else {
+      // Back to Welcome: the project's window is gone.
+      if let workspace = model?.workspace { AppState.shared.unregister(workspace) }
       model = nil
       return
     }
@@ -92,7 +96,9 @@ struct WorkspaceWindow: View {
       DispatchQueue.main.async { [window] in window.window?.close() }
       return
     }
-    let workspace = Workspace(root: root, hidesIgnoredFiles: EditorSettings.storedHidesIgnoredFiles)
+    let workspace = Workspace(
+      root: root, hidesIgnoredFiles: EditorSettings.storedHidesIgnoredFiles,
+      defaults: ScreenshotDemo.isOn ? ScreenshotDemo.defaults : .standard)
     let model = WindowModel(workspace: workspace)
     AppState.shared.register(model, window: window)
     AppState.shared.recents.add(root)

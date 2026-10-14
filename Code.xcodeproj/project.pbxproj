@@ -10,6 +10,7 @@
 		C0DE00000000000000000A05 /* CodeKit in Frameworks */ = {isa = PBXBuildFile; productRef = C0DE00000000000000000A04 /* CodeKit */; };
 		D5C0DE000000000000000003 /* UpdateKit in Frameworks */ = {isa = PBXBuildFile; productRef = D5C0DE000000000000000002 /* UpdateKit */; };
 		0F5A700F1095C24391180843 /* VaultKit in Frameworks */ = {isa = PBXBuildFile; productRef = 2C754DD20831A96E0D5C5AE0 /* VaultKit */; };
+		DE5C0DE0000000000000DE03 /* DevScreenshots in Frameworks */ = {isa = PBXBuildFile; productRef = DE5C0DE0000000000000DE02 /* DevScreenshots */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -31,6 +32,7 @@
 				C0DE00000000000000000A05 /* CodeKit in Frameworks */,
 				D5C0DE000000000000000003 /* UpdateKit in Frameworks */,
 				0F5A700F1095C24391180843 /* VaultKit in Frameworks */,
+				DE5C0DE0000000000000DE03 /* DevScreenshots in Frameworks */,
 			);
 		};
 /* End PBXFrameworksBuildPhase section */
@@ -73,6 +75,7 @@
 				C0DE00000000000000000A04 /* CodeKit */,
 				D5C0DE000000000000000002 /* UpdateKit */,
 				2C754DD20831A96E0D5C5AE0 /* VaultKit */,
+				DE5C0DE0000000000000DE02 /* DevScreenshots */,
 			);
 			productName = Code;
 			productReference = 000000000000000000000120 /* Code.app */;
@@ -106,6 +109,7 @@
 				C0DE00000000000000000A03 /* XCLocalSwiftPackageReference "." */,
 				D5C0DE000000000000000001 /* XCRemoteSwiftPackageReference "UpdateKit" */,
 				2B6E154177CEBEF3833B42A4 /* XCRemoteSwiftPackageReference "Vault" */,
+				DE5C0DE0000000000000DE01 /* XCRemoteSwiftPackageReference "Dev" */,
 			);
 			preferredProjectObjectVersion = 90;
 			productRefGroup = 000000000000000000000020 /* Products */;
@@ -363,6 +367,14 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		DE5C0DE0000000000000DE01 /* XCRemoteSwiftPackageReference "Dev" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/v57/Dev.git";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
 		2B6E154177CEBEF3833B42A4 /* XCRemoteSwiftPackageReference "Vault" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/v57/Vault.git";
@@ -394,6 +406,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 2B6E154177CEBEF3833B42A4 /* XCRemoteSwiftPackageReference "Vault" */;
 			productName = VaultKit;
+		};
+		DE5C0DE0000000000000DE02 /* DevScreenshots */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = DE5C0DE0000000000000DE01 /* XCRemoteSwiftPackageReference "Dev" */;
+			productName = DevScreenshots;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

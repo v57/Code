@@ -38,6 +38,12 @@ import Observation
     save()
   }
 
+  /// Replaces the list (the screenshot demo's recents for a scene).
+  func replace(with folders: [URL]) {
+    self.folders = folders.map(\.standardizedFileURL)
+    save()
+  }
+
   private func save() {
     defaults.set(folders.map(\.path), forKey: Self.key)
   }

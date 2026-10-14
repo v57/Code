@@ -458,6 +458,12 @@
     public var canGoBack: Bool { !back.isEmpty }
     public var canGoForward: Bool { !forward.isEmpty }
 
+    /// Forgets where the editor was, as in a project just opened.
+    public func clearHistory() {
+      back = []
+      forward = []
+    }
+
     /// Back to where the editor was before the last jump or file switch
     /// (⌃⌘←).
     public func goBack() {

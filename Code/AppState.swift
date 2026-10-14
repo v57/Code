@@ -101,6 +101,14 @@ import SwiftUI
     entry(for: folder)?.workspace
   }
 
+  /// The model of the window showing `folder`.
+  func model(for folder: URL) -> WindowModel? {
+    entry(for: folder)?.model
+  }
+
+  /// Some window shows a project.
+  var hasProjects: Bool { workspaces.values.contains { $0.workspace != nil } }
+
   /// The project window model whose workspace shows `document` in its own
   /// window.
   func model(detaching document: UUID) -> WindowModel? {

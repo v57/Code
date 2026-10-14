@@ -21,7 +21,8 @@
   /// `findopen:<file index>:<match index>` (opens a result),
   /// `dependency:<folder path>` (expands it under Package Dependencies),
   /// `select:<path>` (selects a navigator row, as a click does),
-  /// `folder:<relative path>:on|off` (expands or collapses a tree folder).
+  /// `folder:<relative path>:on|off` (expands or collapses a tree folder),
+  /// `focus` (the editor takes the keyboard).
   ///
   /// Launched with `-DebugAutomationName <name>`, the app listens for that
   /// name instead, so other Debug instances ignore the commands.
@@ -105,6 +106,9 @@
           }
         }
       case "complete": document?.textView?.complete(nil)
+      case "focus":
+        // The editor takes the keyboard, as after opening a file.
+        if let textView = document?.textView { textView.window?.makeFirstResponder(textView) }
       case "scroll":
         // A line-based wheel event, as from a mouse, sent through the scroll view.
         if let scrollView = document?.textView?.enclosingScrollView, let lines = Int32(argument),
@@ -243,6 +247,9 @@
       default: break
       }
     }
+
+    /// The document's editor is in a window.
+    static func isShown(_ document: TextDocument) -> Bool { document.textView?.window != nil }
 
     private static func split(_ command: String) -> (String, String) {
       guard let colon = command.firstIndex(of: ":") else { return (command, "") }

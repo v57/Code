@@ -8,25 +8,21 @@
     {
       "id": "01-editor",
       "arguments": ["--screenshot-demo", "--open", "$DEMO/Atlas", "--do", "open:$DEMO/Atlas/Sources/Atlas/TripStore.swift:17"],
-      "delay": 10,
       "caption": "A fast editor for your projects"
     },
     {
       "id": "02-quick-open",
       "arguments": ["--screenshot-demo", "--open", "$DEMO/Atlas", "--do", "open:$DEMO/Atlas/Sources/Atlas/Trip.swift:1", "--do", "quickopen:trip"],
-      "delay": 4,
       "caption": "Open any file in a few keystrokes"
     },
     {
       "id": "03-find",
       "arguments": ["--screenshot-demo", "--open", "$DEMO/Atlas", "--do", "open:$DEMO/Atlas/Sources/Atlas/Stop.swift:1", "--do", "find:trips"],
-      "delay": 4,
       "caption": "Find across the whole project"
     },
     {
       "id": "04-welcome",
       "arguments": ["--screenshot-demo", "--recent", "$DEMO/Atlas", "--recent", "$DEMO/Weather", "--recent", "$DEMO/Field Notes"],
-      "delay": 3,
       "caption": "Pick up where you left off"
     }
   ]
