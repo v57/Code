@@ -88,8 +88,12 @@
     @ObservationIgnored private let defaults = UserDefaults.standard
     @ObservationIgnored private var statusTask: Task<Void, Never>?
     @ObservationIgnored private var resolvedPaths: [URL: URL] = [:]
-    @ObservationIgnored private var back: [(url: URL, line: Int, column: Int)] = []
-    @ObservationIgnored private var forward: [(url: URL, line: Int, column: Int)] = []
+    /// Where the editor was, for Go Back and Go Forward: before each jump
+    /// and each switch to another file. Observed for the back buttons.
+    private var back: [EditorPosition] = []
+    private var forward: [EditorPosition] = []
+    /// Going back or forward selects a tab without adding to the history.
+    @ObservationIgnored private var isNavigatingHistory = false
     /// Writing the compilation database of the selected Xcode scheme, and
     /// the scheme and destination it was last written for.
     @ObservationIgnored var databaseTask: Task<Void, Never>?
@@ -106,6 +110,9 @@
       applySettings(previous: nil)
       workspace.onCloseDocuments = { [weak self] documents in
         for document in documents { self?.documentClosed(document) }
+      }
+      workspace.onSelectionChange = { [weak self] previous in
+        self?.selectionChanged(from: previous)
       }
       actions.willPerform = { [weak workspace] in workspace?.flushAll() }
       actions.stepsOverride = { [weak self] kind, scheme, destination in
@@ -413,10 +420,11 @@
     /// Opens a file at a line and column (from 1), selecting `length`
     /// characters, and remembers where the editor was for Go Back.
     public func open(_ url: URL, line: Int, column: Int = 1, length: Int = 0, remember: Bool = true) {
-      if remember, let current = currentPosition() {
-        back.append(current)
-        if back.count > 100 { back.removeFirst() }
-        forward = []
+      // A jump to another file is remembered when its tab is selected.
+      if remember, workspace.selectedDocument?.url == url.standardizedFileURL,
+        let current = position(of: workspace.selectedDocument)
+      {
+        record(current)
       }
       let document = workspace.open(url)
       if document.content == .text, document.textView != nil {
@@ -426,27 +434,47 @@
       }
     }
 
-    private func currentPosition() -> (url: URL, line: Int, column: Int)? {
-      guard let document = workspace.selectedDocument, let textView = document.textView else {
-        return nil
-      }
+    /// Where the caret is in `document` (its first line when it has no
+    /// text view, such as an image).
+    private func position(of document: TextDocument?) -> EditorPosition? {
+      guard let document else { return nil }
+      guard let textView = document.textView else { return EditorPosition(url: document.url, line: 1, column: 1) }
       let selection = textView.currentSelection
-      return (document.url, selection.line, selection.column)
+      return EditorPosition(url: document.url, line: selection.line, column: selection.column)
+    }
+
+    private func record(_ position: EditorPosition) {
+      guard back.last != position else { return }
+      back.append(position)
+      if back.count > 100 { back.removeFirst() }
+      forward = []
+    }
+
+    private func selectionChanged(from previous: TextDocument?) {
+      guard !isNavigatingHistory, let position = position(of: previous) else { return }
+      record(position)
     }
 
     public var canGoBack: Bool { !back.isEmpty }
     public var canGoForward: Bool { !forward.isEmpty }
 
-    /// Back to where the editor was before the last jump (⌃⌘←).
+    /// Back to where the editor was before the last jump or file switch
+    /// (⌃⌘←).
     public func goBack() {
       guard let target = back.popLast() else { return NSSound.beep() }
-      if let current = currentPosition() { forward.append(current) }
-      open(target.url, line: target.line, column: target.column, remember: false)
+      if let current = position(of: workspace.selectedDocument) { forward.append(current) }
+      go(to: target)
     }
 
     public func goForward() {
       guard let target = forward.popLast() else { return NSSound.beep() }
-      if let current = currentPosition() { back.append(current) }
+      if let current = position(of: workspace.selectedDocument) { back.append(current) }
+      go(to: target)
+    }
+
+    private func go(to target: EditorPosition) {
+      isNavigatingHistory = true
+      defer { isNavigatingHistory = false }
       open(target.url, line: target.line, column: target.column, remember: false)
     }
 
@@ -521,5 +549,12 @@
         return false
       }
     }
+  }
+
+  /// A place in a file, from 1, for Go Back and Go Forward.
+  struct EditorPosition: Equatable {
+    var url: URL
+    var line: Int
+    var column: Int
   }
 #endif

@@ -1,9 +1,9 @@
 import CodeKit
 import SwiftUI
 
-/// The selected file's path under the tabs, as in Xcode's jump bar: the
-/// project, its folders and the file, each with its icon. A click on a
-/// segment shows it in the sidebar.
+/// The selected file's path under the tabs, as in Xcode's jump bar: back and
+/// forward, then the project, its folders and the file, each with its icon.
+/// A click on a segment shows it in the sidebar.
 struct JumpBar: View {
   @Environment(Workspace.self) private var workspace
   @Environment(WindowModel.self) private var model
@@ -13,6 +13,7 @@ struct JumpBar: View {
 
   var body: some View {
     HStack(spacing: 4) {
+      historyButtons
       if let document = workspace.selectedDocument {
         ForEach(Array(segments(for: document.url).enumerated()), id: \.offset) { index, url in
           if index > 0 {
@@ -32,6 +33,25 @@ struct JumpBar: View {
     .lineLimit(1)
     .padding(.horizontal, 14)
     .frame(height: Self.height)
+  }
+
+  private var historyButtons: some View {
+    let services = model.services
+    return HStack(spacing: 2) {
+      Button { services.goBack() } label: {
+        Image(systemName: "chevron.left").frame(width: 20, height: 20)
+      }
+      .help("Go Back (⌃⌘←)")
+      .disabled(!services.canGoBack)
+      Button { services.goForward() } label: {
+        Image(systemName: "chevron.right").frame(width: 20, height: 20)
+      }
+      .help("Go Forward (⌃⌘→)")
+      .disabled(!services.canGoForward)
+    }
+    .buttonStyle(.borderless)
+    .font(.system(size: 13, weight: .medium))
+    .padding(.trailing, 6)
   }
 
   /// The root, each folder down to the file, and the file.

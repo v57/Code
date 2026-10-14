@@ -20,6 +20,10 @@ import Observation
       // Leaving a tab saves it, as switching documents does in Markdown.
       tabs.first { $0.id == oldValue }?.flush()
       saveSession()
+      // The document shown before, also when its tab just closed.
+      let previous = shownDocument
+      shownDocument = selectedDocument
+      onSelectionChange?(previous)
     }
   }
   /// The tab a single click replaces; nil when every tab is kept.
@@ -38,7 +42,13 @@ import Observation
   /// Called when `open(_:)` asks for a document that has its own window, so
   /// the app can bring that window to the front.
   @ObservationIgnored public var onOpenDetached: ((TextDocument) -> Void)?
+  /// Called after another tab was selected, with the document that was
+  /// (nil when none was; it may have just closed), for Go Back.
+  @ObservationIgnored public var onSelectionChange: ((TextDocument?) -> Void)?
 
+  /// The selected tab's document, kept past its tab closing for
+  /// `onSelectionChange`.
+  @ObservationIgnored private var shownDocument: TextDocument?
   @ObservationIgnored private var watcher: FileWatcher?
   /// Watches Xcode's DerivedData for package checkouts, which a build in
   /// Xcode adds outside the project (Swift projects only).

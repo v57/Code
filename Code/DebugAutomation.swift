@@ -62,6 +62,13 @@
       case "perform":
         if let kind = ActionKind(rawValue: argument) { model.perform(kind) }
       case "stop": services.actions.stop()
+      case "back": services.goBack()
+      case "forward": services.goForward()
+      case "tab":
+        if let tab = model.workspace.tabs.first(where: { $0.name == argument }) {
+          model.workspace.selectedTabID = tab.id
+        }
+      case "notarization": model.notarizationSetup = NotarizationSetupRequest()
       case "scheme":
         if let scheme = services.actions.schemes.first(where: { $0.name == argument }) {
           services.actions.selectedSchemeID = scheme.id
@@ -208,6 +215,7 @@
           lines.append("  text length \(textView.string.count) visible \(textView.visibleRect) clip \(textView.enclosingScrollView?.contentView.bounds ?? .zero) container \(textView.textContainer?.size ?? .zero) inset \(textView.textContainerInset) origin \(textView.textContainerOrigin)")
         }
         lines.append("tabs: \(model.workspace.tabs.map(\.name))")
+        lines.append("history: back \(services.canGoBack) forward \(services.canGoForward)")
         lines.append(
           "detached: "
             + model.workspace.detachedDocuments.map { document in
