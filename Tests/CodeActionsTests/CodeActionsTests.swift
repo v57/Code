@@ -204,6 +204,38 @@ import Testing
     #expect(ActionKind.allCases.filter(\.needsNotarization) == [.export])
   }
 
+  @Test func xcodeMainSchemeFirst() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let schemes = root.appendingPathComponent("App.xcodeproj/xcshareddata/xcschemes")
+    try FileManager.default.createDirectory(at: schemes, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(
+      at: root.appendingPathComponent("App-Local.xcworkspace"), withIntermediateDirectories: true)
+    let launch = #"<LaunchAction><BuildableReference BuildableName = "App.app"/></LaunchAction>"#
+    try "<TestAction/>\(launch)".write(
+      to: schemes.appendingPathComponent("App.xcscheme"), atomically: true, encoding: .utf8)
+    try #"<TestAction><BuildableReference BuildableName = "App.app"/></TestAction><LaunchAction/>"#.write(
+      to: schemes.appendingPathComponent("AppTests.xcscheme"), atomically: true, encoding: .utf8)
+    try """
+      1 /* Helper */ = {
+        isa = PBXNativeTarget;
+        name = Helper;
+        productType = "com.apple.product-type.application";
+      };
+      2 /* AppKitExtras */ = {
+        isa = PBXNativeTarget;
+        name = AppKitExtras;
+        productType = "com.apple.product-type.framework";
+      };
+      """.write(
+        to: root.appendingPathComponent("App.xcodeproj/project.pbxproj"), atomically: true,
+        encoding: .utf8)
+    let folder = ProjectFolder(listing: root)
+    #expect(
+      XcodeDetector.ranked(["AppKitExtras", "AppTests", "BSONTests", "Helper", "App"], in: folder)
+        == ["Helper", "App", "AppKitExtras", "AppTests", "BSONTests"])
+  }
+
   @Test func terminalCommands() {
     let directory = URL(fileURLWithPath: "/tmp/App")
     let mac = ActionScheme(

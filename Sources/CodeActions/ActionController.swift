@@ -61,10 +61,11 @@
     public let root: URL
     public private(set) var schemes: [ActionScheme] = []
     public private(set) var isScanning = false
+    /// The scheme the user picked; nil uses the main one (`schemes.first`).
     public var selectedSchemeID: String? {
       didSet {
         guard selectedSchemeID != oldValue else { return }
-        defaults.set(selectedSchemeID, forKey: key("scheme"))
+        defaults.set(selectedSchemeID, forKey: key("pickedScheme"))
         refreshDestinations()
       }
     }
@@ -102,7 +103,9 @@
 
     public init(root: URL) {
       self.root = root
-      selectedSchemeID = defaults.string(forKey: key("scheme"))
+      // "scheme" also saved automatic picks (a package's test scheme).
+      defaults.removeObject(forKey: key("scheme"))
+      selectedSchemeID = defaults.string(forKey: key("pickedScheme"))
       selectedDestinationID = defaults.string(forKey: key("destination"))
     }
 
@@ -149,8 +152,8 @@
         }.value
         self.schemes = schemes
         self.isScanning = false
-        if self.selectedSchemeID == nil || !schemes.contains(where: { $0.id == self.selectedSchemeID }) {
-          self.selectedSchemeID = schemes.first?.id
+        if let id = self.selectedSchemeID, !schemes.contains(where: { $0.id == id }) {
+          self.selectedSchemeID = nil
         }
         self.refreshDestinations()
       }

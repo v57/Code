@@ -18,7 +18,7 @@ public struct XcodeDetector: ProjectDetector {
     }
     let platforms = Self.platforms(of: folder)
     let flag = container.hasSuffix(".xcworkspace") ? "-workspace" : "-project"
-    return names.map { name in
+    return Self.ranked(names, in: folder).map { name in
       let base = "xcodebuild \(flag) \(shellQuote(container)) -scheme \(shellQuote(name))"
       var commands: [ActionKind: String] = [
         .build: base + " build", .test: base + " test", .run: base + " build",
@@ -80,6 +80,59 @@ public struct XcodeDetector: ProjectDetector {
     if text.contains("macosx") || text.isEmpty { platforms.append(.mac) }
     if text.contains("iphoneos") { platforms.append(.iOS) }
     return platforms.isEmpty ? [.mac] : platforms
+  }
+
+  /// `names` with the folder's own app schemes first, then its other project
+  /// schemes, then the rest (a workspace's package schemes), each group in
+  /// `xcodebuild`'s order: the first is the main scheme, as Xcode picks it.
+  static func ranked(_ names: [String], in folder: ProjectFolder) -> [String] {
+    var apps = Set<String>()
+    var own = Set<String>()
+    for entry in folder.entries
+    where entry.name.hasSuffix(".xcodeproj") || entry.name.hasSuffix(".xcworkspace") {
+      let container = folder.url.appendingPathComponent(entry.name)
+      for (name, buildsApp) in schemeFiles(in: container) {
+        own.insert(name)
+        if buildsApp { apps.insert(name) }
+      }
+      // Without scheme files, Xcode makes one per target, named after it.
+      for (name, isApp) in targets(in: folder.read(entry.name + "/project.pbxproj") ?? "") {
+        own.insert(name)
+        if isApp { apps.insert(name) }
+      }
+    }
+    func rank(_ name: String) -> Int { apps.contains(name) ? 0 : own.contains(name) ? 1 : 2 }
+    return names.enumerated().sorted { (rank($0.element), $0.offset) < (rank($1.element), $1.offset) }
+      .map(\.element)
+  }
+
+  /// The shared and user `.xcscheme` files of a project or workspace, with
+  /// whether each builds an app.
+  static func schemeFiles(in container: URL) -> [(String, Bool)] {
+    let files = FileManager.default
+    var folders = [container.appendingPathComponent("xcshareddata/xcschemes")]
+    let users = container.appendingPathComponent("xcuserdata")
+    for user in (try? files.contentsOfDirectory(atPath: users.path)) ?? [] {
+      folders.append(users.appendingPathComponent(user).appendingPathComponent("xcschemes"))
+    }
+    return folders.flatMap { folder in
+      ((try? files.contentsOfDirectory(atPath: folder.path)) ?? []).filter { $0.hasSuffix(".xcscheme") }
+        .map { file in
+          let text = (try? String(contentsOf: folder.appendingPathComponent(file), encoding: .utf8)) ?? ""
+          // Its Run action launches an app.
+          let launch = text.range(of: "<LaunchAction").map { text[$0.lowerBound...] } ?? ""
+          let runnable = launch.range(of: "</LaunchAction>").map { launch[..<$0.lowerBound] } ?? launch
+          return (String(file.dropLast(".xcscheme".count)), runnable.contains(#".app""#))
+        }
+    }
+  }
+
+  /// The native targets in a `project.pbxproj`, with whether each is an app.
+  static func targets(in pbxproj: String) -> [(String, Bool)] {
+    matches(
+      of: #"isa = PBXNativeTarget;[^}]*?\bname = "?([^";]+)"?;[^}]*?productType = "([^"]+)""#,
+      in: pbxproj
+    ).map { ($0[0], $0[1] == "com.apple.product-type.application") }
   }
 
   /// Schemes from `xcodebuild -list -json`: the workspace's or project's
