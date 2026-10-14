@@ -33,6 +33,7 @@ public struct NodeDetector: ProjectDetector {
     } else if manager == "bun" {
       commands[.test] = "bun test"
     }
+    if scripts["lint"] != nil { commands[.lint] = "\(run) lint" }
     if scripts["dev"] != nil {
       commands[.run] = "\(run) dev"
     } else if scripts["start"] != nil {
@@ -94,10 +95,16 @@ public struct PythonDetector: ProjectDetector {
       prefix = ""
     }
     let python = prefix.isEmpty ? "python3" : prefix + "python"
-    let common: [ActionKind: String] = [
+    var common: [ActionKind: String] = [
       .build: "\(python) -m compileall -q -x '/(\\.venv|node_modules|build)/' .",
       .test: "\(python) -m pytest",
     ]
+    // Ruff, when the project uses it or it's installed.
+    if manifest.contains("ruff") {
+      common[.lint] = prefix + "ruff check"
+    } else if ShellEnvironment.shared.which("ruff") != nil {
+      common[.lint] = "ruff check"
+    }
     let parsed = Self.parse(manifest)
     var schemes: [ActionScheme] = []
     for script in parsed.scripts {
@@ -247,6 +254,7 @@ public struct RubyDetector: ProjectDetector {
   public func schemes(in folder: ProjectFolder) -> [ActionScheme] {
     guard folder.hasFile("Gemfile") else { return [] }
     var commands: [ActionKind: String] = [.build: "bundle install"]
+    if folder.read("Gemfile")?.contains("rubocop") == true { commands[.lint] = "bundle exec rubocop" }
     if folder.hasDirectory("spec") {
       commands[.test] = "bundle exec rspec"
     } else if folder.hasDirectory("test") {

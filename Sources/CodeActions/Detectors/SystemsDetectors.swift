@@ -9,7 +9,7 @@ public struct CargoDetector: ProjectDetector {
   public func schemes(in folder: ProjectFolder) -> [ActionScheme] {
     guard folder.hasFile("Cargo.toml"), let manifest = folder.read("Cargo.toml") else { return [] }
     let common: [ActionKind: String] = [
-      .build: "cargo build", .test: "cargo test", .clean: "cargo clean",
+      .build: "cargo build", .test: "cargo test", .clean: "cargo clean", .lint: "cargo clippy",
     ]
     var schemes: [ActionScheme] = []
     let root = Self.parse(manifest)
@@ -115,6 +115,7 @@ public struct GoDetector: ProjectDetector {
     guard folder.hasFile("go.mod") else { return [] }
     let common: [ActionKind: String] = [
       .build: "go build ./...", .test: "go test ./...", .clean: "go clean ./...",
+      .lint: "go vet ./...",
     ]
     var schemes: [ActionScheme] = []
     let module =
@@ -212,5 +213,23 @@ public struct MakeDetector: ProjectDetector {
     if targets.contains("run") { commands[.run] = "make run" }
     if targets.contains("clean") { commands[.clean] = "make clean" }
     return [ActionScheme(name: folder.name, toolchain: .make, directory: folder.url, commands: commands)]
+  }
+}
+
+/// A Docker Compose project: Run starts its services in the foreground
+/// (their logs show, Stop ends them) and Clean removes them.
+public struct DockerComposeDetector: ProjectDetector {
+  public init() {}
+
+  public func schemes(in folder: ProjectFolder) -> [ActionScheme] {
+    guard ["compose.yaml", "compose.yml", "docker-compose.yaml", "docker-compose.yml"].contains(where: folder.hasFile)
+    else { return [] }
+    return [
+      ActionScheme(
+        name: folder.name, toolchain: .docker, directory: folder.url,
+        commands: [
+          .build: "docker compose build", .run: "docker compose up", .clean: "docker compose down",
+        ])
+    ]
   }
 }

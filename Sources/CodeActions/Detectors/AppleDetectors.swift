@@ -20,14 +20,53 @@ public struct XcodeDetector: ProjectDetector {
     let flag = container.hasSuffix(".xcworkspace") ? "-workspace" : "-project"
     return names.map { name in
       let base = "xcodebuild \(flag) \(shellQuote(container)) -scheme \(shellQuote(name))"
+      var commands: [ActionKind: String] = [
+        .build: base + " build", .test: base + " test", .run: base + " build",
+        .clean: base + " clean",
+      ]
+      commands.merge(Self.distributionCommands(base, scheme: name, mac: platforms.contains(.mac))) { $1 }
       return ActionScheme(
-        name: name, toolchain: .xcode, directory: folder.url,
-        commands: [
-          .build: base + " build", .test: base + " test", .run: base + " build",
-          .clean: base + " clean",
-        ],
+        name: name, toolchain: .xcode, directory: folder.url, commands: commands,
         platforms: platforms, xcodeContainer: container)
     }
+  }
+
+  /// Install, Export and Upload to App Store, each archiving into
+  /// build/<scheme> first. Install and Export are for Mac apps and pin the
+  /// macOS destination: a multiplatform target archives for iOS without it.
+  /// They use the archive team's Developer ID Application identity when the
+  /// keychain has one (checked when the action runs, so a new certificate
+  /// needs no rescan): Install then installs that export, so other Macs open
+  /// it, and Export notarizes it with the notarytool keychain profile in
+  /// `NOTARY_PROFILE` ("notary" when unset), staples it and zips it into
+  /// build/<scheme>/Export.
+  static func distributionCommands(_ base: String, scheme: String, mac: Bool) -> [ActionKind: String] {
+    let folder = "build/\(scheme)"
+    let archive = shellQuote("\(folder)/\(scheme).xcarchive")
+    var commands: [ActionKind: String] = [
+      .upload:
+        "\(base) -archivePath \(archive) archive -allowProvisioningUpdates && echo '{\"method\":\"app-store-connect\"}' | plutil -convert xml1 -o \(shellQuote("\(folder)/AppStore.plist")) - && xcodebuild -exportArchive -archivePath \(archive) -exportOptionsPlist \(shellQuote("\(folder)/AppStore.plist")) -exportPath \(shellQuote("\(folder)/Upload")) -allowProvisioningUpdates"
+    ]
+    guard mac else { return commands }
+    let archiveMac = "\(base) -destination 'generic/platform=macOS' -archivePath \(archive) archive"
+    let developerID = shellQuote("\(folder)/DeveloperID")
+    let developerIDApp = shellQuote("\(folder)/DeveloperID/\(scheme).app")
+    let hasDeveloperID =
+      "security find-identity -v -p codesigning | grep -q \"Developer ID Application: .*($(/usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:Team' \(shellQuote("\(folder)/\(scheme).xcarchive/Info.plist"))))\""
+    let exportDeveloperID =
+      "echo '{\"method\":\"developer-id\"}' | plutil -convert xml1 -o \(shellQuote("\(folder)/DeveloperID.plist")) - && rm -rf \(developerID) && xcodebuild -exportArchive -archivePath \(archive) -exportOptionsPlist \(shellQuote("\(folder)/DeveloperID.plist")) -exportPath \(developerID) -allowProvisioningUpdates"
+    let installed = shellQuote("/Applications/\(scheme).app")
+    let archived = shellQuote("\(folder)/\(scheme).xcarchive/Products/Applications/\(scheme).app")
+    commands[.install] =
+      "\(archiveMac) && if \(hasDeveloperID); then \(exportDeveloperID) && rm -rf \(installed) && ditto \(developerIDApp) \(installed); else rm -rf \(installed) && ditto \(archived) \(installed); fi"
+    let exportFolder = shellQuote("\(folder)/Export")
+    let notarizeZip = shellQuote("\(folder)/Export/notarize.zip")
+    let zip = shellQuote("\(folder)/Export/\(scheme).zip")
+    let notarize =
+      "rm -rf \(exportFolder) && mkdir -p \(exportFolder) && ditto -c -k --keepParent \(developerIDApp) \(notarizeZip) && xcrun notarytool submit \(notarizeZip) --keychain-profile \"${NOTARY_PROFILE:-\(Notarization.defaultProfile)}\" --wait && xcrun stapler staple \(developerIDApp) && rm \(notarizeZip) && ditto -c -k --keepParent \(developerIDApp) \(zip) && open -R \(zip)"
+    commands[.export] =
+      "\(archiveMac) && if \(hasDeveloperID); then \(exportDeveloperID) && \(notarize); else echo 'Export needs a Developer ID Application certificate for the archive team in the keychain.' && false; fi"
+    return commands
   }
 
   /// The platforms in the project's build settings (its SDKROOT and

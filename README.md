@@ -23,11 +23,13 @@ Libraries
                        CodeEditorScrollView, SwiftUI CodeTextEditor(text:)
     CodeActions        schemes found in a folder (Xcode, SwiftPM, Cargo, Go,
                        Gradle/Android, Maven, Node, Python, CMake, Make, Zig,
-                       Dart, .NET, Elixir, Ruby, PHP; ported from Shell's
-                       integrations), run destinations (Mac, simulators, iOS
-                       devices, Android devices and emulators), running
-                       build/run/test/clean on a pseudo-terminal, build-log
-                       issues and progress (macOS)
+                       Dart, .NET, Elixir, Ruby, PHP, Docker Compose), with
+                       run/build/test/clean/lint and Xcode's Install, Export
+                       (notarized) and Upload; run destinations (Mac,
+                       simulators, iOS devices, Android devices and
+                       emulators), running them on a pseudo-terminal,
+                       build-log issues and progress (macOS). Shell's smart
+                       actions are these schemes.
     CodeLSP            language server client (JSON-RPC over stdio), the
                        catalog of servers and how to install each from its
                        official source, a manager per workspace (macOS)
@@ -59,7 +61,8 @@ Layout
                                 + Placeholders and EditorPlaceholder (<#…#>)
     Sources/CodeActions/        ActionScheme, ProjectScanner, Detectors/,
                                 RunDestination, ShellEnvironment, PTYProcess,
-                                BuildLog, ActionPlanner, ActionController
+                                BuildLog, ActionPlanner, ActionController,
+                                Notarization
     Sources/CodeLSP/            JSONValue, LSPConnection, LanguageServerCatalog,
                                 LanguageServer, LanguageServerManager,
                                 LSPCompletion

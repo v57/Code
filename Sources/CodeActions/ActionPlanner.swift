@@ -139,6 +139,8 @@ public struct ActionStep: Sendable {
       case .build: return [.shell("Build", "xcodebuild \(arguments) build")]
       case .test: return [.shell("Test", "xcodebuild \(arguments) test")]
       case .clean: return [.shell("Clean", "xcodebuild \(arguments) clean")]
+      case .lint, .install, .export, .upload:
+        return scheme.commands[kind].map { [.shell(kind.title, $0)] } ?? []
       case .run: break
       }
       var steps: [ActionStep] = [.shell("Build", "xcodebuild \(arguments) build")]

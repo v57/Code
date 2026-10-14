@@ -1,11 +1,21 @@
 import Foundation
 
-/// What the toolbar can do with a scheme, as in Xcode's Product menu.
+/// What the toolbar can do with a scheme, as in Xcode's Product menu, plus
+/// a linter and the ways an Xcode app is distributed.
 public enum ActionKind: String, CaseIterable, Codable, Sendable {
   case run
   case build
   case test
   case clean
+  case lint
+  /// Archives the Mac app and copies it into /Applications: exported with
+  /// Developer ID when the keychain has that identity, so other Macs open it.
+  case install
+  /// Archives the Mac app, exports it with Developer ID, notarizes and staples
+  /// it, and zips it in build/<scheme>/Export (needs `Notarization`).
+  case export
+  /// Archives the app and uploads it to App Store Connect.
+  case upload
 
   public var title: String {
     switch self {
@@ -13,6 +23,10 @@ public enum ActionKind: String, CaseIterable, Codable, Sendable {
     case .build: return "Build"
     case .test: return "Test"
     case .clean: return "Clean"
+    case .lint: return "Lint"
+    case .install: return "Install"
+    case .export: return "Export"
+    case .upload: return "Upload to App Store"
     }
   }
 
@@ -23,14 +37,25 @@ public enum ActionKind: String, CaseIterable, Codable, Sendable {
     case .build: return "Building"
     case .test: return "Testing"
     case .clean: return "Cleaning"
+    case .lint: return "Linting"
+    case .install: return "Installing"
+    case .export: return "Exporting"
+    case .upload: return "Uploading"
     }
   }
+
+  /// Install, Export and Upload: one-shot actions that ship the app.
+  public var isDistribution: Bool { [.install, .export, .upload].contains(self) }
+
+  /// Export notarizes with the notarytool keychain profile in
+  /// `NOTARY_PROFILE` ("notary" when unset); see `Notarization`.
+  public var needsNotarization: Bool { self == .export }
 }
 
 /// The build system or language toolchain a scheme comes from.
 public enum Toolchain: String, Codable, Sendable, CaseIterable {
   case xcode, swiftPM, cargo, go, gradle, android, maven, node, python, cmake, make, zig, dart
-  case dotnet, elixir, ruby, php
+  case dotnet, elixir, ruby, php, docker
 
   public var displayName: String {
     switch self {
@@ -51,6 +76,7 @@ public enum Toolchain: String, Codable, Sendable, CaseIterable {
     case .elixir: return "Elixir"
     case .ruby: return "Ruby"
     case .php: return "PHP"
+    case .docker: return "Docker Compose"
     }
   }
 
@@ -63,6 +89,7 @@ public enum Toolchain: String, Codable, Sendable, CaseIterable {
     case .node: return "curlybraces"
     case .python: return "chevron.left.forwardslash.chevron.right"
     case .make, .cmake: return "wrench.and.screwdriver"
+    case .docker: return "cube.box"
     default: return "shippingbox"
     }
   }
@@ -118,4 +145,31 @@ public struct ActionScheme: Identifiable, Hashable, Codable, Sendable {
   public var projectName: String { directory.lastPathComponent }
 
   public func supports(_ kind: ActionKind) -> Bool { commands[kind] != nil }
+
+  /// The action as one shell command run in `directory`, for a terminal
+  /// that runs commands instead of `ActionPlanner`'s steps (Shell). Run
+  /// builds an Xcode scheme for this Mac into build/ and runs its product
+  /// in the foreground, and installs and launches an Android app on the
+  /// connected device; the other actions are the scheme's commands.
+  public func terminalCommand(for kind: ActionKind) -> String? {
+    guard kind == .run else { return commands[kind] }
+    switch toolchain {
+    case .xcode:
+      guard platforms.contains(.mac), let container = xcodeContainer else { return nil }
+      let flag = container.hasSuffix(".xcworkspace") ? "-workspace" : "-project"
+      let products = "build/Build/Products/Debug"
+      let named = shellQuote("\(products)/\(name)")
+      return
+        "xcodebuild \(flag) \(shellQuote(container)) -scheme \(shellQuote(name)) -destination 'platform=macOS' -derivedDataPath build build"
+        + " && app=\(shellQuote("\(products)/\(name).app")); [ -d \"$app\" ] || app=$(ls -d \(products)/*.app 2>/dev/null | head -1)"
+        + "; if [ -n \"$app\" ]; then \"$app/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' \"$app/Contents/Info.plist\")\"; else \(named); fi"
+    case .android:
+      guard let install = commands[.run] else { return nil }
+      guard let applicationID = androidApplicationID else { return install }
+      return install
+        + " && adb shell monkey -p \(shellQuote(applicationID)) -c android.intent.category.LAUNCHER 1 >/dev/null"
+    default:
+      return commands[.run]
+    }
+  }
 }

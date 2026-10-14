@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// A folder being looked at for projects: its top-level entries, listed
@@ -70,7 +71,12 @@ public enum ProjectScanner {
     XcodeDetector(), SwiftPackageDetector(), CargoDetector(), GoDetector(), GradleDetector(),
     MavenDetector(), NodeDetector(), PythonDetector(), CMakeDetector(), ZigDetector(),
     DartDetector(), DotnetDetector(), ElixirDetector(), RubyDetector(), PHPDetector(),
+    DockerComposeDetector(),
   ]
+
+  /// Bumped whenever a detector finds different schemes or commands, so
+  /// scans cached under `fingerprint(of:)` are redone.
+  public static let revision = 1
 
   /// Folders never searched: build products, dependencies, caches.
   public static let skippedFolders: Set<String> = [
@@ -87,10 +93,7 @@ public enum ProjectScanner {
     while !queue.isEmpty {
       let (url, level) = queue.removeFirst()
       let folder = ProjectFolder(listing: url)
-      var found: [ActionScheme] = []
-      for detector in detectors { found += detector.schemes(in: folder) }
-      // A Makefile is a project of its own only when nothing else is.
-      if found.isEmpty { found = MakeDetector().schemes(in: folder) }
+      let found = Self.schemes(in: folder)
       schemes += found
       // Modules of a multi-module build are part of its schemes already.
       let isMultiModule = found.contains {
@@ -107,6 +110,24 @@ public enum ProjectScanner {
       }
     }
     return schemes
+  }
+
+  /// The schemes of the projects in `folder` itself, without its subfolders.
+  public static func schemes(in folder: ProjectFolder) -> [ActionScheme] {
+    var found: [ActionScheme] = []
+    for detector in detectors { found += detector.schemes(in: folder) }
+    // A Makefile is a project of its own only when nothing else is.
+    if found.isEmpty { found = MakeDetector().schemes(in: folder) }
+    return found
+  }
+
+  /// Identifies what `schemes(in:)` finds in `folder`: its entries' names and
+  /// kinds, and the detectors' `revision`. A cached scan of the folder is
+  /// current while this is unchanged (edits inside a manifest aren't seen).
+  public static func fingerprint(of folder: ProjectFolder) -> String {
+    let entries = folder.entries.map { ($0.isDirectory ? "d:" : "f:") + $0.name }.sorted()
+    let digest = SHA256.hash(data: Data(([String(revision)] + entries).joined(separator: "\n").utf8))
+    return digest.map { String(format: "%02x", $0) }.joined()
   }
 }
 

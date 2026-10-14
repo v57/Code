@@ -166,6 +166,84 @@ import Testing
     #expect(devices[0].name == "SM X910" && devices[0].kind == .androidDevice)
     #expect(devices[1].kind == .androidEmulator && !devices[1].isAvailable)
   }
+
+  @Test func dockerComposeAndLint() throws {
+    let url = try folder([
+      "compose/compose.yaml": "services: {}\n",
+      "rs/Cargo.toml": "[package]\nname = \"rs\"\n",
+      "go/go.mod": "module example.com/go\n",
+      "web/package.json": #"{"name": "web", "scripts": {"lint": "eslint ."}}"#,
+      "web/package-lock.json": "{}",
+      "rb/Gemfile": "gem 'rubocop'\n",
+      "py/pyproject.toml": "[project]\nname = \"py\"\n[tool.ruff]\n",
+      "py/uv.lock": "",
+    ])
+    defer { try? FileManager.default.removeItem(at: url) }
+    let schemes = ProjectScanner.scan(root: url)
+    let byFolder = Dictionary(schemes.map { ($0.directory.lastPathComponent, $0) }, uniquingKeysWith: { a, _ in a })
+    #expect(byFolder["compose"]?.toolchain == .docker)
+    #expect(byFolder["compose"]?.commands[.run] == "docker compose up")
+    #expect(byFolder["compose"]?.commands[.clean] == "docker compose down")
+    #expect(byFolder["rs"]?.commands[.lint] == "cargo clippy")
+    #expect(byFolder["go"]?.commands[.lint] == "go vet ./...")
+    #expect(byFolder["web"]?.commands[.lint] == "npm run lint")
+    #expect(byFolder["rb"]?.commands[.lint] == "bundle exec rubocop")
+    #expect(byFolder["py"]?.commands[.lint] == "uv run ruff check")
+  }
+
+  @Test func xcodeDistribution() {
+    let base = "xcodebuild -project App.xcodeproj -scheme App"
+    let mac = XcodeDetector.distributionCommands(base, scheme: "App", mac: true)
+    #expect(Set(mac.keys) == [.install, .export, .upload])
+    #expect(mac[.install]?.contains("-destination 'generic/platform=macOS'") == true)
+    #expect(mac[.install]?.contains("ditto build/App/DeveloperID/App.app /Applications/App.app") == true)
+    #expect(mac[.export]?.contains("--keychain-profile \"${NOTARY_PROFILE:-notary}\"") == true)
+    #expect(mac[.upload]?.contains(#"{"method":"app-store-connect"}"#) == true)
+    #expect(Set(XcodeDetector.distributionCommands(base, scheme: "App", mac: false).keys) == [.upload])
+    #expect(ActionKind.allCases.filter(\.isDistribution) == [.install, .export, .upload])
+    #expect(ActionKind.allCases.filter(\.needsNotarization) == [.export])
+  }
+
+  @Test func terminalCommands() {
+    let directory = URL(fileURLWithPath: "/tmp/App")
+    let mac = ActionScheme(
+      name: "App", toolchain: .xcode, directory: directory,
+      commands: [.build: "xcodebuild -project App.xcodeproj -scheme App build"],
+      platforms: [.mac, .iOS], xcodeContainer: "App.xcodeproj")
+    #expect(mac.terminalCommand(for: .build) == mac.commands[.build])
+    let run = mac.terminalCommand(for: .run) ?? ""
+    #expect(
+      run.hasPrefix(
+        "xcodebuild -project App.xcodeproj -scheme App -destination 'platform=macOS' -derivedDataPath build build && "))
+    #expect(run.contains("app=build/Build/Products/Debug/App.app;"))
+    var phone = mac
+    phone.platforms = [.iOS]
+    #expect(phone.terminalCommand(for: .run) == nil)
+    let android = ActionScheme(
+      name: "app", toolchain: .android, directory: directory,
+      commands: [.run: "./gradlew installDebug --console=plain"], platforms: [.android],
+      androidApplicationID: "com.example.app")
+    #expect(
+      android.terminalCommand(for: .run)
+        == "./gradlew installDebug --console=plain && adb shell monkey -p com.example.app -c android.intent.category.LAUNCHER 1 >/dev/null"
+    )
+    let tool = ActionScheme(
+      name: "tool", toolchain: .swiftPM, directory: directory, commands: [.run: "swift run tool"])
+    #expect(tool.terminalCommand(for: .run) == "swift run tool")
+    #expect(tool.terminalCommand(for: .test) == nil)
+  }
+
+  @Test func folderSchemesAndFingerprint() throws {
+    let url = try folder(["go.mod": "module example.com/x\n", "sub/Cargo.toml": "[package]\nname = \"sub\"\n"])
+    defer { try? FileManager.default.removeItem(at: url) }
+    let folder = ProjectFolder(listing: url)
+    #expect(ProjectScanner.schemes(in: folder).map(\.toolchain) == [.go])
+    let fingerprint = ProjectScanner.fingerprint(of: folder)
+    let reordered = ProjectFolder(url: url, entries: folder.entries.reversed())
+    #expect(ProjectScanner.fingerprint(of: reordered) == fingerprint)
+    try "".write(to: url.appendingPathComponent("Makefile"), atomically: true, encoding: .utf8)
+    #expect(ProjectScanner.fingerprint(of: ProjectFolder(listing: url)) != fingerprint)
+  }
 }
 
 #if os(macOS)
