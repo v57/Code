@@ -82,8 +82,12 @@ private struct TabItem: View {
     }
     .contentShape(Capsule())
     .onHover { isHovering = $0 }
-    .onTapGesture(count: 2) { workspace.keep(document) }
-    .onTapGesture { workspace.selectedTabID = document.id }
+    // One gesture: a double-tap gesture next to it would hold every click
+    // (and the close button's) until the double-click interval passed.
+    .onTapGesture {
+      workspace.selectedTabID = document.id
+      if NSApp.currentEvent?.clickCount == 2 { workspace.keep(document) }
+    }
     .help(workspace.tree.relativePath(of: document.url))
     .contextMenu {
       Button("Close") { workspace.close(document) }
