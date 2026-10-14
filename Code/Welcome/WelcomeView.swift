@@ -1,19 +1,40 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import VaultKit
 
 /// Shown in a window without a project, laid out like Xcode's welcome
 /// window: a close button instead of the title bar, the app's icon, name and
 /// version, the actions as capsule buttons, and the recent projects in a
 /// rounded list (click selects, double-click or Return opens). A folder can
-/// also be dropped on the window.
+/// also be dropped on the window. The list shows the recent folders, or the
+/// projects the v57 apps share (added in Git and the others, through the
+/// vault), live as they change.
 struct WelcomeView: View {
   static let size = CGSize(width: 480, height: 660)
+
+  enum Source: String, CaseIterable {
+    case recent = "Recent"
+    case projects = "Projects"
+  }
 
   let open: (URL) -> Void
   @State private var isDropTargeted = false
   @State private var selection: URL?
+  @AppStorage("WelcomeListSource") private var source = Source.recent
   @FocusState private var isListFocused: Bool
   private var recents: RecentProjects { AppState.shared.recents }
+  private var vault: Vault { Vault.shared }
+
+  /// The folders the list shows.
+  private var folders: [URL] {
+    switch source {
+    case .recent:
+      return recents.existing
+    case .projects:
+      return vault.localProjects.compactMap(\.localURL)
+        .filter { FileManager.default.fileExists(atPath: $0.path) }
+    }
+  }
 
   var body: some View {
     VStack(spacing: 0) {
@@ -21,8 +42,15 @@ struct WelcomeView: View {
         .padding(.top, 76)
       actions
         .padding(.top, 22)
+      Picker("Show", selection: $source) {
+        ForEach(Source.allCases, id: \.self) { Text($0.rawValue) }
+      }
+      .pickerStyle(.segmented)
+      .labelsHidden()
+      .fixedSize()
+      .padding(.top, 18)
       recentList
-        .padding(.top, 16)
+        .padding(.top, 12)
         .padding(.horizontal, 60)
         .padding(.bottom, 40)
     }
@@ -49,9 +77,10 @@ struct WelcomeView: View {
       return true
     } isTargeted: { isDropTargeted = $0 }
     .onAppear {
-      selection = recents.existing.first
+      selection = folders.first
       isListFocused = true
     }
+    .onChange(of: source) { selection = folders.first }
   }
 
   // MARK: - Parts
@@ -98,7 +127,7 @@ struct WelcomeView: View {
   private var recentList: some View {
     ScrollView {
       LazyVStack(spacing: 0) {
-        let folders = recents.existing
+        let folders = folders
         ForEach(Array(folders.enumerated()), id: \.element) { index, folder in
           RecentRow(
             folder: folder, isSelected: selection == folder,
@@ -109,7 +138,9 @@ struct WelcomeView: View {
           .simultaneousGesture(TapGesture().onEnded { selection = folder })
           .contextMenu {
             Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([folder]) }
-            Button("Remove from Recents") { recents.remove(folder) }
+            if source == .recent {
+              Button("Remove from Recents") { recents.remove(folder) }
+            }
           }
         }
       }
@@ -119,8 +150,8 @@ struct WelcomeView: View {
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .background(RoundedRectangle(cornerRadius: 16).fill(Color.primary.opacity(0.035)))
     .overlay {
-      if recents.existing.isEmpty {
-        Text("No Recent Projects")
+      if folders.isEmpty {
+        Text(source == .recent ? "No Recent Projects" : "No Projects on This Mac")
           .foregroundStyle(.secondary)
       }
     }
@@ -137,7 +168,7 @@ struct WelcomeView: View {
   }
 
   private func moveSelection(by offset: Int) -> KeyPress.Result {
-    let folders = recents.existing
+    let folders = folders
     guard !folders.isEmpty else { return .ignored }
     let current = selection.flatMap { folders.firstIndex(of: $0) } ?? -offset
     selection = folders[min(max(current + offset, 0), folders.count - 1)]
