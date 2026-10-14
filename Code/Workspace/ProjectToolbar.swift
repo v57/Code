@@ -11,12 +11,15 @@ struct ProjectToolbar: ToolbarContent {
       RunButtons(model: model)
     }
     ToolbarItem(placement: .principal) {
+      // A toolbar drops an item that doesn't fit at its ideal width when the
+      // window opens, and shows it again only after a resize to that width:
+      // the activity view keeps a small ideal width and narrows from there.
       HStack(spacing: 8) {
         SchemePicker(actions: model.services.actions)
           .frame(maxWidth: 300)
         ActivityView(model: model)
       }
-      .fixedSize()
+      .fixedSize(horizontal: false, vertical: true)
     }
   }
 }
@@ -173,7 +176,8 @@ private struct ActivityView: View {
     }
     .font(.system(size: 12))
     .padding(.horizontal, 10)
-    .frame(width: 420, height: 24)
+    .frame(minWidth: 160, idealWidth: 260, maxWidth: 420)
+    .frame(height: 24)
     .background(RoundedRectangle(cornerRadius: 6).fill(.quaternary.opacity(0.5)))
     .overlay(alignment: .bottom) {
       // A bar while building; none while the program runs, as in Xcode.
