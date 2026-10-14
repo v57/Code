@@ -118,6 +118,15 @@ struct CodeCommands: Commands {
         .keyboardShortcut("k", modifiers: [.command, .shift])
         .disabled(actions?.canPerform(.clean) != true || !actionsEnabled)
       Divider()
+      Button("Install") { model?.perform(.install) }
+        .disabled(actions?.canPerform(.install) != true || !actionsEnabled)
+      Button("Export…") { model?.perform(.export) }
+        .disabled(actions?.canPerform(.export) != true || !actionsEnabled)
+      Button("Upload to App Store") { model?.perform(.upload) }
+        .disabled(actions?.canPerform(.upload) != true || !actionsEnabled)
+      Button("Notarization Settings…") { model?.notarizationSetup = NotarizationSetupRequest() }
+        .disabled(model == nil || !actionsEnabled)
+      Divider()
       Button("Stop") { actions?.stop() }
         .keyboardShortcut(".")
         .disabled(actions?.isRunning != true)

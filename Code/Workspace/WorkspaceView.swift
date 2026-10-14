@@ -72,6 +72,9 @@ struct WorkspaceView: View {
     } message: {
       Text(promptMessage)
     }
+    .sheet(item: $model.notarizationSetup) { request in
+      NotarizationSetupView(request: request)
+    }
     .confirmationDialog(
       "Move “\(model.trashCandidate?.lastPathComponent ?? "")” to the Trash?",
       isPresented: Binding(

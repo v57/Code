@@ -33,6 +33,8 @@ import SwiftUI
   /// The console under the editor (Xcode's debug area, ⇧⌘Y).
   var isConsoleVisible = false
   var isIssuesPresented = false
+  /// The Notarization sheet: Export opens it until a profile is set up.
+  var notarizationSetup: NotarizationSetupRequest?
   @ObservationIgnored private var installObserver: NSObjectProtocol?
   var isGoToLinePresented = false
   var prompt: Prompt?
@@ -85,11 +87,20 @@ import SwiftUI
   }
 
   /// Runs an action; Run and Test show the console, as Xcode shows the debug
-  /// area.
+  /// area, and so do Install, Export and Upload, which only log. Export
+  /// first asks for a notary profile when none is set up.
   func perform(_ kind: ActionKind) {
     guard services.settings.actionsEnabled else { return }
-    if kind == .run || kind == .test { isConsoleVisible = true }
-    services.actions.perform(kind)
+    var environment: [String: String] = [:]
+    if kind.needsNotarization {
+      guard let profile = NotarySettings.profile else {
+        notarizationSetup = NotarizationSetupRequest(exportsWhenDone: true)
+        return
+      }
+      environment["NOTARY_PROFILE"] = profile
+    }
+    if kind == .run || kind == .test || kind.isDistribution { isConsoleVisible = true }
+    services.actions.perform(kind, environment: environment)
   }
 
   /// Open in New Window: shows a file in a window of its own with only its
