@@ -46,4 +46,22 @@ struct NotarizationTests {
       credentials: .appleID(appleID: "jane@example.com", teamID: "AUCR797TMH")
     ) == ["notarytool", "store-credentials", "work", "--apple-id", "jane@example.com", "--team-id", "AUCR797TMH"])
   }
+
+  #if os(macOS)
+    /// The answer goes to the terminal the tool reads its prompt from, with
+    /// echo off, as notarytool reads the app-specific password.
+    @Test func answersAPromptOnTheTerminal() {
+      let script = "stty -echo; printf 'Password: '; read secret < /dev/tty; stty echo; echo; echo \"got ${#secret}\"; exit 3"
+      let result = Notarization.runOnTerminal("/bin/sh", ["sh", "-c", script], answering: "password", with: "hunter2\n", timeout: 10)
+      #expect(result.exitCode == 3)
+      #expect(result.output.contains("got 7"))
+      #expect(!result.output.contains("hunter2"))
+    }
+
+    @Test func givesUpOnAToolThatNeverFinishes() {
+      let result = Notarization.runOnTerminal("/bin/sleep", ["sleep", "30"], answering: "password", with: "\n", timeout: 1)
+      #expect(result.exitCode == -1)
+      #expect(result.output.contains("Timed out"))
+    }
+  #endif
 }

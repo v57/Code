@@ -99,6 +99,76 @@ public enum Notarization {
       await run("/usr/bin/xcrun", storeArguments(profile: profile, credentials: .apiKey(path: path, keyID: keyID, issuerID: issuerID)))
     }
 
+    /// Saves an Apple ID profile. notarytool reads the app-specific password
+    /// only from its terminal's secure prompt, so it runs on a pseudo-terminal
+    /// and gets the password typed there: it never appears in its arguments.
+    public static func storeAppleIDProfile(
+      _ profile: String, appleID: String, teamID: String, password: String
+    ) async -> (exitCode: Int32, output: String) {
+      let arguments = ["xcrun"] + storeArguments(profile: profile, credentials: .appleID(appleID: appleID, teamID: teamID))
+      return await Task.detached(priority: .userInitiated) {
+        let result = runOnTerminal("/usr/bin/xcrun", arguments, answering: "password", with: password + "\n")
+        var text = ANSI.strip(result.output).replacingOccurrences(of: "\r", with: "")
+        if !password.isEmpty { text = text.replacingOccurrences(of: password, with: "••••") }
+        return (result.exitCode, text)
+      }.value
+    }
+
+    /// Runs `executable` with a pseudo-terminal as its controlling terminal
+    /// (forkpty), writes `answer` once its output contains `prompt`, and
+    /// gives up after `timeout` seconds (a question it never gets answered).
+    static func runOnTerminal(
+      _ executable: String, _ arguments: [String], answering prompt: String, with answer: String,
+      timeout: TimeInterval = 120
+    ) -> (exitCode: Int32, output: String) {
+      // Everything the child needs is made before forking: it only execs.
+      let argv = arguments.map { strdup($0) } + [nil]
+      let envp = ProcessInfo.processInfo.environment.map { strdup("\($0.key)=\($0.value)") } + [nil]
+      defer {
+        argv.forEach { free($0) }
+        envp.forEach { free($0) }
+      }
+      var master: Int32 = -1
+      let pid = forkpty(&master, nil, nil, nil)
+      if pid < 0 { return (-1, String(cString: strerror(errno))) }
+      if pid == 0 {
+        execve(executable, argv, envp)
+        _exit(127)
+      }
+      var output = Data()
+      var answered = false
+      var timedOut = false
+      let deadline = Date().addingTimeInterval(timeout)
+      var buffer = [UInt8](repeating: 0, count: 4096)
+      while true {
+        let remaining = deadline.timeIntervalSinceNow
+        if remaining <= 0 {
+          timedOut = true
+          kill(pid, SIGKILL)
+          break
+        }
+        var descriptor = pollfd(fd: master, events: Int16(POLLIN), revents: 0)
+        let ready = poll(&descriptor, 1, Int32(min(remaining, 1) * 1000))
+        if ready < 0 && errno != EINTR { break }
+        guard ready > 0 else { continue }
+        let count = read(master, &buffer, buffer.count)
+        // EIO: the tool exited and closed the terminal.
+        if count <= 0 { break }
+        output.append(contentsOf: buffer[0..<count])
+        if !answered, String(decoding: output, as: UTF8.self).range(of: prompt, options: .caseInsensitive) != nil {
+          answered = true
+          _ = answer.withCString { write(master, $0, strlen($0)) }
+        }
+      }
+      close(master)
+      var status: Int32 = 0
+      waitpid(pid, &status, 0)
+      var text = String(decoding: output, as: UTF8.self)
+      if timedOut { text += "\nTimed out waiting for notarytool." }
+      let signal = status & 0x7f
+      return (timedOut ? -1 : signal == 0 ? (status >> 8) & 0xff : 128 + signal, text)
+    }
+
     /// Runs a tool off the main thread, returning its exit code and combined
     /// stdout + stderr.
     static func run(_ executable: String, _ arguments: [String]) async -> (exitCode: Int32, output: String) {

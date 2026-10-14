@@ -180,8 +180,9 @@
     }
 
     /// Runs an action on the selected scheme and destination, stopping the
-    /// one running now.
-    public func perform(_ kind: ActionKind) {
+    /// one running now. `environment` adds variables for its commands
+    /// (Export's `NOTARY_PROFILE`).
+    public func perform(_ kind: ActionKind, environment: [String: String] = [:]) {
       guard let scheme = selectedScheme else { return }
       let destination = selectedDestination
       let previous = task
@@ -199,7 +200,8 @@
         self?.receive(batch, events)
       }
       let context = ActionContext(
-        directory: scheme.directory, environment: ShellEnvironment.shared.variables
+        directory: scheme.directory,
+        environment: ShellEnvironment.shared.variables.merging(environment) { $1 }
       ) { line in sink.add(line) }
       self.context = context
 
