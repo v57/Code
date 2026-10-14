@@ -104,8 +104,8 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				C0DE00000000000000000A03 /* XCLocalSwiftPackageReference "." */,
-				D5C0DE000000000000000001 /* XCLocalSwiftPackageReference "../UpdateKit" */,
-				2B6E154177CEBEF3833B42A4 /* XCLocalSwiftPackageReference "../Vault" */,
+				D5C0DE000000000000000001 /* XCRemoteSwiftPackageReference "UpdateKit" */,
+				2B6E154177CEBEF3833B42A4 /* XCRemoteSwiftPackageReference "Vault" */,
 			);
 			preferredProjectObjectVersion = 90;
 			productRefGroup = 000000000000000000000020 /* Products */;
@@ -360,15 +360,26 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = .;
 		};
-		D5C0DE000000000000000001 /* XCLocalSwiftPackageReference "../UpdateKit" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = ../UpdateKit;
-		};
-		2B6E154177CEBEF3833B42A4 /* XCLocalSwiftPackageReference "../Vault" */ = {
-			isa = XCLocalSwiftPackageReference;
-			relativePath = ../Vault;
-		};
 /* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		2B6E154177CEBEF3833B42A4 /* XCRemoteSwiftPackageReference "Vault" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/v57/Vault.git";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
+		D5C0DE000000000000000001 /* XCRemoteSwiftPackageReference "UpdateKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/v57/UpdateKit.git";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		C0DE00000000000000000A04 /* CodeKit */ = {
@@ -381,7 +392,7 @@
 		};
 		2C754DD20831A96E0D5C5AE0 /* VaultKit */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 2B6E154177CEBEF3833B42A4 /* XCLocalSwiftPackageReference "../Vault" */;
+			package = 2B6E154177CEBEF3833B42A4 /* XCRemoteSwiftPackageReference "Vault" */;
 			productName = VaultKit;
 		};
 /* End XCSwiftPackageProductDependency section */

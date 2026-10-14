@@ -248,5 +248,9 @@ Verification
       --sdk "$(xcrun --sdk iphonesimulator --show-sdk-path)"
     xcodebuild -project Code.xcodeproj -scheme Code -destination 'platform=macOS' build
 
+The app's v57 packages (Vault, UpdateKit) come from GitHub's `main` branch. To work on them
+together, clone them next to this repository and open `Code-Local.xcworkspace` instead of the
+project.
+
 Not yet: terminal, git. The app is not sandboxed: it runs build tools,
 language servers, formatters, simctl, devicectl, adb and LLDB.
