@@ -114,6 +114,7 @@ private func kind(of needle: String, in code: String, _ language: String) -> Syn
     #expect(name("/p/config.yml") == "YAML")
     #expect(name("/p/README.md") == "Markdown")
     #expect(name("/p/Info.plist") == "HTML")
+    #expect(name("/p/PrivacyInfo.xcprivacy") == "HTML")
     #expect(name("/p/run", "#!/usr/bin/env python3") == "Python")
     #expect(name("/p/run", "#!/bin/zsh -e") == "Shell")
     #expect(name("/p/notes.txt") == nil)
