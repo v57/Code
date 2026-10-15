@@ -180,7 +180,7 @@ struct WelcomeView: View {
   }
 }
 
-/// One recent project: its icon, name and enclosing folder.
+/// One recent project: its icon, name and path.
 private struct RecentRow: View {
   let folder: URL
   let isSelected: Bool
@@ -195,7 +195,7 @@ private struct RecentRow: View {
         Text(folder.lastPathComponent)
           .font(.system(size: 13, weight: .medium))
           .foregroundStyle(isSelected ? .white : .primary)
-        Text(folder.deletingLastPathComponent().abbreviatedPath)
+        Text(folder.abbreviatedPath)
           .font(.system(size: 11))
           .foregroundStyle(isSelected ? Color.white.opacity(0.85) : .secondary)
       }
