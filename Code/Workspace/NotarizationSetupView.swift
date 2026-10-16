@@ -228,12 +228,9 @@ struct NotarizationSetupView: View {
     ) {
       FormRow("Profile name", systemImage: "person.badge.key", field: TextField("Profile name", text: $newProfile))
       FormRow("Sign in with", systemImage: "key", hue: .gray) {
-        Picker("Sign in with", selection: $method) {
-          Text("App-specific password").tag(Method.appleID)
-          Text("App Store Connect API key").tag(Method.apiKey)
-        }
-        .labelsHidden()
-        .fixedSize()
+        KitPicker(
+          "Sign in with", selection: $method,
+          options: [("App-specific password", Method.appleID), ("App Store Connect API key", Method.apiKey)])
       }
       switch method {
       case .appleID:

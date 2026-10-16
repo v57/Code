@@ -57,7 +57,7 @@ struct LanguagesSettingsView: View {
         "Each language’s server is installed separately, from its official source. ⌘-click a symbol to jump to its definition; ⌥-click for Quick Help."
     ) {
       FormRow("Language servers", help: "For definitions and issues", systemImage: "curlybraces", hue: .purple) {
-        Toggle(isOn: $enabled) {}.accessibilityLabel("Use language servers for definitions and issues")
+        Toggle("Use language servers for definitions and issues", isOn: $enabled).kitLabelsHidden()
       }
     }
     FormCard("Servers") {
@@ -94,7 +94,7 @@ struct FormattingSettingsView: View {
         "The formatter runs before the file is written, so it is written once, formatted. Formatters read their own config files (.swift-format, .prettierrc, …) from the file’s folder upward."
     ) {
       FormRow("Format when saving", help: "Before the file is written (⌘S)", systemImage: "text.alignleft", hue: .orange) {
-        Toggle(isOn: $formatOnSave) {}.accessibilityLabel("Format when saving (⌘S)")
+        Toggle("Format when saving (⌘S)", isOn: $formatOnSave).kitLabelsHidden()
       }
     }
     FormCard("Formatters") {
@@ -175,13 +175,13 @@ struct RunSettingsView: View {
         "Schemes come from the projects in the folder: Xcode, Swift packages, Cargo, Go, Gradle and Android, Maven, Node and Bun, Python, CMake, Make, Zig, Dart, .NET, Elixir, Ruby and PHP."
     ) {
       FormRow("Run, Build and Test", help: "In the toolbar", systemImage: "play.fill", hue: .green) {
-        Toggle(isOn: $actionsEnabled) {}.accessibilityLabel("Show Run, Build and Test in the toolbar")
+        Toggle("Show Run, Build and Test in the toolbar", isOn: $actionsEnabled).kitLabelsHidden()
       }
       FormRow(
         "Breakpoints", help: "Click a line number; Run debugs with LLDB", systemImage: "arrowtriangle.right.fill",
         hue: .blue
       ) {
-        Toggle(isOn: $breakpointsEnabled) {}.accessibilityLabel("Breakpoints")
+        Toggle("Breakpoints", isOn: $breakpointsEnabled).kitLabelsHidden()
       }
     }
     FormCard {
@@ -217,7 +217,7 @@ private struct ToolRow: View {
             .buttonStyle(.kit)
             .help(installCommand)
         }
-        Toggle(isOn: $isOn) {}.accessibilityLabel(name)
+        Toggle(name, isOn: $isOn).kitLabelsHidden()
       }
     }
     .help(path ?? source)

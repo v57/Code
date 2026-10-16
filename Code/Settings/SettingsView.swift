@@ -9,7 +9,7 @@ struct SettingsView: View {
   @AppStorage("settings.tab") private var tab = "editor"
 
   var body: some View {
-    KitSettings(selection: $tab) {
+    KitSettings(selection: $tab, window: .hiddenTitleBar) {
       SettingsPane("Editor", systemImage: "character.cursor.ibeam", hue: .blue, id: "editor") {
         EditorSettingsView()
       }
@@ -24,8 +24,6 @@ struct SettingsView: View {
     }
     .toggleStyle(.kitSwitch)
     .frame(width: 680, height: 560)
-    // The kit lays the sidebar out under the window's buttons: run it up into the title bar.
-    .frame(height: 560 - 32, alignment: .bottom)
     .modifier(SettingsWindowTitle())
   }
 }
@@ -61,28 +59,14 @@ private struct EditorSettingsView: View {
   var body: some View {
     FormCard("Appearance") {
       FormRow("Theme", help: "Matching the system follows light and dark", systemImage: "paintpalette", hue: .purple) {
-        Picker("Theme", selection: $theme) {
-          ForEach(EditorTheme.families, id: \.id) { family in
-            Text("\(family.name) (Match System)").tag(family.id)
-          }
-          Divider()
-          ForEach(EditorTheme.all) { theme in
-            Text(theme.name).tag(theme.id)
-          }
-        }
-        .labelsHidden()
-        .fixedSize()
+        KitPicker(
+          "Theme", selection: $theme,
+          options: EditorTheme.families.map { ("\($0.name) (Match System)", $0.id) }
+            + EditorTheme.all.map { ($0.name, $0.id) })
       }
       FormRow("Font", help: "Installed fixed-pitch fonts", systemImage: "textformat", hue: .blue) {
-        Picker("Font", selection: $fontName) {
-          Text("Theme Font (SF Mono)").tag("")
-          Divider()
-          ForEach(monospacedFamilies, id: \.self) { family in
-            Text(family).tag(family)
-          }
-        }
-        .labelsHidden()
-        .fixedSize()
+        KitPicker(
+          "Font", selection: $fontName, options: [("Theme Font (SF Mono)", "")] + monospacedFamilies.map { ($0, $0) })
       }
       FormRow("Font size", help: "⌘+ and ⌘− change it too", systemImage: "textformat.size", hue: .blue) {
         KitStepper(
@@ -93,45 +77,41 @@ private struct EditorSettingsView: View {
     }
     FormCard("Editing") {
       FormRow("Tab width", systemImage: "arrow.right.to.line", hue: .gray) {
-        Picker("Tab width", selection: $tabWidth) {
-          ForEach([2, 3, 4, 8], id: \.self) { Text("\($0) spaces").tag($0) }
-        }
-        .labelsHidden()
-        .fixedSize()
+        KitPicker("Tab width", selection: $tabWidth, options: [2, 3, 4, 8].map { ("\($0) spaces", $0) })
       }
       FormRow("Insert spaces when pressing Tab", systemImage: "keyboard", hue: .gray) {
-        Toggle(isOn: $insertSpaces) {}.accessibilityLabel("Insert spaces when pressing Tab")
+        Toggle("Insert spaces when pressing Tab", isOn: $insertSpaces).kitLabelsHidden()
       }
       FormRow("Close brackets and quotes", help: "As you type the opening one", systemImage: "curlybraces", hue: .gray) {
-        Toggle(isOn: $autoCloseDelimiters) {}.accessibilityLabel("Automatically close brackets and quotes")
+        Toggle("Automatically close brackets and quotes", isOn: $autoCloseDelimiters).kitLabelsHidden()
       }
       FormRow("Trim trailing whitespace", help: "When saving", systemImage: "scissors", hue: .gray) {
-        Toggle(isOn: $trimTrailingWhitespace) {}.accessibilityLabel("Trim trailing whitespace when saving")
+        Toggle("Trim trailing whitespace when saving", isOn: $trimTrailingWhitespace).kitLabelsHidden()
       }
       FormRow("Suggest completions", help: "While typing", systemImage: "text.badge.plus", hue: .gray) {
-        Toggle(isOn: $suggestsCompletions) {}.accessibilityLabel("Suggest completions while typing")
+        Toggle("Suggest completions while typing", isOn: $suggestsCompletions).kitLabelsHidden()
       }
     }
     FormCard("Display") {
       FormRow("Wrap lines", systemImage: "arrow.turn.down.left", hue: .indigo) {
-        Toggle(isOn: $wrapLines) {}.accessibilityLabel("Wrap lines")
+        Toggle("Wrap lines", isOn: $wrapLines).kitLabelsHidden()
       }
       FormRow("Line numbers", systemImage: "list.number", hue: .indigo) {
-        Toggle(isOn: $showLineNumbers) {}.accessibilityLabel("Show line numbers")
+        Toggle("Show line numbers", isOn: $showLineNumbers).kitLabelsHidden()
       }
       FormRow("Highlight current line", systemImage: "highlighter", hue: .indigo) {
-        Toggle(isOn: $highlightCurrentLine) {}.accessibilityLabel("Highlight current line")
+        Toggle("Highlight current line", isOn: $highlightCurrentLine).kitLabelsHidden()
       }
       FormRow("Minimap", systemImage: "sidebar.right", hue: .indigo) {
-        Toggle(isOn: $showsMinimap) {}.accessibilityLabel("Show minimap")
+        Toggle("Show minimap", isOn: $showsMinimap).kitLabelsHidden()
       }
     }
     FormCard("Issues") {
       FormRow("Show issues in the editor", systemImage: "exclamationmark.triangle", hue: .orange) {
-        Toggle(isOn: $showsInlineIssues) {}.accessibilityLabel("Show issues in the editor")
+        Toggle("Show issues in the editor", isOn: $showsInlineIssues).kitLabelsHidden()
       }
       FormRow("Show issue messages", help: "At the end of their lines", systemImage: "text.bubble", hue: .orange) {
-        Toggle(isOn: $showsIssueMessages) {}.accessibilityLabel("Show issue messages at the end of lines")
+        Toggle("Show issue messages at the end of lines", isOn: $showsIssueMessages).kitLabelsHidden()
       }
       .disabled(!showsInlineIssues)
     }
@@ -145,7 +125,7 @@ private struct FilesSettingsView: View {
   var body: some View {
     FormCard {
       FormRow("Show file extensions", help: "In the navigator, tabs and path bar", systemImage: "doc.text", hue: .teal) {
-        Toggle(isOn: $showExtensions) {}.accessibilityLabel("Show file extensions")
+        Toggle("Show file extensions", isOn: $showExtensions).kitLabelsHidden()
       }
     }
     FormCard(
@@ -153,7 +133,7 @@ private struct FilesSettingsView: View {
         "For projects that haven’t chosen. Choose a project’s visible files from its navigator (View › Hidden Files › Edit Hidden Files); ⇧⌘. shows hidden files."
     ) {
       FormRow("Hide files listed in .gitignore", systemImage: "eye.slash", hue: .gray) {
-        Toggle(isOn: $hidesIgnoredFiles) {}.accessibilityLabel("Hide files listed in .gitignore")
+        Toggle("Hide files listed in .gitignore", isOn: $hidesIgnoredFiles).kitLabelsHidden()
       }
     }
   }
