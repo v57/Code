@@ -1,4 +1,5 @@
 import CodeKit
+import ComponentKit
 import SwiftUI
 
 extension Notification.Name {
@@ -51,32 +52,31 @@ struct LanguagesSettingsView: View {
   private let tools = ToolsModel.shared
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      Toggle("Use language servers for definitions and issues", isOn: $enabled)
-      Text("Each language’s server is installed separately, from its official source. ⌘-click a symbol to jump to its definition; ⌥-click for Quick Help.")
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
-      List {
-        ForEach(LanguageServerCatalog.all) { server in
-          ToolRow(
-            name: server.name, detail: server.languages, source: server.install.summary,
-            path: server.install == .xcode && tools.paths[server.command] == nil
-              ? nil : tools.paths[server.command],
-            isOn: Binding(
-              get: { !EditorSettings.ids(from: disabled).contains(server.id) },
-              set: { on in
-                var ids = EditorSettings.ids(from: disabled)
-                if on { ids.remove(server.id) } else { ids.insert(server.id) }
-                disabled = EditorSettings.idsText(ids)
-              }),
-            installCommand: server.install.command, toolID: server.id)
-        }
+    FormCard(
+      footer:
+        "Each language’s server is installed separately, from its official source. ⌘-click a symbol to jump to its definition; ⌥-click for Quick Help."
+    ) {
+      FormRow("Language servers", help: "For definitions and issues", systemImage: "curlybraces", hue: .purple) {
+        Toggle(isOn: $enabled) {}.accessibilityLabel("Use language servers for definitions and issues")
       }
-      .disabled(!enabled)
-      .frame(height: 340)
     }
-    .padding(20)
+    FormCard("Servers") {
+      ForEach(LanguageServerCatalog.all) { server in
+        ToolRow(
+          name: server.name, detail: server.languages, source: server.install.summary,
+          path: server.install == .xcode && tools.paths[server.command] == nil
+            ? nil : tools.paths[server.command],
+          isOn: Binding(
+            get: { !EditorSettings.ids(from: disabled).contains(server.id) },
+            set: { on in
+              var ids = EditorSettings.ids(from: disabled)
+              if on { ids.remove(server.id) } else { ids.insert(server.id) }
+              disabled = EditorSettings.idsText(ids)
+            }),
+          installCommand: server.install.command, toolID: server.id, systemImage: "curlybraces", hue: .purple)
+      }
+    }
+    .disabled(!enabled)
     .onAppear { tools.refresh() }
   }
 }
@@ -89,47 +89,48 @@ struct FormattingSettingsView: View {
   private let tools = ToolsModel.shared
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 12) {
-      Toggle("Format when saving (⌘S)", isOn: $formatOnSave)
-      Text("The formatter runs before the file is written, so it is written once, formatted. Formatters read their own config files (.swift-format, .prettierrc, …) from the file’s folder upward.")
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
-      List {
-        ForEach(FormatterCatalog.all) { formatter in
-          VStack(alignment: .leading, spacing: 4) {
-            ToolRow(
-              name: formatter.name, detail: formatter.languages,
-              source: formatter.installCommand ?? "",
-              path: customCommand(formatter.id) ?? tools.paths[formatter.command],
-              isOn: Binding(
-                get: { !EditorSettings.ids(from: disabled).contains(formatter.id) },
-                set: { on in
-                  var ids = EditorSettings.ids(from: disabled)
-                  if on { ids.remove(formatter.id) } else { ids.insert(formatter.id) }
-                  disabled = EditorSettings.idsText(ids)
-                }),
-              installCommand: formatter.installCommand, toolID: formatter.id)
-            HStack {
-              if !formatter.configFiles.isEmpty {
-                Toggle("Only with a config file", isOn: requiresConfigBinding(formatter))
-                  .controlSize(.small)
-                  .help(formatter.configFiles.joined(separator: ", "))
-              }
-              Spacer()
-              TextField("Custom command", text: commandBinding(formatter.id))
-                .textFieldStyle(.roundedBorder)
-                .controlSize(.small)
-                .frame(width: 200)
-            }
-            .padding(.leading, 22)
-          }
-        }
+    FormCard(
+      footer:
+        "The formatter runs before the file is written, so it is written once, formatted. Formatters read their own config files (.swift-format, .prettierrc, …) from the file’s folder upward."
+    ) {
+      FormRow("Format when saving", help: "Before the file is written (⌘S)", systemImage: "text.alignleft", hue: .orange) {
+        Toggle(isOn: $formatOnSave) {}.accessibilityLabel("Format when saving (⌘S)")
       }
-      .disabled(!formatOnSave)
-      .frame(height: 340)
     }
-    .padding(20)
+    FormCard("Formatters") {
+      ForEach(FormatterCatalog.all) { formatter in
+        ToolRow(
+          name: formatter.name, detail: formatter.languages,
+          source: formatter.installCommand ?? "",
+          path: customCommand(formatter.id) ?? tools.paths[formatter.command],
+          isOn: Binding(
+            get: { !EditorSettings.ids(from: disabled).contains(formatter.id) },
+            set: { on in
+              var ids = EditorSettings.ids(from: disabled)
+              if on { ids.remove(formatter.id) } else { ids.insert(formatter.id) }
+              disabled = EditorSettings.idsText(ids)
+            }),
+          installCommand: formatter.installCommand, toolID: formatter.id, systemImage: "text.alignleft",
+          hue: .orange)
+        HStack(spacing: 8) {
+          if !formatter.configFiles.isEmpty {
+            Toggle("Only with a config file", isOn: requiresConfigBinding(formatter))
+              .toggleStyle(.kitCheckbox)
+              .fixedSize()
+              .help(formatter.configFiles.joined(separator: ", "))
+          }
+          Spacer(minLength: 0)
+          TextField("Custom command", text: commandBinding(formatter.id))
+            .kitField(mono: true)
+            .frame(width: 220)
+        }
+        .controlSize(.small)
+        .padding(.leading, 48)
+        .padding(.trailing, 12)
+        .padding(.bottom, 8)
+      }
+    }
+    .disabled(!formatOnSave)
     .onAppear { tools.refresh() }
   }
 
@@ -169,28 +170,30 @@ struct RunSettingsView: View {
   private let tools = ToolsModel.shared
 
   var body: some View {
-    Form {
-      Toggle("Show Run, Build and Test in the toolbar", isOn: $actionsEnabled)
-      Text("Schemes come from the projects in the folder: Xcode, Swift packages, Cargo, Go, Gradle and Android, Maven, Node and Bun, Python, CMake, Make, Zig, Dart, .NET, Elixir, Ruby and PHP.")
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .fixedSize(horizontal: false, vertical: true)
-      Divider()
-      Toggle("Breakpoints (click a line number; Run debugs with LLDB)", isOn: $breakpointsEnabled)
-      Divider()
-      LabeledContent("Android Debug Bridge:") {
-        Text(tools.adb ?? "Not found — brew install android-platform-tools")
-          .foregroundStyle(.secondary)
-          .textSelection(.enabled)
+    FormCard(
+      footer:
+        "Schemes come from the projects in the folder: Xcode, Swift packages, Cargo, Go, Gradle and Android, Maven, Node and Bun, Python, CMake, Make, Zig, Dart, .NET, Elixir, Ruby and PHP."
+    ) {
+      FormRow("Run, Build and Test", help: "In the toolbar", systemImage: "play.fill", hue: .green) {
+        Toggle(isOn: $actionsEnabled) {}.accessibilityLabel("Show Run, Build and Test in the toolbar")
+      }
+      FormRow(
+        "Breakpoints", help: "Click a line number; Run debugs with LLDB", systemImage: "arrowtriangle.right.fill",
+        hue: .blue
+      ) {
+        Toggle(isOn: $breakpointsEnabled) {}.accessibilityLabel("Breakpoints")
       }
     }
-    .padding(20)
+    FormCard {
+      FormRow(
+        "Android Debug Bridge", help: tools.adb ?? "Not found — brew install android-platform-tools",
+        systemImage: "iphone", hue: tools.adb == nil ? .gray : .green)
+    }
     .onAppear { tools.refresh() }
   }
 }
 
-/// A tool's row: its switch, what it is for, where it is installed, and
-/// Install while it isn't.
+/// A tool's row: what it is for, where it is installed (or Install while it isn't), and its switch.
 private struct ToolRow: View {
   let name: String
   let detail: String
@@ -199,36 +202,30 @@ private struct ToolRow: View {
   @Binding var isOn: Bool
   let installCommand: String?
   let toolID: String
+  let systemImage: String
+  let hue: Hue
   private var tools: ToolsModel { .shared }
 
   var body: some View {
-    HStack(alignment: .firstTextBaseline) {
-      Toggle(isOn: $isOn) {
-        VStack(alignment: .leading, spacing: 2) {
-          Text(name).fontWeight(.medium)
-          Text(detail).font(.caption).foregroundStyle(.secondary)
+    let running = tools.installer.running[toolID]
+    FormRow(name, help: running ?? help, systemImage: systemImage, hue: path == nil ? .gray : hue) {
+      HStack(spacing: 8) {
+        if running != nil {
+          LiveIcon(systemImage: "arrow.down", status: .working, size: 20)
+        } else if path == nil, let installCommand {
+          Button("Install") { tools.install(id: toolID, command: installCommand) }
+            .buttonStyle(.kit)
+            .help(installCommand)
         }
-      }
-      Spacer()
-      if let running = tools.installer.running[toolID] {
-        ProgressView().controlSize(.small)
-        Text(running).font(.caption).foregroundStyle(.secondary).lineLimit(1).frame(maxWidth: 160)
-      } else if let path {
-        Text(path)
-          .font(.caption)
-          .foregroundStyle(.secondary)
-          .lineLimit(1)
-          .truncationMode(.head)
-          .frame(maxWidth: 200, alignment: .trailing)
-          .help(path)
-      } else if let installCommand {
-        Button("Install") { tools.install(id: toolID, command: installCommand) }
-          .controlSize(.small)
-          .help(installCommand)
-      } else {
-        Text(source).font(.caption).foregroundStyle(.secondary)
+        Toggle(isOn: $isOn) {}.accessibilityLabel(name)
       }
     }
-    .padding(.vertical, 2)
+    .help(path ?? source)
+  }
+
+  /// "Swift, C · /usr/bin/sourcekit-lsp", or where it comes from while it isn't installed.
+  private var help: String {
+    if let path { return "\(detail) · \(path)" }
+    return installCommand == nil && !source.isEmpty ? "\(detail) · \(source)" : "\(detail) · Not installed"
   }
 }

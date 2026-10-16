@@ -1,4 +1,5 @@
 import CodeKit
+import ComponentKit
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -70,31 +71,31 @@ struct NotarizationSetupView: View {
   }
 
   var body: some View {
-    VStack(spacing: 0) {
-      Text("Notarization")
-        .font(.headline)
-        .padding(.top, 16)
-        .padding(.bottom, 8)
-
-      Form {
-        developerIDSection
-        profileSection
-        if mode == .new {
-          newProfileSection
+    KitSheet(
+      title: "Notarization", meta: "What Export needs: a Developer ID certificate and a notary profile.",
+      systemImage: "checkmark.seal", width: 500
+    ) {
+      ScrollView {
+        VStack(spacing: 18) {
+          developerIDSection
+          profileSection
+          if mode == .new {
+            newProfileSection
+          }
         }
+        .padding(.vertical, 4)
       }
-      .formStyle(.grouped)
-
-      HStack {
-        Spacer()
-        Button("Cancel") { dismiss() }
-        Button(request.exportsWhenDone ? "Export" : "Done") { finish() }
-          .keyboardShortcut(.defaultAction)
-          .disabled(!hasDeveloperID || !profileIsValid)
-      }
-      .padding()
+      .frame(height: 440)
+    } footer: {
+      SheetStatus(footerStatus.text, systemImage: "checkmark.seal", status: footerStatus.status)
+      Button("Cancel") { dismiss() }
+        .keyboardShortcut(.cancelAction)
+      Button(request.exportsWhenDone ? "Export" : "Done") { finish() }
+        .buttonStyle(.kitPrimary)
+        .keyboardShortcut(.defaultAction)
+        .disabled(!hasDeveloperID || !profileIsValid)
     }
-    .frame(width: 480, height: 580)
+    .componentKit()
     .task {
       let saved = NotarySettings.profile ?? Notarization.defaultProfile
       profile = saved
@@ -117,147 +118,158 @@ struct NotarizationSetupView: View {
     }
   }
 
+  /// The footer's line: what Export still waits for.
+  private var footerStatus: (text: String, status: WorkStatus) {
+    if identities == nil || check == .checking { return ("Checking…", .working) }
+    if !hasDeveloperID { return ("No Developer ID certificate", .failed) }
+    if profileIsValid { return ("Ready to export", .done) }
+    return ("Choose a notary profile", .idle)
+  }
+
   // MARK: - Sections
 
   private var developerIDSection: some View {
-    Section {
+    FormCard(
+      "Developer ID",
+      footer: identities?.isEmpty == true
+        ? "Create one in Xcode: Settings → Accounts → your team → Manage Certificates → + → Developer ID Application. Only the team's Account Holder can create it."
+        : "Export signs the app with the certificate of the project's team."
+    ) {
       if let identities {
         if identities.isEmpty {
-          Label("No Developer ID Application certificate in the keychain", systemImage: "xmark.octagon.fill")
-            .foregroundStyle(.red)
-          Button("Check Again") { Task { await loadIdentities() } }
+          FormRow(
+            "No certificate", systemImage: "xmark.seal",
+            error: "No Developer ID Application certificate in the keychain"
+          ) {
+            Button("Check Again") { Task { await loadIdentities() } }
+              .buttonStyle(.kit)
+          }
         } else {
           ForEach(identities, id: \.self) { identity in
-            Label(identity.name, systemImage: "checkmark.seal.fill")
-              .foregroundStyle(.green)
+            FormRow(identity.name, help: "In the keychain", systemImage: "checkmark.seal.fill", hue: .green)
           }
         }
       } else {
-        HStack(spacing: 8) {
-          ProgressView().controlSize(.small)
-          Text("Looking for certificates…")
+        FormRow("Looking for certificates…", systemImage: "checkmark.seal", hue: .gray) {
+          LiveIcon(systemImage: "magnifyingglass", status: .working, size: 20)
         }
-      }
-    } header: {
-      Text("Developer ID")
-    } footer: {
-      if identities?.isEmpty == true {
-        Text("Create one in Xcode: Settings → Accounts → your team → Manage Certificates → + → Developer ID Application. Only the team's Account Holder can create it.")
-      } else {
-        Text("Export signs the app with the certificate of the project's team.")
       }
     }
   }
 
   private var profileSection: some View {
-    Section {
-      Picker("Profile", selection: $mode) {
-        Text("Use existing").tag(Mode.existing)
-        Text("Create new").tag(Mode.new)
-      }
-      .pickerStyle(.segmented)
-      .labelsHidden()
-
+    FormCard(
+      "Notary profile",
+      footer:
+        "A notarytool keychain profile, the one `xcrun notarytool store-credentials` saves. Checking it asks Apple's notary service, so it needs a network connection."
+    ) {
+      KitSegmented(selection: $mode, options: [("Use existing", Mode.existing), ("Create new", Mode.new)])
+        .padding(10)
       if mode == .existing {
-        HStack {
-          TextField("Profile name", text: $profile)
-            .onSubmit { Task { await checkProfile() } }
-          Button("Check") { Task { await checkProfile() } }
-            .disabled(trimmed(profile).isEmpty || check == .checking)
+        FormRow(
+          "Profile name", help: checkHelp, systemImage: "person.badge.key", hue: checkHue, error: checkError,
+          status: checkFieldStatus,
+          field: TextField("Profile name", text: $profile).onSubmit { Task { await checkProfile() } })
+        if check == .done(.missing) {
+          FormRow("Not in the keychain", help: "Create it with your credentials", systemImage: "plus", hue: .orange) {
+            Button("Create It") {
+              newProfile = trimmed(profile)
+              mode = .new
+            }
+            .buttonStyle(.kit)
+          }
+        } else {
+          FormRow("Check with Apple", help: "Asks the notary service", systemImage: "network", hue: .gray) {
+            Button("Check") { Task { await checkProfile() } }
+              .buttonStyle(.kit)
+              .disabled(trimmed(profile).isEmpty || check == .checking)
+          }
         }
-        checkStatus
       }
-    } header: {
-      Text("Notary profile")
-    } footer: {
-      Text("A notarytool keychain profile, the one `xcrun notarytool store-credentials` saves. Checking it asks Apple's notary service, so it needs a network connection.")
     }
   }
 
-  @ViewBuilder
-  private var checkStatus: some View {
+  private var checkHelp: String? {
     switch check {
-    case .idle:
-      EmptyView()
-    case .checking:
-      HStack(spacing: 8) {
-        ProgressView().controlSize(.small)
-        Text("Checking with Apple…")
-      }
-    case .done(.valid):
-      Label("Profile works", systemImage: "checkmark.seal.fill")
-        .foregroundStyle(.green)
-    case .done(.missing):
-      HStack {
-        Label("No profile named “\(trimmed(profile))” in the keychain", systemImage: "questionmark.diamond.fill")
-          .foregroundStyle(.orange)
-        Spacer()
-        Button("Create It") {
-          newProfile = trimmed(profile)
-          mode = .new
-        }
-      }
-    case .done(.failed(let message)):
-      VStack(alignment: .leading, spacing: 4) {
-        Label("The profile doesn't work", systemImage: "xmark.octagon.fill")
-          .foregroundStyle(.red)
-        Text(message)
-          .font(.caption.monospaced())
-          .foregroundStyle(.secondary)
-          .textSelection(.enabled)
-          .lineLimit(6)
-      }
+    case .idle: return nil
+    case .checking: return "Checking with Apple…"
+    case .done(.valid): return "Profile works"
+    case .done(.missing): return "No profile named “\(trimmed(profile))” in the keychain"
+    case .done(.failed): return nil
+    }
+  }
+
+  private var checkHue: Hue {
+    switch check {
+    case .done(.valid): return .green
+    case .done(.missing): return .orange
+    default: return .accent
+    }
+  }
+
+  private var checkError: String? {
+    if case .done(.failed(let message)) = check { return "The profile doesn't work: \(message)" }
+    return nil
+  }
+
+  private var checkFieldStatus: WorkStatus {
+    switch check {
+    case .checking: return .working
+    case .done(.valid): return .done
+    case .done(.failed): return .failed
+    default: return .idle
     }
   }
 
   private var newProfileSection: some View {
-    Section {
-      TextField("Profile name", text: $newProfile)
-      Picker("Sign in with", selection: $method) {
-        Text("App-specific password").tag(Method.appleID)
-        Text("App Store Connect API key").tag(Method.apiKey)
+    FormCard(
+      "New profile",
+      footer: "notarytool checks the credentials with Apple, then keeps them in your keychain. Code doesn't store them."
+    ) {
+      FormRow("Profile name", systemImage: "person.badge.key", field: TextField("Profile name", text: $newProfile))
+      FormRow("Sign in with", systemImage: "key", hue: .gray) {
+        Picker("Sign in with", selection: $method) {
+          Text("App-specific password").tag(Method.appleID)
+          Text("App Store Connect API key").tag(Method.apiKey)
+        }
+        .labelsHidden()
+        .fixedSize()
       }
-
       switch method {
       case .appleID:
-        TextField("Apple ID", text: $appleID)
-          .textContentType(.username)
-        TextField("Team ID", text: $teamID)
-        SecureField("App-specific password", text: $password)
-        Link("Create an app-specific password…", destination: URL(string: "https://account.apple.com/account/manage")!)
+        FormRow(
+          "Apple ID", systemImage: "person.crop.circle",
+          field: TextField("Apple ID", text: $appleID).textContentType(.username))
+        FormRow("Team ID", systemImage: "person.3", field: TextField("Team ID", text: $teamID))
+        FormRow(
+          "App-specific password", systemImage: "lock",
+          field: SecureField("App-specific password", text: $password))
+        FormRow("Create an app-specific password", systemImage: "link", hue: .gray) {
+          Link("Open…", destination: URL(string: "https://account.apple.com/account/manage")!)
+        }
       case .apiKey:
-        LabeledContent("Key file") {
-          HStack {
-            Text(keyURL?.lastPathComponent ?? "None")
-              .foregroundStyle(keyURL == nil ? .secondary : .primary)
-            Button("Choose…") { showingKeyImporter = true }
-          }
+        FormRow("Key file", help: keyURL?.lastPathComponent ?? "None", systemImage: "doc", hue: .gray) {
+          Button("Choose…") { showingKeyImporter = true }
+            .buttonStyle(.kit)
         }
-        TextField("Key ID", text: $keyID)
-        TextField("Issuer ID (team keys)", text: $issuerID)
-        Link("Create an API key in App Store Connect…", destination: URL(string: "https://appstoreconnect.apple.com/access/integrations/api")!)
-      }
-
-      HStack {
-        if saving {
-          ProgressView().controlSize(.small)
-          Text("Checking with Apple and saving…")
+        FormRow("Key ID", systemImage: "key", field: TextField("Key ID", text: $keyID))
+        FormRow(
+          "Issuer ID", help: "Team keys", systemImage: "building.2", field: TextField("Issuer ID", text: $issuerID))
+        FormRow("Create an API key in App Store Connect", systemImage: "link", hue: .gray) {
+          Link("Open…", destination: URL(string: "https://appstoreconnect.apple.com/access/integrations/api")!)
         }
-        Spacer()
-        Button("Save to Keychain") { Task { await save() } }
-          .disabled(!canSave)
       }
-      if let saveError {
-        Text(saveError)
-          .font(.caption.monospaced())
-          .foregroundStyle(.red)
-          .textSelection(.enabled)
-          .lineLimit(8)
+      FormRow(
+        "Save to Keychain", help: saving ? "Checking with Apple and saving…" : nil, systemImage: "lock.shield",
+        error: saveError
+      ) {
+        HStack(spacing: 8) {
+          if saving { LiveIcon(systemImage: "lock.shield", status: .working, size: 20) }
+          Button("Save") { Task { await save() } }
+            .buttonStyle(.kit)
+            .disabled(!canSave)
+        }
       }
-    } header: {
-      Text("New profile")
-    } footer: {
-      Text("notarytool checks the credentials with Apple, then keeps them in your keychain. Code doesn't store them.")
     }
   }
 
