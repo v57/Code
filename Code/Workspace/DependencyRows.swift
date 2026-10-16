@@ -95,8 +95,8 @@ private struct PackageDependencyRow: View {
     let detail = Text(dependency.detail).lineLimit(1)
     if let location = dependency.location {
       SidebarRow(value: NavigatorItem.file(location), dependency.name, icon: { icon }, trailing: { detail })
+        .onDoubleClick { model.dependencyFolderExpansion(location).wrappedValue.toggle() }
         .help(help)
-        .simultaneousGesture(TapGesture(count: 2).onEnded { model.dependencyFolderExpansion(location).wrappedValue.toggle() })
         .contextMenu { FileMenu(url: location) }
     } else {
       SidebarRow(dependency.name, icon: { icon }, trailing: { detail })
@@ -123,9 +123,9 @@ private struct DependencyEntryRow: View {
     SidebarRow(value: NavigatorItem.file(url), FileName.display(url, showExtensions: showExtensions)) {
       FileIconView(for: url, isDirectory: isDirectory, size: 14)
     }
+    .onDoubleClick { model.activateNavigatorItem(url) }
     .id(url)
     .help(url.abbreviatedPath)
-    .simultaneousGesture(TapGesture(count: 2).onEnded { model.activateNavigatorItem(url) })
     .contextMenu { FileMenu(url: url) }
   }
 }

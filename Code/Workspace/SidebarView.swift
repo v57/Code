@@ -260,10 +260,10 @@ struct FileTreeRow: View {
           .accessibilityLabel("Hidden")
       }
     }
+    .onDoubleClick { model.activateNavigatorItem(node.url) }
     .opacity(isHidden ? 0.6 : 1)
     .id(node.url)
     .help(help)
-    .simultaneousGesture(TapGesture(count: 2).onEnded { model.activateNavigatorItem(node.url) })
     .contextMenu { FileMenu(url: node.url) }
     .draggable(node.url)
   }
