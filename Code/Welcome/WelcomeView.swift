@@ -10,6 +10,8 @@ struct WelcomeView: View {
   static let size = CGSize(width: 480, height: 660)
 
   let open: (URL) -> Void
+  /// Recent or Projects, kept for the next time Welcome shows.
+  @AppStorage("welcome.source") private var source = WelcomeSource.recent
   @Environment(\.dismissWindow) private var dismissWindow
   private var recents: RecentProjects { AppState.shared.recents }
   private var vault: Vault { Vault.shared }
@@ -22,7 +24,7 @@ struct WelcomeView: View {
 
   var body: some View {
     KitWelcome(
-      emptyTitle: "No Recent Projects", emptyMessage: "Projects you open appear here.",
+      emptyTitle: "No Recent Projects", emptyMessage: "Projects you open appear here.", source: $source,
       close: { dismissWindow() },
       onDrop: { urls in
         guard let url = urls.first else { return false }
@@ -60,7 +62,7 @@ struct WelcomeView: View {
 }
 
 /// No title or title bar background: the content runs to the window's top edge (the window hides its buttons, see
-/// `WindowReader`).
+/// `KitWelcome`).
 private struct HiddenTitleBar: ViewModifier {
   func body(content: Content) -> some View {
     if #available(macOS 15.0, *) {

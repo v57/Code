@@ -167,9 +167,7 @@ private struct WindowReader: NSViewRepresentable {
       window.isMovableByWindowBackground = isWelcome
       window.titlebarSeparatorStyle = isWelcome ? .none : .automatic
       window.toolbar?.isVisible = !isWelcome
-      for button in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
-        window.standardWindowButton(button)?.isHidden = isWelcome
-      }
+      // The kit's welcome window hides the window's buttons itself (its round close button replaces them).
       if isWelcome {
         window.styleMask.insert(.fullSizeContentView)
         window.styleMask.remove(.resizable)
