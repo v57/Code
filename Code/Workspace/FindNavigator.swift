@@ -185,11 +185,7 @@ private struct FindOptionMenu<Value: Hashable>: View {
 
   var body: some View {
     KitMenuButton(title) {
-      Picker(title, selection: $selection) {
-        ForEach(options, id: \.1) { Text($0.0).tag($0.1) }
-      }
-      .pickerStyle(.inline)
-      .labelsHidden()
+      KitMenuOptions(selection: $selection, options: options)
     }
     .accessibilityValue(title)
   }
