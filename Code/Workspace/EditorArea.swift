@@ -1,4 +1,5 @@
 import CodeKit
+import ComponentKit
 import SwiftUI
 
 /// The selected document's editor, or what to show instead (nothing open,
@@ -26,7 +27,7 @@ struct EditorArea: View {
   @ViewBuilder private func content(for document: TextDocument) -> some View {
     switch document.content {
     case .loading:
-      ProgressView()
+      LiveIcon(systemImage: "doc.text", status: .working, size: 28)
     case .text:
       let services = serviceSettings.settings
       CodeEditorView(
@@ -76,37 +77,21 @@ struct EditorArea: View {
   private func unavailable(
     _ title: String, systemImage: String, description: String, document: TextDocument
   ) -> some View {
-    ContentUnavailableView {
-      Label(title, systemImage: systemImage)
-    } description: {
-      Text(description)
-    } actions: {
+    EmptyState(systemImage: systemImage, title: title, message: description) {
       Button("Open with Default App") { NSWorkspace.shared.open(document.url) }
+        .buttonStyle(.kit)
     }
   }
 
   private var emptyState: some View {
-    ContentUnavailableView {
-      Label(workspace.name, systemImage: "chevron.left.forwardslash.chevron.right")
-    } description: {
-      VStack(spacing: 6) {
-        Text("Select a file in the sidebar, or:")
-        Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 4) {
-          GridRow {
-            Text("Open Quickly")
-            Text("⇧⌘O").foregroundStyle(.secondary)
-          }
-          GridRow {
-            Text("New File")
-            Text("⌘N").foregroundStyle(.secondary)
-          }
-          GridRow {
-            Text("Open Folder")
-            Text("⌘O").foregroundStyle(.secondary)
-          }
-        }
-        .font(.callout.monospacedDigit())
-      }
+    VStack(spacing: 14) {
+      EmptyState(
+        systemImage: "chevron.left.forwardslash.chevron.right", title: workspace.name,
+        message: "Select a file in the sidebar, or:"
+      )
+      .fixedSize(horizontal: false, vertical: true)
+      KeyHints([("⇧⌘O", "Open Quickly"), ("⌘N", "New File"), ("⌘O", "Open Folder")])
     }
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
   }
 }

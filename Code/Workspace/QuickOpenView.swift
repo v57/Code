@@ -1,13 +1,12 @@
 import CodeKit
+import ComponentKit
 import SwiftUI
 
-/// Open Quickly (⇧⌘O, as in Xcode): fuzzy search over every file in the project.
-/// ↑/↓ move, Return opens, Escape or a click elsewhere closes.
+/// Open Quickly (⇧⌘O, as in Xcode): fuzzy search over every file in the project, as the kit's palette. ↑/↓ move,
+/// Return opens, Escape or a click elsewhere closes.
 struct QuickOpenView: View {
   @Environment(Workspace.self) private var workspace
   @Environment(WindowModel.self) private var model
-  @State private var selected = 0
-  @FocusState private var isFocused: Bool
 
   private typealias Result = (path: String, match: FuzzyMatch.Result, isHidden: Bool)
 
@@ -19,159 +18,86 @@ struct QuickOpenView: View {
   var body: some View {
     @Bindable var model = model
     let results = results
-    Palette {
-      HStack(spacing: 8) {
-        TextField("Search files by name", text: $model.quickOpenQuery)
-          .textFieldStyle(.plain)
-          .font(.title3)
-          .focused($isFocused)
-          .onSubmit { open(results) }
-          .onKeyPress(.downArrow) {
-            selected = min(selected + 1, max(0, results.count - 1))
-            return .handled
-          }
-          .onKeyPress(.upArrow) {
-            selected = max(selected - 1, 0)
-            return .handled
-          }
-          .onKeyPress(.escape) {
-            model.isQuickOpenPresented = false
-            return .handled
-          }
-        HiddenFilesButton(isOn: $model.quickOpenIncludesHiddenFiles)
-      }
-      .padding(10)
-      Divider()
-      ScrollViewReader { proxy in
-        ScrollView {
-          LazyVStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(results.enumerated()), id: \.element.path) { index, result in
-              row(result, isSelected: index == selected)
-                .onTapGesture {
-                  selected = index
-                  open(results)
-                }
+    let hiddenMatches =
+      model.quickOpenIncludesHiddenFiles ? 0 : workspace.index.hiddenMatchCount(model.quickOpenQuery)
+    PaletteOverlay {
+      KitPalette(
+        query: $model.quickOpenQuery, prompt: "Open Quickly", status: status(results), maxHeight: 360,
+        dismiss: { model.isQuickOpenPresented = false }
+      ) {
+        PaletteGroup(
+          "Files in \(workspace.name)", meta: meta(results, hiddenMatches: hiddenMatches),
+          systemImage: "doc.text.magnifyingglass", hue: .teal
+        ) {
+          Button {
+            model.quickOpenIncludesHiddenFiles.toggle()
+          } label: {
+            HStack(spacing: 5) {
+              Text(model.quickOpenIncludesHiddenFiles ? "Leave out hidden" : "Include hidden")
+              Keycap("⇧⌘.")
             }
           }
-          .padding(4)
+          .buttonStyle(.kit)
+          .controlSize(.small)
+          .help(model.quickOpenIncludesHiddenFiles ? "Leave out hidden files (⇧⌘.)" : "Include hidden files (⇧⌘.)")
+        } items: {
+          ForEach(results, id: \.path) { result in
+            item(result)
+          }
         }
-        .frame(maxHeight: 360)
-        .onChange(of: selected) { _, index in
-          if results.indices.contains(index) { proxy.scrollTo(results[index].path) }
-        }
-      }
-      if results.isEmpty {
-        Text(workspace.index.isIndexing ? "Indexing…" : "No matching files")
-          .foregroundStyle(.secondary)
-          .padding(12)
-      }
-      let hiddenMatches =
-        model.quickOpenIncludesHiddenFiles ? 0 : workspace.index.hiddenMatchCount(model.quickOpenQuery)
-      if hiddenMatches > 0 {
-        Divider()
-        HStack {
-          Text(hiddenMatches == 1 ? "1 hidden file also matches" : "\(hiddenMatches) hidden files also match")
-            .foregroundStyle(.secondary)
-          Spacer()
-          Button("Include ⇧⌘.") { model.quickOpenIncludesHiddenFiles = true }
-            .buttonStyle(.link)
-        }
-        .font(.callout)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
       }
     }
     .onAppear {
-      isFocused = true
       // Hidden files are indexed on first use, for the button and the hint.
       workspace.index.includesHiddenFiles = true
     }
-    .onChange(of: model.quickOpenQuery) { _, _ in selected = 0 }
-    .onChange(of: model.quickOpenIncludesHiddenFiles) { _, _ in selected = 0 }
   }
 
-  private func row(_ result: Result, isSelected: Bool) -> some View {
+  private func item(_ result: Result) -> some View {
     let path = result.path
     let name = (path as NSString).lastPathComponent
     let folder = (path as NSString).deletingLastPathComponent
-    let nameStart = (path as NSString).length - (name as NSString).length
+    let icon = FileIcon(fileName: name)
+    return PaletteItem(
+      name, id: path, systemImage: icon.kitSymbol, hue: icon.kitHue ?? .gray, detail: folder,
+      note: result.isHidden ? "Hidden" : nil
+    ) {
+      open(path)
+    }
+  }
+
+  private func status(_ results: [Result]) -> WorkStatus {
+    if workspace.index.isIndexing { return .working }
+    if model.quickOpenQuery.isEmpty { return .idle }
+    return results.isEmpty ? .failed : .done
+  }
+
+  /// "3 matches · 433 hidden files also match".
+  private func meta(_ results: [Result], hiddenMatches: Int) -> [String] {
+    var parts: [String] = []
+    if workspace.index.isIndexing {
+      parts.append("Indexing…")
+    } else if results.isEmpty {
+      parts.append("No matching files")
+    } else if !model.quickOpenQuery.isEmpty {
+      parts.append(results.count == 1 ? "1 match" : "\(results.count) matches")
+    }
+    if hiddenMatches > 0 {
+      parts.append(hiddenMatches == 1 ? "1 hidden file also matches" : "\(hiddenMatches) hidden files also match")
+    }
+    return parts
+  }
+
+  private func open(_ path: String) {
     let url = workspace.root.appendingPathComponent(path)
-    return HStack(spacing: 8) {
-      FileIconView(for: url)
-        .opacity(result.isHidden ? 0.45 : 1)
-      Text(highlighted(name, positions: result.match.positions, offset: nameStart))
-      Text(folder)
-        .foregroundStyle(.secondary)
-        .font(.callout)
-        .lineLimit(1)
-        .truncationMode(.head)
-      Spacer(minLength: 0)
-      if result.isHidden {
-        Label("Hidden", systemImage: "eye.slash")
-          .font(.caption)
-          .foregroundStyle(.secondary)
-      }
-    }
-    .padding(.horizontal, 8)
-    .padding(.vertical, 5)
-    .background(
-      isSelected ? RoundedRectangle(cornerRadius: 5).fill(Color.accentColor.opacity(0.25)) : nil
-    )
-    .contentShape(Rectangle())
-  }
-
-  /// `text` with the matched characters (UTF-16 `positions` in the full path,
-  /// `offset` where `text` starts) in bold.
-  private func highlighted(_ text: String, positions: [Int], offset: Int) -> AttributedString {
-    var result = AttributedString()
-    let matched = Set(positions.map { $0 - offset })
-    var utf16Offset = 0
-    for character in text {
-      var piece = AttributedString(String(character))
-      if matched.contains(utf16Offset) {
-        piece.font = .body.bold()
-        piece.foregroundColor = .accentColor
-      }
-      result += piece
-      utf16Offset += character.utf16.count
-    }
-    return result
-  }
-
-  private func open(_ results: [Result]) {
-    guard results.indices.contains(selected) else { return }
-    let url = workspace.root.appendingPathComponent(results[selected].path)
     model.isQuickOpenPresented = false
     workspace.tree.reveal(url)
     workspace.open(url)
   }
 }
 
-/// Open Quickly's Hidden Files button: a capsule, tinted while on.
-private struct HiddenFilesButton: View {
-  @Binding var isOn: Bool
-
-  var body: some View {
-    Button {
-      isOn.toggle()
-    } label: {
-      Label("Hidden Files", systemImage: "eye")
-        .font(.callout.weight(.medium))
-        .foregroundStyle(isOn ? Color.accentColor : Color.secondary)
-        .padding(.horizontal, 9)
-        .frame(height: 24)
-        .background(Capsule().fill(isOn ? Color.accentColor.opacity(0.15) : .clear))
-        .overlay(Capsule().strokeBorder(isOn ? Color.clear : Color.secondary.opacity(0.35)))
-        .contentShape(Capsule())
-    }
-    .buttonStyle(.plain)
-    .help(isOn ? "Leave out hidden files (⇧⌘.)" : "Include hidden files (⇧⌘.)")
-    .accessibilityValue(isOn ? "On" : "Off")
-  }
-}
-
-/// A floating panel at the top of the editor, closed by a click outside it.
-struct Palette<Content: View>: View {
+/// A palette floating at the top of the editor, closed by a click outside it.
+struct PaletteOverlay<Content: View>: View {
   @Environment(WindowModel.self) private var model
   @ViewBuilder var content: Content
 
@@ -182,13 +108,9 @@ struct Palette<Content: View>: View {
           model.isQuickOpenPresented = false
           model.isGoToLinePresented = false
         }
-      VStack(alignment: .leading, spacing: 0) {
-        content
-      }
-      .frame(width: 560)
-      .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
-      .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.separator))
-      .shadow(color: .black.opacity(0.25), radius: 16, y: 6)
+      content
+        .frame(width: 560)
+        .padding(.top, 8)
     }
   }
 }

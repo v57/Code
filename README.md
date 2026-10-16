@@ -104,11 +104,16 @@ Architecture
   writes in the file's own encoding). The editor supplies its text on demand,
   so a keystroke never copies the file.
 
-  The window follows Xcode's layout for what Code has: the project as the
-  navigator's top row with extensions hidden (Settings › Files to show them),
-  a "+" footer, a capsule tab bar, a path bar, the gutter and current-line bar
-  at Xcode's metrics, and "Line: Col:" in the bottom bar. Tabs keep their own
-  width instead of stretching. Xcode's per-kind fonts live in the text storage
+  The window's chrome is ComponentKit, the design the v57 apps share; the
+  editor itself stays AppKit. The navigator is the kit's compact sidebar: the
+  project's tree in a card (extensions hidden; Settings › Files shows them),
+  Package Dependencies in another, and the bottom bar's search button opening
+  the search line, which is Find in Project. Above the editor: the kit's tab
+  strip and path bar; under it, the status bar card with "Line: Col:" and the
+  console's runs as run blocks. Run, Stop, the project's rich title (its live
+  icon carries the running action) and scheme › destination are the toolbar's
+  tool groups; Open Quickly and Go to Line are the kit's palette, Settings the
+  kit's settings window. Xcode's per-kind fonts live in the text storage
   (applied only after an edit settles); colors stay draw-time.
 
   Each window shows one folder. Folders and files opened from Finder or the
@@ -117,11 +122,10 @@ Architecture
   projects: opening a folder that is open focuses its window. Launching
   shows the Welcome window: projects aren't reopened (windows opt out of
   state restoration), but a project opened again restores its tabs and
-  expanded folders. Welcome looks like Xcode's: a fixed 480-point window
-  without a title bar (a round close button instead), the icon, name and
-  version, capsule buttons and the recent projects with their Xcode project,
-  package or folder icons. The same window becomes the project's when one is
-  opened, getting its title bar back at full size.
+  expanded folders. Welcome is the kit's welcome window: a fixed 480-point
+  window without a title bar (a round close button instead), the icon, name
+  and version, Open…, and the recent projects (or the vault's projects). The
+  same window becomes the project's when one is opened, at full size.
 
   Actions. `ProjectScanner` lists the folder and its subfolders two levels
   down once and hands the entries to each detector, so a folder of several
@@ -266,7 +270,7 @@ Verification
       --sdk "$(xcrun --sdk iphonesimulator --show-sdk-path)"
     xcodebuild -project Code.xcodeproj -scheme Code -destination 'platform=macOS' build
 
-The app's v57 packages (Vault, UpdateKit) come from GitHub's `main` branch. To work on them
+The app's v57 packages (Vault, UpdateKit, Component) come from GitHub's `main` branch. To work on them
 together, clone them next to this repository and open `Code-Local.xcworkspace` instead of the
 project.
 

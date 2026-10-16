@@ -1,102 +1,184 @@
 import CodeKit
+import ComponentKit
 import SwiftUI
 
-/// Xcode's toolbar: Run and Stop, the scheme and run destination, and the
-/// activity view with progress and issue counts.
+/// Xcode's toolbar on the kit: Run and Stop in a tool group, the project's rich title (its live icon carries the
+/// running action, its meta line says what the project is doing), and the scheme › destination and issue counts in
+/// tool groups at the end.
 struct ProjectToolbar: ToolbarContent {
   let model: WindowModel
 
   var body: some ToolbarContent {
-    ToolbarItemGroup(placement: .navigation) {
-      RunButtons(model: model)
-    }
-    ToolbarItem(placement: .principal) {
-      // A toolbar drops an item that doesn't fit at its ideal width when the
-      // window opens, and shows it again only after a resize to that width:
-      // the activity view keeps a small ideal width and narrows from there.
-      HStack(spacing: 8) {
-        SchemePicker(actions: model.services.actions)
-          .frame(maxWidth: 300)
-        ActivityView(model: model)
-      }
-      .fixedSize(horizontal: false, vertical: true)
+    if #available(macOS 26, *) {
+      ToolbarItem(placement: .navigation) { RunTools(model: model) }
+        .sharedBackgroundVisibility(.hidden)
+      ToolbarItem(placement: .navigation) { ProjectTitle(model: model) }
+        .sharedBackgroundVisibility(.hidden)
+      ToolbarSpacer(.flexible)
+      ToolbarItem(placement: .primaryAction) { SchemeTools(model: model) }
+        .sharedBackgroundVisibility(.hidden)
+    } else {
+      ToolbarItem(placement: .navigation) { RunTools(model: model) }
+      ToolbarItem(placement: .navigation) { ProjectTitle(model: model) }
+      ToolbarItem(placement: .primaryAction) { SchemeTools(model: model) }
     }
   }
 }
 
-/// ▶ (Run; hold for Test, Build, Clean) and ■ (Stop).
-private struct RunButtons: View {
+/// ▶ (Run; its context menu has Test, Build and Clean) and ■ (Stop).
+private struct RunTools: View {
   let model: WindowModel
 
   var body: some View {
     let actions = model.services.actions
-    Menu {
-      Button("Run") { model.perform(.run) }
-        .disabled(!actions.canPerform(.run))
-      Button("Test") { model.perform(.test) }
-        .disabled(!actions.canPerform(.test))
-      Button("Build") { model.perform(.build) }
-        .disabled(!actions.canPerform(.build))
-      Divider()
-      Button("Clean") { model.perform(.clean) }
-        .disabled(!actions.canPerform(.clean))
-    } label: {
-      Label("Run", systemImage: "play.fill")
-    } primaryAction: {
-      model.perform(actions.canPerform(.run) ? .run : .build)
+    ToolGroup(iconOnly: true) {
+      Button(actions.canPerform(.run) ? "Run" : "Build", systemImage: "play.fill") {
+        model.perform(actions.canPerform(.run) ? .run : .build)
+      }
+      .help(actions.canPerform(.run) ? "Run (⌘R)" : "Build (⌘B)")
+      .disabled(actions.selectedScheme == nil)
+      .contextMenu {
+        Button("Run") { model.perform(.run) }
+          .disabled(!actions.canPerform(.run))
+        Button("Test") { model.perform(.test) }
+          .disabled(!actions.canPerform(.test))
+        Button("Build") { model.perform(.build) }
+          .disabled(!actions.canPerform(.build))
+        Divider()
+        Button("Clean") { model.perform(.clean) }
+          .disabled(!actions.canPerform(.clean))
+      }
+      Button("Stop", systemImage: "stop.fill") { actions.stop() }
+        .help("Stop (⌘.)")
+        .disabled(!actions.isRunning)
     }
-    .menuIndicator(.hidden)
-    .help(actions.canPerform(.run) ? "Run (⌘R)" : "Build (⌘B)")
-    .disabled(actions.selectedScheme == nil)
-
-    Button {
-      actions.stop()
-    } label: {
-      Label("Stop", systemImage: "stop.fill")
-    }
-    .help("Stop (⌘.)")
-    .disabled(!actions.isRunning)
   }
 }
 
-/// "Scheme › Destination": two menus in one capsule.
-private struct SchemePicker: View {
-  let actions: ActionController
+/// The project's name over what it is doing ("Building — Compiling 31 of 48", "Build Failed · 2 errors"), the
+/// action's state in the live icon.
+private struct ProjectTitle: View {
+  let model: WindowModel
 
   var body: some View {
-    HStack(spacing: 2) {
-      Menu {
-        schemeItems
-      } label: {
-        HStack(spacing: 5) {
-          Image(systemName: actions.selectedScheme?.toolchain.symbolName ?? "square.dashed")
-          Text(actions.selectedScheme?.name ?? (actions.isScanning ? "Finding Schemes…" : "No Scheme"))
-            .lineLimit(1)
-        }
-      }
-      .help("Choose a scheme")
-      Image(systemName: "chevron.compact.right")
-        .foregroundStyle(.tertiary)
-      Menu {
-        destinationItems
-      } label: {
-        HStack(spacing: 5) {
-          Image(systemName: actions.selectedDestination?.symbolName ?? "questionmark.app.dashed")
-          Text(actions.selectedDestination?.name ?? (actions.isLoadingDestinations ? "Loading…" : "No Destination"))
-            .lineLimit(1)
-        }
-      }
-      .help("Choose where to run")
+    KitTitle(
+      model.workspace.name, meta: status, systemImage: "chevron.left.forwardslash.chevron.right", hue: .orange,
+      status: workStatus
+    )
+    .frame(minWidth: 120, idealWidth: 280, maxWidth: 420, alignment: .leading)
+    .help(status)
+  }
+
+  private var workStatus: WorkStatus {
+    let actions = model.services.actions
+    switch actions.state {
+    case .running:
+      if case .paused? = model.services.debugger?.state { return .paused() }
+      if actions.runningKind == .run && actions.stepTitle == "Run" { return .working(progress: nil) }
+      return .working(progress: actions.progress?.fraction)
+    case .succeeded: return .done
+    case .failed(_, _, let message): return .failed(message)
+    case .stopped: return .paused()
+    case .idle: return model.services.languageServers.activity != nil || actions.isScanning ? .working : .idle
     }
-    .menuStyle(.borderlessButton)
-    .menuIndicator(.hidden)
-    .font(.system(size: 12))
-    .fixedSize()
-    .padding(.horizontal, 8)
-    .frame(height: 24)
+  }
+
+  private var status: String {
+    let actions = model.services.actions
+    let scheme = actions.selectedScheme?.name ?? ""
+    let destination = actions.selectedDestination?.name ?? "My Mac"
+    switch actions.state {
+    case .running(let kind):
+      if model.services.debugger != nil {
+        if case .paused(let reason)? = model.services.debugger?.state {
+          return reason.isEmpty ? "Paused" : "Paused: \(reason)"
+        }
+        return "Debugging \(scheme) on \(destination)"
+      }
+      if kind == .run && actions.stepTitle == "Run" { return "Running \(scheme) on \(destination)" }
+      let step = actions.stepTitle.map { $0 == kind.title ? "" : " — \($0)" } ?? ""
+      let detail = actions.progress?.message.isEmpty == false ? ": \(actions.progress!.message)" : ""
+      return "\(kind.progressTitle)\(step)\(detail)"
+    case .succeeded(let kind, let date):
+      let what = kind == .run ? "Finished running \(scheme)" : "\(kind.title) Succeeded"
+      return "\(what) · \(Self.time(date))"
+    case .failed(let kind, let date, let message):
+      return "\(kind.title) Failed · \(message) · \(Self.time(date))"
+    case .stopped(_, let date):
+      return "Stopped · \(Self.time(date))"
+    case .idle:
+      if let activity = model.services.languageServers.activity { return activity }
+      if actions.isScanning { return "Finding schemes…" }
+      return actions.schemes.isEmpty ? "No schemes in this folder" : "Ready"
+    }
+  }
+
+  static func time(_ date: Date) -> String {
+    "Today at " + date.formatted(date: .omitted, time: .shortened)
+  }
+}
+
+/// The issue counts (they open the issue list), then "Scheme › Destination": two menus in one tool group.
+private struct SchemeTools: View {
+  let model: WindowModel
+
+  var body: some View {
+    @Bindable var model = model
+    let services = model.services
+    let actions = services.actions
+    HStack(spacing: KitMetrics.gutter) {
+      if services.errorCount > 0 || services.warningCount > 0 {
+        ToolGroup {
+          Button {
+            model.isIssuesPresented.toggle()
+          } label: {
+            HStack(spacing: 8) {
+              if services.errorCount > 0 {
+                HStack(spacing: 3) {
+                  Image(systemName: "xmark.octagon.fill").foregroundStyle(Hue.red.fill)
+                  Count(services.errorCount, .failed)
+                }
+              }
+              if services.warningCount > 0 {
+                HStack(spacing: 3) {
+                  Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(Hue.yellow.fill)
+                  Count(services.warningCount, .attention)
+                }
+              }
+            }
+          }
+          .help("Show Issues (⌘5)")
+          .popover(isPresented: $model.isIssuesPresented, arrowEdge: .bottom) {
+            IssuesList(services: services) { model.isIssuesPresented = false }
+          }
+        }
+      }
+      ToolGroup {
+        Menu {
+          schemeItems
+        } label: {
+          Label(
+            actions.selectedScheme?.name ?? (actions.isScanning ? "Finding Schemes…" : "No Scheme"),
+            systemImage: actions.selectedScheme?.toolchain.symbolName ?? "square.dashed")
+        }
+        .help("Choose a scheme")
+        Image(systemName: "chevron.right")
+          .font(.system(size: 9, weight: .semibold))
+          .foregroundStyle(.kitTertiary)
+        Menu {
+          destinationItems
+        } label: {
+          Label(
+            actions.selectedDestination?.name ?? (actions.isLoadingDestinations ? "Loading…" : "No Destination"),
+            systemImage: actions.selectedDestination?.symbolName ?? "questionmark.app.dashed")
+        }
+        .help("Choose where to run")
+      }
+    }
   }
 
   @ViewBuilder private var schemeItems: some View {
+    let actions = model.services.actions
     let projects = Dictionary(grouping: actions.schemes, by: \.directory)
     let folders = projects.keys.sorted { $0.path < $1.path }
     ForEach(folders, id: \.self) { folder in
@@ -118,6 +200,7 @@ private struct SchemePicker: View {
   }
 
   @ViewBuilder private var destinationItems: some View {
+    let actions = model.services.actions
     let sections = Dictionary(grouping: actions.destinations, by: \.section)
     let order = ["My Mac", "iOS Devices", "iOS Simulators", "Android Devices", "Android Emulators"]
     ForEach(order.filter { sections[$0] != nil }, id: \.self) { section in
@@ -143,127 +226,7 @@ private struct SchemePicker: View {
   }
 }
 
-/// The activity view: what the project is doing, with a progress bar while
-/// an action runs, and the issue counts, which open the issue list.
-private struct ActivityView: View {
-  let model: WindowModel
-
-  var body: some View {
-    @Bindable var model = model
-    let services = model.services
-    let actions = services.actions
-    HStack(spacing: 8) {
-      if let scheme = actions.selectedScheme {
-        Text(scheme.name)
-          .fontWeight(.medium)
-          .lineLimit(1)
-          .layoutPriority(1)
-        Rectangle()
-          .fill(.separator)
-          .frame(width: 1, height: 12)
-      }
-      Text(status)
-        .foregroundStyle(.secondary)
-        .lineLimit(1)
-        .truncationMode(.middle)
-      Spacer(minLength: 4)
-      IssueCounts(errors: services.errorCount, warnings: services.warningCount) {
-        model.isIssuesPresented.toggle()
-      }
-      .popover(isPresented: $model.isIssuesPresented, arrowEdge: .bottom) {
-        IssuesList(services: services) { model.isIssuesPresented = false }
-      }
-    }
-    .font(.system(size: 12))
-    .padding(.horizontal, 10)
-    .frame(minWidth: 160, idealWidth: 260, maxWidth: 420)
-    .frame(height: 24)
-    .background(RoundedRectangle(cornerRadius: 6).fill(.quaternary.opacity(0.5)))
-    .overlay(alignment: .bottom) {
-      // A bar while building; none while the program runs, as in Xcode.
-      if actions.isRunning, !(actions.runningKind == .run && actions.stepTitle == "Run") {
-        Group {
-          if let fraction = actions.progress?.fraction {
-            ProgressView(value: fraction)
-          } else {
-            ProgressView()
-          }
-        }
-        .progressViewStyle(.linear)
-        .controlSize(.mini)
-        .tint(.accentColor)
-        .padding(.horizontal, 4)
-        .offset(y: 4)
-        .frame(height: 3)
-        .clipped()
-      }
-    }
-    .help(status)
-  }
-
-  private var status: String {
-    let actions = model.services.actions
-    let scheme = actions.selectedScheme?.name ?? ""
-    let destination = actions.selectedDestination?.name ?? "My Mac"
-    switch actions.state {
-    case .running(let kind):
-      if model.services.debugger != nil {
-        if case .paused(let reason)? = model.services.debugger?.state {
-          return reason.isEmpty ? "Paused" : "Paused: \(reason)"
-        }
-        return "Debugging \(scheme) on \(destination)"
-      }
-      if kind == .run && actions.stepTitle == "Run" { return "Running \(scheme) on \(destination)" }
-      let step = actions.stepTitle.map { $0 == kind.title ? "" : " — \($0)" } ?? ""
-      let detail = actions.progress?.message.isEmpty == false ? ": \(actions.progress!.message)" : ""
-      return "\(kind.progressTitle)\(step)\(detail)"
-    case .succeeded(let kind, let date):
-      let what = kind == .run ? "Finished running \(scheme)" : "\(kind.title) Succeeded"
-      return "\(what) | \(Self.time(date))"
-    case .failed(let kind, let date, let message):
-      return "\(kind.title) Failed | \(message) | \(Self.time(date))"
-    case .stopped(_, let date):
-      return "Stopped | \(Self.time(date))"
-    case .idle:
-      if let activity = model.services.languageServers.activity { return activity }
-      if actions.isScanning { return "Finding schemes…" }
-      return actions.schemes.isEmpty ? "No schemes in this folder" : "Ready"
-    }
-  }
-
-  static func time(_ date: Date) -> String {
-    "Today at " + date.formatted(date: .omitted, time: .shortened)
-  }
-}
-
-private struct IssueCounts: View {
-  let errors: Int
-  let warnings: Int
-  let action: () -> Void
-
-  var body: some View {
-    if errors > 0 || warnings > 0 {
-      Button(action: action) {
-        HStack(spacing: 6) {
-          if errors > 0 {
-            Label("\(errors)", systemImage: "xmark.octagon.fill")
-              .foregroundStyle(.red)
-          }
-          if warnings > 0 {
-            Label("\(warnings)", systemImage: "exclamationmark.triangle.fill")
-              .foregroundStyle(.yellow)
-          }
-        }
-        .labelStyle(.titleAndIcon)
-        .font(.system(size: 11, weight: .medium).monospacedDigit())
-      }
-      .buttonStyle(.plain)
-      .help("Show issues")
-    }
-  }
-}
-
-/// The project's issues by file; a click opens the line.
+/// The project's issues as a card per file; a click opens the line.
 struct IssuesList: View {
   let services: ProjectServices
   let dismiss: () -> Void
@@ -272,36 +235,30 @@ struct IssuesList: View {
     let issues = services.issues
     let groups = Dictionary(grouping: issues) { $0.url }
     let files = groups.keys.sorted { ($0?.path ?? "") < ($1?.path ?? "") }
-    List {
-      ForEach(files, id: \.self) { file in
-        Section(file.map { services.workspace.tree.relativePath(of: $0) } ?? "Other") {
-          ForEach(groups[file] ?? []) { issue in
-            Button {
-              services.open(issue)
-              dismiss()
-            } label: {
-              HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Image(systemName: Self.symbol(issue.severity))
-                  .foregroundStyle(Self.color(issue.severity))
-                VStack(alignment: .leading, spacing: 2) {
-                  Text(issue.message)
-                    .lineLimit(3)
-                  if let line = issue.line {
-                    Text("Line \(line)\(issue.source == .languageServer ? "" : " · Build")")
-                      .font(.caption)
-                      .foregroundStyle(.secondary)
-                  }
-                }
+    ScrollView {
+      VStack(spacing: KitMetrics.gutter) {
+        ForEach(files, id: \.self) { file in
+          let fileIssues = groups[file] ?? []
+          let errors = fileIssues.filter { $0.severity == .error }.count
+          KitSection(
+            file.map { services.workspace.tree.relativePath(of: $0) } ?? "Other",
+            meta: [errors > 0 ? "\(errors) error\(errors == 1 ? "" : "s")" : nil, "\(fileIssues.count) issues"]
+              .compactMap { $0 },
+            systemImage: "doc.text", hue: errors > 0 ? .red : .orange
+          ) {
+            ForEach(fileIssues) { issue in
+              IssueRow(issue: issue) {
+                services.open(issue)
+                dismiss()
               }
-              .frame(maxWidth: .infinity, alignment: .leading)
-              .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
           }
         }
       }
+      .padding(KitMetrics.gutter)
     }
-    .frame(width: 460, height: min(480, CGFloat(issues.count) * 44 + CGFloat(files.count) * 28 + 20))
+    .frame(width: 460, height: min(480, CGFloat(issues.count) * 48 + CGFloat(files.count) * 56 + 16))
+    .background(.kitPanel)
   }
 
   static func symbol(_ severity: LineAnnotation.Severity) -> String {
@@ -312,11 +269,46 @@ struct IssuesList: View {
     }
   }
 
-  static func color(_ severity: LineAnnotation.Severity) -> Color {
+  static func hue(_ severity: LineAnnotation.Severity) -> Hue {
     switch severity {
     case .error: return .red
     case .warning: return .yellow
-    case .note: return .secondary
+    case .note: return .gray
     }
+  }
+}
+
+/// An issue: its severity, message and line.
+private struct IssueRow: View {
+  let issue: ProjectIssue
+  let action: () -> Void
+  @State private var isHovered = false
+
+  var body: some View {
+    Button(action: action) {
+      HStack(alignment: .firstTextBaseline, spacing: 8) {
+        Image(systemName: IssuesList.symbol(issue.severity))
+          .foregroundStyle(IssuesList.hue(issue.severity).fill)
+        VStack(alignment: .leading, spacing: 2) {
+          Text(issue.message)
+            .lineLimit(3)
+            .fixedSize(horizontal: false, vertical: true)
+          if let line = issue.line {
+            Text("Line \(line)\(issue.source == .languageServer ? "" : " · Build")")
+              .kitFont(.caption)
+          }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+      }
+      .padding(.horizontal, 6)
+      .padding(.vertical, 5)
+      .background {
+        RoundedRectangle(cornerRadius: KitMetrics.radius, style: .continuous)
+          .fill(isHovered ? AnyShapeStyle(.kitHover) : AnyShapeStyle(Color.clear))
+      }
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .onHover { isHovered = $0 }
   }
 }

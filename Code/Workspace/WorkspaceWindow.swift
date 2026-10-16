@@ -162,7 +162,8 @@ private struct WindowReader: NSViewRepresentable {
       let projectStyle = projectStyle ?? (window.styleMask, window.titlebarAppearsTransparent)
       self.projectStyle = projectStyle
       window.titlebarAppearsTransparent = isWelcome || projectStyle.transparentTitlebar
-      window.titleVisibility = isWelcome ? .hidden : .visible
+      // The toolbar's rich title names the project; Welcome has none.
+      window.titleVisibility = .hidden
       window.isMovableByWindowBackground = isWelcome
       window.titlebarSeparatorStyle = isWelcome ? .none : .automatic
       window.toolbar?.isVisible = !isWelcome
