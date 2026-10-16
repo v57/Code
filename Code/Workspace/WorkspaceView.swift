@@ -3,12 +3,12 @@ import ComponentKit
 import SwiftUI
 
 /// A project window on the kit: the navigator, the tab strip and path bar, the editor and the status bar card, with
-/// Open Quickly and Go to Line floating over the editor as the kit's palette.
+/// Open Quickly and Go to Line floating over the editor as the kit's palette, and the console under it in the kit's
+/// split.
 struct WorkspaceView: View {
   @Environment(WindowModel.self) private var model
   @Environment(Workspace.self) private var workspace
   @AppStorage(EditorSettings.hidesIgnoredFiles) private var hidesIgnoredFiles = true
-  @AppStorage("console.height") private var consoleHeight = 220.0
   private let serviceSettings = ServiceSettingsReader()
   #if DEBUG
     @Environment(\.openSettings) private var openSettings
@@ -27,11 +27,14 @@ struct WorkspaceView: View {
           TabBar()
           JumpBar()
         }
-        EditorArea()
         if model.isConsoleVisible {
-          ConsoleDivider(height: $consoleHeight)
-          ConsoleView()
-            .frame(height: consoleHeight)
+          ResizableSplit("console.height", pane: .bottom, height: 220, range: 80...900, mainMinHeight: 120) {
+            EditorArea()
+          } pane: {
+            ConsoleView()
+          }
+        } else {
+          EditorArea()
         }
       }
       .kitPane(.content)
@@ -41,16 +44,12 @@ struct WorkspaceView: View {
           ProjectToolbar(model: model)
         }
       }
-      .overlay(alignment: .top) {
-        if model.isQuickOpenPresented {
-          QuickOpenView()
-        } else if model.isGoToLinePresented {
-          GoToLineView()
-        }
-      }
+      .kitPaletteOverlay(isPresented: $model.isQuickOpenPresented) { QuickOpenView() }
+      .kitPaletteOverlay(isPresented: $model.isGoToLinePresented) { GoToLineView() }
     }
     .navigationTitle(workspace.name)
-    .modifier(HiddenWindowTitle())
+    // The toolbar's rich title names the project.
+    .kitHidesSystemTitle()
     .onChange(of: serviceSettings.settings, initial: true) { _, settings in
       model.services.settings = settings
     }
@@ -157,44 +156,5 @@ private struct PromptSheet: View {
     case .rename(let url):
       return "In \(url.deletingLastPathComponent() == workspace.root ? workspace.name : workspace.tree.relativePath(of: url.deletingLastPathComponent()))."
     }
-  }
-}
-
-/// No system title: the toolbar's rich title names the project.
-private struct HiddenWindowTitle: ViewModifier {
-  func body(content: Content) -> some View {
-    if #available(macOS 15.0, *) {
-      content.toolbar(removing: .title)
-    } else {
-      content
-    }
-  }
-}
-
-/// Where the editor meets the console (the change of ground is the edge); drag to resize.
-private struct ConsoleDivider: View {
-  @Binding var height: Double
-  @State private var start: Double?
-
-  var body: some View {
-    Color.clear
-      .frame(height: 0)
-      .zIndex(1)
-      .overlay {
-        Color.clear
-          .frame(height: 7)
-          .contentShape(Rectangle())
-          .onHover { inside in
-            if inside { NSCursor.resizeUpDown.push() } else { NSCursor.pop() }
-          }
-          .gesture(
-            DragGesture(coordinateSpace: .global)
-              .onChanged { value in
-                let base = start ?? height
-                start = base
-                height = min(max(base - value.translation.height, 80), 900)
-              }
-              .onEnded { _ in start = nil })
-      }
   }
 }

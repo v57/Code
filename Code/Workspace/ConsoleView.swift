@@ -63,10 +63,7 @@ struct ConsoleView: View {
       KitSearchField(text: $filter, prompt: "Filter")
         .frame(width: 180)
       ToolGroup(iconOnly: true) {
-        Button("Copy Log", systemImage: "doc.on.doc") {
-          NSPasteboard.general.clearContents()
-          NSPasteboard.general.setString(services.actions.log.text, forType: .string)
-        }
+        Button("Copy Log", systemImage: "doc.on.doc") { KitPasteboard.copy(services.actions.log.text) }
         .help("Copy Log")
         Button("Clear Console", systemImage: "trash") { services.actions.log.clear() }
           .help("Clear Console")

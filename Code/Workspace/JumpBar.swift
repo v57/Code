@@ -37,11 +37,11 @@ struct JumpBar: View {
     for (index, component) in components.enumerated() {
       url = url.appendingPathComponent(String(component))
       let isFile = index == components.count - 1
-      let icon = FileIcon(for: url, isDirectory: !isFile)
       let target = url
       items.append(
         KitPathItem(
-          FileName.display(url, showExtensions: showExtensions), systemImage: icon.kitSymbol, hue: icon.kitHue,
+          FileName.display(url, showExtensions: showExtensions),
+          icon: { FileIconView(for: target, isDirectory: !isFile, size: 14) },
           action: isFile
             ? nil
             : {
