@@ -2,8 +2,9 @@ import CodeKit
 import ComponentKit
 import SwiftUI
 
-/// Open Quickly (⇧⌘O, as in Xcode): fuzzy search over every file in the project, as the kit's palette. ↑/↓ move,
-/// Return opens, Escape or a click elsewhere closes.
+/// Open Quickly (⇧⌘O, as in Xcode): fuzzy search over every file in the project, as the kit's palette (over the
+/// editor with `kitPaletteOverlay`): each file's icon, its name over its folder with the matched characters in bold.
+/// ↑/↓ move, Return opens, Escape or a click elsewhere closes.
 struct QuickOpenView: View {
   @Environment(Workspace.self) private var workspace
   @Environment(WindowModel.self) private var model
@@ -20,30 +21,28 @@ struct QuickOpenView: View {
     let results = results
     let hiddenMatches =
       model.quickOpenIncludesHiddenFiles ? 0 : workspace.index.hiddenMatchCount(model.quickOpenQuery)
-    PaletteOverlay {
-      KitPalette(
-        query: $model.quickOpenQuery, prompt: "Open Quickly", status: status(results), maxHeight: 360,
-        dismiss: { model.isQuickOpenPresented = false }
+    KitPalette(
+      query: $model.quickOpenQuery, prompt: "Open Quickly", status: status(results), maxHeight: 360,
+      dismiss: { model.isQuickOpenPresented = false }
+    ) {
+      PaletteGroup(
+        "Files in \(workspace.name)", meta: meta(results, hiddenMatches: hiddenMatches),
+        systemImage: "doc.text.magnifyingglass", hue: .teal
       ) {
-        PaletteGroup(
-          "Files in \(workspace.name)", meta: meta(results, hiddenMatches: hiddenMatches),
-          systemImage: "doc.text.magnifyingglass", hue: .teal
-        ) {
-          Button {
-            model.quickOpenIncludesHiddenFiles.toggle()
-          } label: {
-            HStack(spacing: 5) {
-              Text(model.quickOpenIncludesHiddenFiles ? "Leave out hidden" : "Include hidden")
-              Keycap("⇧⌘.")
-            }
+        Button {
+          model.quickOpenIncludesHiddenFiles.toggle()
+        } label: {
+          HStack(spacing: 5) {
+            Text(model.quickOpenIncludesHiddenFiles ? "Leave out hidden" : "Include hidden")
+            Keycap("⇧⌘.")
           }
-          .buttonStyle(.kit)
-          .controlSize(.small)
-          .help(model.quickOpenIncludesHiddenFiles ? "Leave out hidden files (⇧⌘.)" : "Include hidden files (⇧⌘.)")
-        } items: {
-          ForEach(results, id: \.path) { result in
-            item(result)
-          }
+        }
+        .buttonStyle(.kit)
+        .controlSize(.small)
+        .help(model.quickOpenIncludesHiddenFiles ? "Leave out hidden files (⇧⌘.)" : "Include hidden files (⇧⌘.)")
+      } items: {
+        ForEach(results, id: \.path) { result in
+          item(result)
         }
       }
     }
@@ -57,11 +56,17 @@ struct QuickOpenView: View {
     let path = result.path
     let name = (path as NSString).lastPathComponent
     let folder = (path as NSString).deletingLastPathComponent
-    let icon = FileIcon(fileName: name)
+    // The matcher's UTF-16 offsets are into the whole path: split them between the name and its folder.
+    let nameStart = path.utf16.count - name.utf16.count
+    let positions = result.match.positions
     return PaletteItem(
-      name, id: path, systemImage: icon.kitSymbol, hue: icon.kitHue ?? .gray, detail: folder,
+      name, id: path, subtitle: folder.isEmpty ? nil : folder,
+      matches: positions.filter { $0 >= nameStart }.map { $0 - nameStart },
+      subtitleMatches: positions.filter { $0 < folder.utf16.count },
       note: result.isHidden ? "Hidden" : nil
     ) {
+      FileIconView(FileIcon(fileName: name), size: 16)
+    } action: {
       open(path)
     }
   }
@@ -93,24 +98,5 @@ struct QuickOpenView: View {
     model.isQuickOpenPresented = false
     workspace.tree.reveal(url)
     workspace.open(url)
-  }
-}
-
-/// A palette floating at the top of the editor, closed by a click outside it.
-struct PaletteOverlay<Content: View>: View {
-  @Environment(WindowModel.self) private var model
-  @ViewBuilder var content: Content
-
-  var body: some View {
-    ZStack(alignment: .top) {
-      Color.black.opacity(0.001)
-        .onTapGesture {
-          model.isQuickOpenPresented = false
-          model.isGoToLinePresented = false
-        }
-      content
-        .frame(width: 560)
-        .padding(.top, 8)
-    }
   }
 }

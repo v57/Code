@@ -47,6 +47,8 @@ import SwiftUI
   /// What the navigator shows, as Xcode's navigator bar picks.
   enum Navigator: Hashable { case project, find }
   var navigator = Navigator.project
+  /// The navigator's search line (Find in Project) is open: ⇧⌘F and ⌘3 open it.
+  var isFindLineOpen = false
   /// Find in Project, shown in the Find navigator.
   let find = ProjectFind()
   /// Expanded packages and folders under Package Dependencies.
@@ -138,6 +140,7 @@ import SwiftUI
   func findInProject() {
     isNavigatorVisible = true
     navigator = .find
+    isFindLineOpen = true
     if let textView = workspace.selectedDocument?.textView, textView.window?.firstResponder === textView {
       let range = textView.selectedRange()
       let selected = (textView.string as NSString).substring(with: range)

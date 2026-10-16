@@ -9,21 +9,19 @@ struct GoToLineView: View {
   @State private var text = ""
 
   var body: some View {
-    PaletteOverlay {
-      KitPalette(
-        query: $text, prompt: "Line number, optionally followed by :column",
-        hints: [PaletteHint(["↩"], "Go"), PaletteHint(["esc"], "Close")],
-        dismiss: { model.isGoToLinePresented = false }
+    KitPalette(
+      query: $text, prompt: "Line number, optionally followed by :column",
+      hints: [PaletteHint(["↩"], "Go"), PaletteHint(["esc"], "Close")],
+      dismiss: { model.isGoToLinePresented = false }
+    ) {
+      PaletteGroup(
+        workspace.selectedDocument?.name ?? "Go to Line", meta: ["\(lineCount) lines"],
+        systemImage: "arrow.right.to.line"
       ) {
-        PaletteGroup(
-          workspace.selectedDocument?.name ?? "Go to Line", meta: ["\(lineCount) lines"],
-          systemImage: "arrow.right.to.line"
-        ) {
-          if let target {
-            PaletteItem(
-              target.column > 1 ? "Line \(target.line), column \(target.column)" : "Line \(target.line)",
-              id: "go", systemImage: "arrow.right.to.line", returnLabel: "Go", action: go)
-          }
+        if let target {
+          PaletteItem(
+            target.column > 1 ? "Line \(target.line), column \(target.column)" : "Line \(target.line)",
+            id: "go", systemImage: "arrow.right.to.line", returnLabel: "Go", action: go)
         }
       }
     }

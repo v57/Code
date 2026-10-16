@@ -9,19 +9,12 @@ struct ProjectToolbar: ToolbarContent {
   let model: WindowModel
 
   var body: some ToolbarContent {
+    KitToolbarItem(placement: .navigation) { RunTools(model: model) }
+    KitToolbarItem(placement: .navigation) { ProjectTitle(model: model) }
     if #available(macOS 26, *) {
-      ToolbarItem(placement: .navigation) { RunTools(model: model) }
-        .sharedBackgroundVisibility(.hidden)
-      ToolbarItem(placement: .navigation) { ProjectTitle(model: model) }
-        .sharedBackgroundVisibility(.hidden)
       ToolbarSpacer(.flexible)
-      ToolbarItem(placement: .primaryAction) { SchemeTools(model: model) }
-        .sharedBackgroundVisibility(.hidden)
-    } else {
-      ToolbarItem(placement: .navigation) { RunTools(model: model) }
-      ToolbarItem(placement: .navigation) { ProjectTitle(model: model) }
-      ToolbarItem(placement: .primaryAction) { SchemeTools(model: model) }
     }
+    KitToolbarItem(placement: .primaryAction) { SchemeTools(model: model) }
   }
 }
 

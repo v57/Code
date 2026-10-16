@@ -177,39 +177,20 @@ extension SearchQuery.Mode {
   }
 }
 
-/// One of Find's options as a raised pop-up that fills its half of the line.
+/// One of Find's options as the kit's pop-up button.
 private struct FindOptionMenu<Value: Hashable>: View {
   let title: String
   @Binding var selection: Value
   let options: [(String, Value)]
 
   var body: some View {
-    Menu {
+    KitMenuButton(title) {
       Picker(title, selection: $selection) {
         ForEach(options, id: \.1) { Text($0.0).tag($0.1) }
       }
       .pickerStyle(.inline)
       .labelsHidden()
-    } label: {
-      HStack(spacing: 4) {
-        Text(title).lineLimit(1)
-        Spacer(minLength: 0)
-        Image(systemName: "chevron.up.chevron.down")
-          .font(.system(size: 9, weight: .semibold))
-          .foregroundStyle(.kitSecondary)
-      }
-      .kitFont(.callout)
-      .foregroundStyle(.kitLabel)
-      .padding(.leading, 9)
-      .padding(.trailing, 6)
-      .frame(height: 26)
-      .kitSurface(.raised, cornerRadius: KitMetrics.radiusSmall)
-      .contentShape(Rectangle())
     }
-    .menuStyle(.button)
-    .buttonStyle(.plain)
-    .menuIndicator(.hidden)
-    .frame(maxWidth: .infinity)
     .accessibilityValue(title)
   }
 }
@@ -224,12 +205,9 @@ private struct FileResultRow: View {
     let url = URL(fileURLWithPath: file.path)
     SidebarRow(
       value: NavigatorItem.match(FindSelection(path: file.path, match: nil)),
-      FileName.display(url, showExtensions: showExtensions)
+      FileName.display(url, showExtensions: showExtensions), isExpanded: $isExpanded
     ) {
-      HStack(spacing: 2) {
-        Disclosure(isDirectory: true, isExpanded: $isExpanded)
-        FileIconView(for: url, size: 14)
-      }
+      FileIconView(for: url, size: 14)
     } trailing: {
       HStack(spacing: 6) {
         Text(file.folder).lineLimit(1).truncationMode(.head)
@@ -240,23 +218,17 @@ private struct FileResultRow: View {
   }
 }
 
-/// A match: its line in mono, the match in bold on the highlight.
+/// A match: its line in mono as the row's title, the match in bold on the highlight.
 private struct MatchRow: View {
   let match: SearchMatch
   let selection: FindSelection
   @Environment(\.self) private var environment
 
   var body: some View {
-    SidebarRow(value: NavigatorItem.match(selection), "") {
-      Text(attributed)
-        .font(.system(size: 11.5, design: .monospaced))
-        .lineLimit(2)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 3)
-        .layoutPriority(1)
-    }
-    .kitRowIndent(1)
-    .help("Line \(match.line)")
+    SidebarRow(value: NavigatorItem.match(selection), match.preview) { EmptyView() }
+      .title(Text(attributed).font(.system(size: 11.5, design: .monospaced)))
+      .kitRowIndent(1)
+      .help("Line \(match.line): \(match.preview)")
   }
 
   private var attributed: AttributedString {
