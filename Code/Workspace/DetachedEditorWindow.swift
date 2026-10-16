@@ -1,4 +1,5 @@
 import CodeKit
+import ComponentKit
 import SwiftUI
 
 /// A document in a window of its own (Open in New Window), as Shell detaches
@@ -22,6 +23,7 @@ struct DetachedEditorWindow: View {
     Group {
       if let model, let document {
         EditorArea(detachedDocument: document)
+          .kitPane(.content)
           .environment(model)
           .environment(model.workspace)
           .navigationTitle(document.name)
@@ -59,7 +61,7 @@ struct DetachedEditorWindow: View {
       toggleAlwaysOnTop()
     } label: {
       Label("Always on Top", systemImage: "interface.window.on.rectangle.dashed")
-        .foregroundStyle(isAlwaysOnTop ? Color.accentColor : Color.primary)
+        .foregroundStyle(isAlwaysOnTop ? AnyShapeStyle(Hue.accent.fill) : AnyShapeStyle(.kitLabel))
     }
     .help(isAlwaysOnTop ? "Keep window above other apps (on)" : "Keep window above other apps")
   }

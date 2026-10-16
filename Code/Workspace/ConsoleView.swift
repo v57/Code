@@ -1,75 +1,87 @@
-import AppKit
 import CodeKit
+import ComponentKit
 import SwiftUI
 
-/// Xcode's debug area under the editor: the debug bar while debugging, and
-/// the output of the last action (build log, program output, LLDB).
+/// Xcode's debug area under the editor, on the panel ground: the debug tools while debugging, and the last action's
+/// output as the kit's run blocks, one per command it ran (the build, the install, the program), each with its live
+/// icon, exit chip and output; a passed command folds to its header. LLDB's prompt sits under them while debugging.
 struct ConsoleView: View {
   @Environment(WindowModel.self) private var model
   @State private var command = ""
   @State private var filter = ""
+  @State private var selectedRun: String?
 
   var body: some View {
     let services = model.services
     VStack(spacing: 0) {
-      HStack(spacing: 10) {
-        if let debugger = services.debugger {
-          DebugBar(debugger: debugger)
-          Divider().frame(height: 14)
+      bar
+      let runs = ConsoleRuns.runs(from: services.actions, filter: filter)
+      if runs.isEmpty {
+        EmptyState(
+          systemImage: "terminal", title: "No Output",
+          message: "Run, build or test a scheme to see what it prints here.")
+      } else {
+        ScrollView {
+          RunBlocks(selection: $selectedRun) {
+            ForEach(runs) { run in
+              RunBlock(
+                run.name, command: run.command, id: run.id, systemImage: run.systemImage, status: run.status,
+                progress: run.progress, warnings: run.warnings, output: run.output,
+                stop: run.status.isWorking ? { services.actions.stop() } : nil)
+            }
+          }
+          .padding(KitMetrics.gutter)
         }
-        if let scheme = services.actions.selectedScheme {
-          Text(scheme.name)
-            .font(.system(size: 11, weight: .medium))
-            .foregroundStyle(.secondary)
-        }
-        Spacer()
-        TextField("Filter", text: $filter)
-          .textFieldStyle(.roundedBorder)
-          .controlSize(.small)
-          .frame(width: 160)
-        Button {
-          services.actions.log.clear()
-        } label: {
-          Image(systemName: "trash")
-        }
-        .help("Clear Console")
-        Button {
-          model.isConsoleVisible = false
-        } label: {
-          Image(systemName: "rectangle.bottomthird.inset.filled")
-        }
-        .help("Hide Debug Area (⇧⌘Y)")
+        .defaultScrollAnchor(.bottom)
       }
-      .buttonStyle(.borderless)
-      .padding(.horizontal, 10)
-      .frame(height: 28)
-      .background(.bar)
-      Divider()
-      LogTextView(log: services.actions.log, filter: filter)
       if let debugger = services.debugger {
-        Divider()
         HStack(spacing: 6) {
           Text("(lldb)")
-            .font(.system(size: 11, design: .monospaced))
-            .foregroundStyle(.secondary)
-          TextField("", text: $command)
-            .textFieldStyle(.plain)
-            .font(.system(size: 11, design: .monospaced))
+            .kitFont(.monoSmall)
+            .foregroundStyle(.kitSecondary)
+          TextField("Command", text: $command)
+            .kitField(mono: true)
             .onSubmit {
               guard !command.isEmpty else { return }
               debugger.sendCommand(command)
               command = ""
             }
         }
-        .padding(.horizontal, 10)
-        .frame(height: 24)
+        .padding([.horizontal, .bottom], KitMetrics.gutter)
       }
     }
+    .kitPane(.secondary)
+  }
+
+  private var bar: some View {
+    let services = model.services
+    return HStack(spacing: KitMetrics.gutter) {
+      if let debugger = services.debugger {
+        DebugTools(debugger: debugger)
+      }
+      Spacer(minLength: 0)
+      KitSearchField(text: $filter, prompt: "Filter")
+        .frame(width: 180)
+      ToolGroup(iconOnly: true) {
+        Button("Copy Log", systemImage: "doc.on.doc") {
+          NSPasteboard.general.clearContents()
+          NSPasteboard.general.setString(services.actions.log.text, forType: .string)
+        }
+        .help("Copy Log")
+        Button("Clear Console", systemImage: "trash") { services.actions.log.clear() }
+          .help("Clear Console")
+        Button("Hide Debug Area", systemImage: "rectangle.bottomthird.inset.filled") {
+          model.isConsoleVisible = false
+        }
+        .help("Hide Debug Area (⇧⌘Y)")
+      }
+    }
+    .padding([.horizontal, .top], KitMetrics.gutter)
   }
 }
 
 /// Continue/Pause, Step Over, Step Into, Step Out, and the stopped frame.
-private struct DebugBar: View {
+private struct DebugTools: View {
   let debugger: DebugSession
 
   var body: some View {
@@ -77,120 +89,102 @@ private struct DebugBar: View {
       if case .paused = debugger.state { return true }
       return false
     }()
-    HStack(spacing: 8) {
-      Button {
+    ToolGroup(iconOnly: true) {
+      Button(isPaused ? "Continue" : "Pause", systemImage: isPaused ? "play.fill" : "pause.fill") {
         isPaused ? debugger.continueRunning() : debugger.pause()
-      } label: {
-        Image(systemName: isPaused ? "play.fill" : "pause.fill")
       }
       .help(isPaused ? "Continue (⌃⌘Y)" : "Pause (⌃⌘Y)")
-      Button(action: debugger.stepOver) { Image(systemName: "arrow.turn.down.right") }
+      Button("Step Over", systemImage: "arrow.turn.down.right", action: debugger.stepOver)
         .help("Step Over (F6)")
         .disabled(!isPaused)
-      Button(action: debugger.stepInto) { Image(systemName: "arrow.down.to.line") }
+      Button("Step Into", systemImage: "arrow.down.to.line", action: debugger.stepInto)
         .help("Step Into (F7)")
         .disabled(!isPaused)
-      Button(action: debugger.stepOut) { Image(systemName: "arrow.up.to.line") }
+      Button("Step Out", systemImage: "arrow.up.to.line", action: debugger.stepOut)
         .help("Step Out (F8)")
         .disabled(!isPaused)
-      if let frame = debugger.frame {
-        Text(frame)
-          .font(.system(size: 11, design: .monospaced))
-          .foregroundStyle(.secondary)
-          .lineLimit(1)
-      }
+    }
+    if let frame = debugger.frame {
+      Text(frame)
+        .kitFont(.monoSmall)
+        .foregroundStyle(.kitSecondary)
+        .lineLimit(1)
+        .truncationMode(.middle)
     }
   }
 }
 
-/// The log in a read-only text view, appended as lines arrive and kept
-/// scrolled to the end while it is at the end.
-private struct LogTextView: NSViewRepresentable {
-  let log: ActionLog
-  let filter: String
-
-  func makeNSView(context: Context) -> NSScrollView {
-    let scrollView = NSTextView.scrollableTextView()
-    let textView = scrollView.documentView as! NSTextView
-    textView.isEditable = false
-    textView.isSelectable = true
-    textView.isRichText = false
-    textView.usesFindBar = true
-    textView.textContainerInset = NSSize(width: 6, height: 6)
-    textView.font = Coordinator.font
-    textView.backgroundColor = .textBackgroundColor
-    context.coordinator.textView = textView
-    context.coordinator.attach(log)
-    return scrollView
+/// The action log cut into run blocks: a new block at each command line (`$ …`), its output under it.
+enum ConsoleRuns {
+  struct Run: Identifiable {
+    var id: String
+    var name: String?
+    var command: String
+    var systemImage: String
+    var status: WorkStatus
+    var progress: String?
+    var warnings: String?
+    var output: String
   }
 
-  func updateNSView(_ scrollView: NSScrollView, context: Context) {
-    _ = log.revision
-    context.coordinator.attach(log)
-    if context.coordinator.filter != filter {
-      context.coordinator.filter = filter
-      context.coordinator.reload()
+  /// Lines of output a block shows: the end of a long log (Copy Log has all of it).
+  static let shownLines = 400
+
+  @MainActor static func runs(from actions: ActionController, filter: String) -> [Run] {
+    _ = actions.log.revision
+    let (kind, finalStatus) = state(of: actions)
+    var blocks: [(command: String?, lines: [String])] = []
+    for entry in actions.log.entries {
+      if entry.kind == .command {
+        blocks.append((String(entry.text.dropFirst(entry.text.hasPrefix("$ ") ? 2 : 0)), []))
+        continue
+      }
+      if blocks.isEmpty { blocks.append((nil, [])) }
+      if !filter.isEmpty, !entry.text.localizedCaseInsensitiveContains(filter) { continue }
+      blocks[blocks.count - 1].lines.append(entry.text)
+    }
+    return blocks.enumerated().map { index, block in
+      let isLast = index == blocks.count - 1
+      let status = isLast ? finalStatus : .done
+      var lines = block.lines
+      var dropped = 0
+      if lines.count > shownLines {
+        dropped = lines.count - shownLines
+        lines.removeFirst(dropped)
+      }
+      if dropped > 0 { lines.insert("… \(dropped) earlier lines", at: 0) }
+      let warnings = block.lines.filter { $0.contains("warning:") }.count
+      return Run(
+        id: "\(index)", name: kind?.title, command: block.command ?? kind?.title ?? "Output",
+        systemImage: symbol(kind), status: status,
+        progress: isLast && status.isWorking ? actions.progress?.message : nil,
+        warnings: warnings == 0 ? nil : warnings == 1 ? "1 warning" : "\(warnings) warnings",
+        output: lines.joined(separator: "\n"))
     }
   }
 
-  func makeCoordinator() -> Coordinator { Coordinator() }
-
-  @MainActor final class Coordinator {
-    static let font = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
-    weak var textView: NSTextView?
-    weak var log: ActionLog?
-    var filter = ""
-
-    func attach(_ log: ActionLog) {
-      guard self.log !== log else { return }
-      self.log = log
-      log.onAppend = { [weak self] entries in self?.append(entries) }
-      log.onClear = { [weak self] in self?.reload() }
-      reload()
+  /// The action the log belongs to and how its last command stands.
+  @MainActor private static func state(of actions: ActionController) -> (ActionKind?, WorkStatus) {
+    switch actions.state {
+    case .idle: return (nil, .done)
+    case .running(let kind): return (kind, .working(progress: actions.progress?.fraction))
+    case .succeeded(let kind, _): return (kind, .done)
+    case .failed(let kind, _, let message): return (kind, .failed(message))
+    case .stopped(let kind, _): return (kind, .paused())
     }
+  }
 
-    func reload() {
-      guard let storage = textView?.textStorage else { return }
-      storage.setAttributedString(NSAttributedString())
-      append(log?.entries ?? [])
-    }
-
-    private func append(_ entries: [ActionLog.Entry]) {
-      guard let textView, let storage = textView.textStorage else { return }
-      let visible = textView.enclosingScrollView?.contentView.bounds ?? .zero
-      let atEnd = visible.maxY >= textView.bounds.height - 30
-      let text = NSMutableAttributedString()
-      for entry in entries where filter.isEmpty || entry.text.localizedCaseInsensitiveContains(filter) {
-        text.append(NSAttributedString(string: entry.text + "\n", attributes: Self.attributes(for: entry)))
-      }
-      storage.append(text)
-      // Keep the text view's length bounded like the log.
-      if storage.length > 4_000_000 {
-        storage.deleteCharacters(in: NSRange(location: 0, length: storage.length - 3_000_000))
-      }
-      if atEnd { textView.scrollToEndOfDocument(nil) }
-    }
-
-    static func attributes(for entry: ActionLog.Entry) -> [NSAttributedString.Key: Any] {
-      var color = NSColor.labelColor
-      var font = Self.font
-      switch entry.kind {
-      case .command:
-        color = .secondaryLabelColor
-      case .status:
-        color = .secondaryLabelColor
-        font = .monospacedSystemFont(ofSize: 11, weight: .semibold)
-      case .failure:
-        color = .systemRed
-        font = .monospacedSystemFont(ofSize: 11, weight: .semibold)
-      case .output:
-        if entry.text.contains("error:") || entry.text.contains(" error ") || entry.text.hasPrefix("error") {
-          color = .systemRed
-        } else if entry.text.contains("warning:") {
-          color = .systemOrange
-        }
-      }
-      return [.font: font, .foregroundColor: color]
+  private static func symbol(_ kind: ActionKind?) -> String {
+    switch kind {
+    case .run: "play.fill"
+    case .build: "hammer"
+    case .test: "testtube.2"
+    case .clean: "trash"
+    case .lint: "checklist"
+    case .install: "arrow.down.app"
+    case .export: "square.and.arrow.up"
+    case .upload: "icloud.and.arrow.up"
+    default: "terminal"
     }
   }
 }

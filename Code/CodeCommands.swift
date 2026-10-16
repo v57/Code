@@ -50,6 +50,13 @@ struct CodeCommands: Commands {
       .disabled(workspace?.selectedDocument == nil)
       Button("Close Tab") { closeTab() }
         .keyboardShortcut("w")
+      Button("Close Other Tabs") { workspace?.selectedDocument.map { workspace?.closeOthers($0) } }
+        .keyboardShortcut("w", modifiers: [.command, .option])
+        .disabled((workspace?.tabs.count ?? 0) < 2)
+      Button("Close All Tabs") { workspace?.closeAll() }
+        .disabled(workspace?.tabs.isEmpty != false)
+      Button("Keep Tab Open") { workspace?.selectedDocument.map { workspace?.keep($0) } }
+        .disabled(workspace?.selectedDocument.map { workspace?.isPreview($0) == true } != true)
       Button("Close Window") { NSApp.keyWindow?.performClose(nil) }
         .keyboardShortcut("w", modifiers: [.command, .shift])
     }
@@ -206,7 +213,6 @@ struct CodeCommands: Commands {
       Button("Show Find Navigator") {
         model?.isNavigatorVisible = true
         model?.navigator = .find
-        model?.find.focus()
       }
       .keyboardShortcut("3")
       .disabled(model == nil)

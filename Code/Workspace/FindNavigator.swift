@@ -1,4 +1,5 @@
 import CodeKit
+import ComponentKit
 import SwiftUI
 
 /// Find in Project (⇧⌘F, Xcode's Find navigator): the query, its options,
@@ -19,16 +20,12 @@ import SwiftUI
   private(set) var isTruncated = false
   /// Files whose matches are folded away.
   var collapsed: Set<String> = []
-  /// Bumped to put the caret in the search field.
-  private(set) var focusRequest = 0
 
   @ObservationIgnored private var task: Task<Void, Never>?
 
   var query: SearchQuery { SearchQuery(text, mode: mode, isCaseSensitive: isCaseSensitive) }
   var matchCount: Int { results.reduce(0) { $0 + $1.matches.count } }
   var isInvalidPattern: Bool { !text.isEmpty && query.expression == nil }
-
-  func focus() { focusRequest += 1 }
 
   /// Searches the project's visible files (what Open Quickly lists), with
   /// the open documents' unsaved edits, replacing a search still running.
@@ -83,83 +80,64 @@ import SwiftUI
 }
 
 /// A row of the results: a file, or one of its matches.
-struct FindSelection: Hashable {
+nonisolated struct FindSelection: Hashable, Sendable {
   var path: String
   /// The match's index in the file's matches; nil for the file's row.
   var match: Int?
 }
 
-/// The Find navigator: a search field with Xcode's options (Containing,
-/// Matching Word, Regular Expression; Ignoring or Matching Case) and the
-/// results by file. Selecting a match opens it in the editor with the match
-/// selected; ↑ and ↓ step through them.
+/// The Find navigator, in the sidebar while its search line has text: Xcode's options (Containing, Matching Word,
+/// Regular Expression; Ignoring or Matching Case) as two pop-ups, then the results by file in a card whose header
+/// counts them. Selecting a match opens it in the editor with the match selected; ↑ and ↓ step through them.
 struct FindNavigatorView: View {
+  @Binding var selection: FindSelection?
   @Environment(WindowModel.self) private var model
   @Environment(Workspace.self) private var workspace
-  @FocusState private var isFieldFocused: Bool
-  @State private var selection: FindSelection?
 
   var body: some View {
     @Bindable var find = model.find
-    VStack(spacing: 0) {
-      VStack(alignment: .leading, spacing: 6) {
-        HStack(spacing: 4) {
-          Image(systemName: "magnifyingglass")
-            .foregroundStyle(.secondary)
-          TextField("Find in Project", text: $find.text)
-            .textFieldStyle(.plain)
-            .focused($isFieldFocused)
-            .onSubmit { find.search(in: workspace) }
-          if !find.text.isEmpty {
-            Button {
-              find.clear()
-              isFieldFocused = true
-            } label: {
-              Image(systemName: "xmark.circle.fill")
-                .foregroundStyle(.secondary)
-            }
-            .buttonStyle(.plain)
-            .help("Clear")
+    HStack(spacing: 6) {
+      FindOptionMenu(
+        title: find.mode.title, selection: $find.mode,
+        options: [SearchQuery.Mode.containing, .matchingWord, .regularExpression].map { ($0.title, $0) })
+      FindOptionMenu(
+        title: find.isCaseSensitive ? "Matching Case" : "Ignoring Case", selection: $find.isCaseSensitive,
+        options: [("Ignoring Case", false), ("Matching Case", true)])
+    }
+    KitSection("Results", meta: summary(find), systemImage: "magnifyingglass", status: status(find)) {
+      ForEach(find.results) { file in
+        FileResultRow(file: file, isExpanded: isExpanded(file.path))
+        if !find.collapsed.contains(file.path) {
+          ForEach(Array(file.matches.enumerated()), id: \.offset) { index, match in
+            MatchRow(match: match, selection: FindSelection(path: file.path, match: index))
           }
         }
-        .padding(.horizontal, 7)
-        .padding(.vertical, 5)
-        .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.06)))
-        .overlay(
-          RoundedRectangle(cornerRadius: 6)
-            .strokeBorder(find.isInvalidPattern ? Color.red.opacity(0.7) : .clear))
-        HStack(spacing: 6) {
-          Picker("Match", selection: $find.mode) {
-            Text("Containing").tag(SearchQuery.Mode.containing)
-            Text("Matching Word").tag(SearchQuery.Mode.matchingWord)
-            Text("Regular Expression").tag(SearchQuery.Mode.regularExpression)
-          }
-          .labelsHidden()
-          .fixedSize()
-          Spacer(minLength: 0)
-          Picker("Case", selection: $find.isCaseSensitive) {
-            Text("Ignoring Case").tag(false)
-            Text("Matching Case").tag(true)
-          }
-          .labelsHidden()
-          .fixedSize()
-        }
-        .controlSize(.small)
-        .menuStyle(.borderlessButton)
       }
-      .padding(.horizontal, 10)
-      .padding(.vertical, 8)
-      Divider()
-      results
     }
     .onChange(of: find.mode) { _, _ in searchAgain() }
     .onChange(of: find.isCaseSensitive) { _, _ in searchAgain() }
-    .onChange(of: find.focusRequest, initial: true) { _, _ in
-      DispatchQueue.main.async { isFieldFocused = true }
-    }
     .onChange(of: selection) { _, selection in
       if let selection { open(selection) }
     }
+  }
+
+  /// "13 matches · 3 files", or why there are none.
+  private func summary(_ find: ProjectFind) -> [String] {
+    if find.text.isEmpty { return ["Type in the search line below"] }
+    if find.isInvalidPattern { return ["Not a valid regular expression"] }
+    if find.results.isEmpty { return [find.isSearching ? "Searching…" : "No results"] }
+    let matches = find.matchCount
+    let files = find.results.count
+    return [
+      "\(matches) match\(matches == 1 ? "" : "es")" + (find.isTruncated ? " (stopped)" : ""),
+      "\(files) file\(files == 1 ? "" : "s")",
+    ]
+  }
+
+  private func status(_ find: ProjectFind) -> WorkStatus {
+    if find.isSearching { return .working }
+    if find.isInvalidPattern { return .failed }
+    return .idle
   }
 
   /// Options changed: search again for what is shown.
@@ -167,48 +145,13 @@ struct FindNavigatorView: View {
     if model.find.searchedQuery != nil { model.find.search(in: workspace) }
   }
 
-  @ViewBuilder private var results: some View {
-    let find = model.find
-    if find.results.isEmpty {
-      VStack {
-        Spacer()
-        Group {
-          if find.isInvalidPattern {
-            Text("Not a valid regular expression")
-          } else if find.isSearching {
-            ProgressView().controlSize(.small)
-          } else if find.searchedQuery != nil {
-            Text("No Results")
-          }
-        }
-        .foregroundStyle(.secondary)
-        Spacer()
-      }
-      .frame(maxWidth: .infinity)
-    } else {
-      List(selection: $selection) {
-        ForEach(find.results) { file in
-          DisclosureGroup(isExpanded: isExpanded(file.path)) {
-            ForEach(Array(file.matches.enumerated()), id: \.offset) { index, match in
-              MatchRow(match: match)
-                .tag(FindSelection(path: file.path, match: index))
-            }
-          } label: {
-            FileRow(file: file)
-              .tag(FindSelection(path: file.path, match: nil))
-          }
-        }
-      }
-      .listStyle(.sidebar)
-      .environment(\.sidebarRowSize, .small)
-    }
-  }
-
   private func isExpanded(_ path: String) -> Binding<Bool> {
     Binding(
       get: { !model.find.collapsed.contains(path) },
       set: { expanded in
-        if expanded { model.find.collapsed.remove(path) } else { model.find.collapsed.insert(path) }
+        withKitAnimation {
+          if expanded { model.find.collapsed.remove(path) } else { model.find.collapsed.insert(path) }
+        }
       })
   }
 
@@ -224,71 +167,103 @@ struct FindNavigatorView: View {
   }
 }
 
-/// The footer of the Find navigator: how many matches in how many files.
-struct FindSummary: View {
-  @Environment(WindowModel.self) private var model
-
-  var body: some View {
-    let find = model.find
-    HStack(spacing: 6) {
-      if find.isSearching && !find.results.isEmpty { ProgressView().controlSize(.mini) }
-      Text(summary(find))
-        .font(.callout)
-        .foregroundStyle(.secondary)
-        .lineLimit(1)
-      Spacer(minLength: 0)
+extension SearchQuery.Mode {
+  var title: String {
+    switch self {
+    case .containing: "Containing"
+    case .matchingWord: "Matching Word"
+    case .regularExpression: "Regular Expression"
     }
-  }
-
-  private func summary(_ find: ProjectFind) -> String {
-    guard find.searchedQuery != nil, !find.results.isEmpty else { return "" }
-    let matches = find.matchCount
-    let files = find.results.count
-    let text = "\(matches) result\(matches == 1 ? "" : "s") in \(files) file\(files == 1 ? "" : "s")"
-    return find.isTruncated ? text + " (stopped)" : text
   }
 }
 
-private struct FileRow: View {
+/// One of Find's options as a raised pop-up that fills its half of the line.
+private struct FindOptionMenu<Value: Hashable>: View {
+  let title: String
+  @Binding var selection: Value
+  let options: [(String, Value)]
+
+  var body: some View {
+    Menu {
+      Picker(title, selection: $selection) {
+        ForEach(options, id: \.1) { Text($0.0).tag($0.1) }
+      }
+      .pickerStyle(.inline)
+      .labelsHidden()
+    } label: {
+      HStack(spacing: 4) {
+        Text(title).lineLimit(1)
+        Spacer(minLength: 0)
+        Image(systemName: "chevron.up.chevron.down")
+          .font(.system(size: 9, weight: .semibold))
+          .foregroundStyle(.kitSecondary)
+      }
+      .kitFont(.callout)
+      .foregroundStyle(.kitLabel)
+      .padding(.leading, 9)
+      .padding(.trailing, 6)
+      .frame(height: 26)
+      .kitSurface(.raised, cornerRadius: KitMetrics.radiusSmall)
+      .contentShape(Rectangle())
+    }
+    .menuStyle(.button)
+    .buttonStyle(.plain)
+    .menuIndicator(.hidden)
+    .frame(maxWidth: .infinity)
+    .accessibilityValue(title)
+  }
+}
+
+/// A file with matches: its icon and name, its folder, the number of matches.
+private struct FileResultRow: View {
   let file: FileSearchResult
+  @Binding var isExpanded: Bool
   @AppStorage(EditorSettings.showExtensions) private var showExtensions = false
 
   var body: some View {
     let url = URL(fileURLWithPath: file.path)
-    HStack(spacing: 6) {
-      FileIconView(for: url)
-      Text(FileName.display(url, showExtensions: showExtensions))
-        .fontWeight(.medium)
-        .lineLimit(1)
-      Text(file.folder)
-        .foregroundStyle(.secondary)
-        .lineLimit(1)
-        .truncationMode(.head)
-      Spacer(minLength: 0)
-      Text("\(file.matches.count)")
-        .font(.caption.monospacedDigit())
-        .foregroundStyle(.secondary)
+    SidebarRow(
+      value: NavigatorItem.match(FindSelection(path: file.path, match: nil)),
+      FileName.display(url, showExtensions: showExtensions)
+    ) {
+      HStack(spacing: 2) {
+        Disclosure(isDirectory: true, isExpanded: $isExpanded)
+        FileIconView(for: url, size: 14)
+      }
+    } trailing: {
+      HStack(spacing: 6) {
+        Text(file.folder).lineLimit(1).truncationMode(.head)
+        Count(file.matches.count)
+      }
     }
     .help(file.path)
   }
 }
 
+/// A match: its line in mono, the match in bold on the highlight.
 private struct MatchRow: View {
   let match: SearchMatch
+  let selection: FindSelection
+  @Environment(\.self) private var environment
 
   var body: some View {
-    Text(attributed)
-      .font(.system(size: 11.5, design: .monospaced))
-      .lineLimit(2)
-      .help("Line \(match.line)")
+    SidebarRow(value: NavigatorItem.match(selection), "") {
+      Text(attributed)
+        .font(.system(size: 11.5, design: .monospaced))
+        .lineLimit(2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 3)
+        .layoutPriority(1)
+    }
+    .kitRowIndent(1)
+    .help("Line \(match.line)")
   }
 
-  /// The line with the match in bold on a highlight, as in Xcode.
   private var attributed: AttributedString {
     var text = AttributedString(match.preview)
     if let range = Range(match.range, in: text) {
       text[range].font = .system(size: 11.5, weight: .bold, design: .monospaced)
-      text[range].backgroundColor = Color.yellow.opacity(0.35)
+      text[range].backgroundColor = Hue.yellow.soft(0.4).resolve(in: environment)
     }
     return text
   }

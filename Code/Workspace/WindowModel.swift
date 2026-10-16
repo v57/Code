@@ -133,8 +133,8 @@ import SwiftUI
     }
   }
 
-  /// ⇧⌘F: the Find navigator with the caret in its field. A selection on
-  /// one line becomes the query and is searched for.
+  /// ⇧⌘F: the Find navigator. A selection on one line becomes the query
+  /// and is searched for.
   func findInProject() {
     isNavigatorVisible = true
     navigator = .find
@@ -146,7 +146,6 @@ import SwiftUI
         find.search(in: workspace)
       }
     }
-    find.focus()
   }
 
   /// The folder new items go into: the selected folder, the selected file's
