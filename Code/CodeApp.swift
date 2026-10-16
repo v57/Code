@@ -1,4 +1,5 @@
 import CodeKit
+import ComponentKit
 import SwiftUI
 import UpdateKit
 
@@ -19,6 +20,7 @@ import UpdateKit
   var body: some Scene {
     WindowGroup(id: WorkspaceWindow.id, for: URL.self) { $root in
       WorkspaceWindow(root: $root)
+        .componentKit()
     }
     .defaultSize(width: 1200, height: 800)
     .commands {
@@ -28,13 +30,15 @@ import UpdateKit
 
     // A document opened in a window of its own (Open in New Window).
     WindowGroup(id: DetachedEditorWindow.id, for: UUID.self) { $documentID in
-      if let documentID { DetachedEditorWindow(documentID: documentID) }
+      if let documentID { DetachedEditorWindow(documentID: documentID).componentKit() }
     }
     .defaultSize(width: 720, height: 560)
     .windowToolbarStyle(.unifiedCompact)
 
     Settings {
       SettingsView()
+        .componentKit()
     }
+    .windowStyle(.hiddenTitleBar)
   }
 }
