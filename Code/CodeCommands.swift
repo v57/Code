@@ -213,6 +213,7 @@ struct CodeCommands: Commands {
       Button("Show Find Navigator") {
         model?.isNavigatorVisible = true
         model?.navigator = .find
+        model?.isFindLineOpen = true
       }
       .keyboardShortcut("3")
       .disabled(model == nil)

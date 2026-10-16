@@ -3,22 +3,83 @@ import ComponentKit
 import SwiftUI
 
 /// Xcode's Package Dependencies under the file tree, as a card: each package with its version (or "local"), its
-/// sources browsable when they are on disk.
+/// sources browsable (the kit's outline) when they are on disk. A folder is read when it is first opened; dotfiles
+/// are left out, as Xcode does.
 struct PackageDependenciesSection: View {
   @Environment(Workspace.self) private var workspace
+  @Environment(WindowModel.self) private var model
+  /// The folders read so far.
+  @State private var entries: [URL: [DependencyItem.Entry]] = [:]
 
   var body: some View {
+    @Bindable var model = model
     if !workspace.dependencies.isEmpty {
       let count = workspace.dependencies.count
       KitSection(
         "Package Dependencies", meta: count == 1 ? "1 package" : "\(count) packages", systemImage: "shippingbox",
         hue: .brown
       ) {
-        ForEach(workspace.dependencies) { dependency in
-          PackageDependencyRow(dependency: dependency)
+        KitOutline(items, children: \.children, expanded: $model.expandedDependencyFolders) { item in
+          switch item.kind {
+          case .package(let dependency): PackageDependencyRow(dependency: dependency)
+          case .entry(let entry): DependencyEntryRow(url: entry.url, isDirectory: entry.isDirectory)
+          }
         }
       }
+      .task(id: model.expandedDependencyFolders) { await readOpenFolders() }
+      .onChange(of: workspace.dependencies) { _, _ in entries = [:] }
     }
+  }
+
+  private var items: [DependencyItem] {
+    workspace.dependencies.map { DependencyItem(kind: .package($0), entries: entries) }
+  }
+
+  private func readOpenFolders() async {
+    for folder in model.expandedDependencyFolders where entries[folder] == nil {
+      entries[folder] = await Task.detached(priority: .userInitiated) {
+        FileTree.listDirectory(folder)
+          .filter { !$0.url.lastPathComponent.hasPrefix(".") }
+          .map { DependencyItem.Entry(url: $0.url, isDirectory: $0.isDirectory) }
+      }.value
+    }
+  }
+}
+
+/// A package or one of the files and folders in its sources, for the outline: a folder's children are its entries
+/// once read (none before), a package without sources on disk has none to show.
+struct DependencyItem: Identifiable {
+  struct Entry: Sendable {
+    let url: URL
+    let isDirectory: Bool
+  }
+
+  enum Kind {
+    case package(PackageDependency)
+    case entry(Entry)
+  }
+
+  let kind: Kind
+  let entries: [URL: [Entry]]
+
+  /// The folder's URL (what `expandedDependencyFolders` holds); a package without sources gets a placeholder.
+  var id: URL {
+    switch kind {
+    case .package(let dependency): dependency.location ?? URL(string: "package:" + dependency.id)!
+    case .entry(let entry): entry.url
+    }
+  }
+
+  private var folder: URL? {
+    switch kind {
+    case .package(let dependency): dependency.location
+    case .entry(let entry): entry.isDirectory ? entry.url : nil
+    }
+  }
+
+  var children: [DependencyItem]? {
+    guard let folder else { return nil }
+    return (entries[folder] ?? []).map { DependencyItem(kind: .entry($0), entries: entries) }
   }
 }
 
@@ -27,37 +88,21 @@ private struct PackageDependencyRow: View {
   @Environment(WindowModel.self) private var model
 
   var body: some View {
+    let icon = Image(systemName: "shippingbox.fill")
+      .font(.system(size: 12))
+      .foregroundStyle(Hue.brown.fill)
+      .frame(width: 17, height: 14)
+    let detail = Text(dependency.detail).lineLimit(1)
     if let location = dependency.location {
-      let isExpanded = model.dependencyFolderExpansion(location)
-      row(value: NavigatorItem.file(location), isExpanded: isExpanded)
+      SidebarRow(value: NavigatorItem.file(location), dependency.name, icon: { icon }, trailing: { detail })
+        .help(help)
+        .simultaneousGesture(TapGesture(count: 2).onEnded { model.dependencyFolderExpansion(location).wrappedValue.toggle() })
         .contextMenu { FileMenu(url: location) }
-      if isExpanded.wrappedValue {
-        DependencyFolderContents(folder: location, depth: 1)
-      }
     } else {
-      row(value: nil, isExpanded: .constant(false))
+      SidebarRow(dependency.name, icon: { icon }, trailing: { detail })
+        .help(help)
         .opacity(0.6)
     }
-  }
-
-  @ViewBuilder private func row(value: NavigatorItem?, isExpanded: Binding<Bool>) -> some View {
-    let icon = HStack(spacing: 2) {
-      Disclosure(isDirectory: dependency.location != nil, isExpanded: isExpanded)
-      Image(systemName: "shippingbox.fill")
-        .font(.system(size: 12))
-        .foregroundStyle(Hue.brown.fill)
-        .frame(width: 17, height: 14)
-    }
-    let detail = Text(dependency.detail).lineLimit(1)
-    Group {
-      if let value {
-        SidebarRow(value: value, dependency.name, icon: { icon }, trailing: { detail })
-      } else {
-        SidebarRow(dependency.name, icon: { icon }, trailing: { detail })
-      }
-    }
-    .help(help)
-    .simultaneousGesture(TapGesture(count: 2).onEnded { isExpanded.wrappedValue.toggle() })
   }
 
   private var help: String {
@@ -68,55 +113,19 @@ private struct PackageDependencyRow: View {
   }
 }
 
-/// A dependency's folder, read when it is first expanded. Dotfiles are left out, as Xcode does.
-private struct DependencyFolderContents: View {
-  let folder: URL
-  let depth: Int
-  @State private var entries: [(url: URL, isDirectory: Bool)]?
-
-  var body: some View {
-    Group {
-      if let entries {
-        ForEach(entries, id: \.url) { entry in
-          DependencyEntryRow(url: entry.url, isDirectory: entry.isDirectory, depth: depth)
-        }
-      } else {
-        SidebarRow("Loading…") { Color.clear.frame(width: 1, height: 14) }
-          .kitRowIndent(depth)
-          .opacity(0.6)
-      }
-    }
-    .task(id: folder) {
-      let folder = folder
-      entries = await Task.detached(priority: .userInitiated) {
-        FileTree.listDirectory(folder).filter { !$0.url.lastPathComponent.hasPrefix(".") }
-      }.value
-    }
-  }
-}
-
 private struct DependencyEntryRow: View {
   let url: URL
   let isDirectory: Bool
-  let depth: Int
   @Environment(WindowModel.self) private var model
   @AppStorage(EditorSettings.showExtensions) private var showExtensions = false
 
   var body: some View {
-    let isExpanded = model.dependencyFolderExpansion(url)
     SidebarRow(value: NavigatorItem.file(url), FileName.display(url, showExtensions: showExtensions)) {
-      HStack(spacing: 2) {
-        Disclosure(isDirectory: isDirectory, isExpanded: isExpanded)
-        FileIconView(for: url, isDirectory: isDirectory, size: 14)
-      }
+      FileIconView(for: url, isDirectory: isDirectory, size: 14)
     }
-    .kitRowIndent(depth)
     .id(url)
     .help(url.abbreviatedPath)
     .simultaneousGesture(TapGesture(count: 2).onEnded { model.activateNavigatorItem(url) })
     .contextMenu { FileMenu(url: url) }
-    if isDirectory, isExpanded.wrappedValue {
-      DependencyFolderContents(folder: url, depth: depth + 1)
-    }
   }
 }

@@ -8,10 +8,10 @@ nonisolated enum NavigatorItem: Hashable, Sendable {
   case match(FindSelection)
 }
 
-/// The navigator: the kit's compact sidebar. The project's file tree is a card whose header names the project; a
-/// click opens a file in the preview tab, a double click (or Return) keeps it open, ← → fold and unfold folders.
-/// The bottom bar's search button opens the search line, which searches the project (Find in Project): while it
-/// has text, the sidebar lists the results instead of the tree.
+/// The navigator: the kit's compact sidebar. The project's file tree is a card whose header names the project (the
+/// kit's outline); a click opens a file in the preview tab, a double click (or Return) keeps it open, the kit's arrow
+/// keys move and fold. The bottom bar's search button opens the search line (⇧⌘F, ⌘3), which searches the project
+/// (Find in Project): while it has text, the sidebar lists the results instead of the tree.
 ///
 /// Hidden files (`.gitignore` matches, `.git`, items the user hid) are left out unless Show Hidden Files (⇧⌘.) is on,
 /// which lists them dimmed. Choose Visible Files puts a checkbox on every item to change what the project hides.
@@ -23,10 +23,11 @@ struct SidebarView: View {
 
   var body: some View {
     @Bindable var find = model.find
+    @Bindable var model = model
     ScrollViewReader { proxy in
       KitSidebar(
         selection: selection, searchText: $find.text, searchPrompt: "Find in Project",
-        columnVisibility: navigatorVisibility
+        isSearching: $model.isFindLineOpen, columnVisibility: navigatorVisibility
       ) {
         switch model.navigator {
         case .project: projectContent
@@ -41,15 +42,13 @@ struct SidebarView: View {
         ) { workspace.visibility.showsHiddenFiles.toggle() }
         .help(workspace.visibility.showsHiddenFiles ? "Hide Hidden Files (⇧⌘.)" : "Show Hidden Files (⇧⌘.)")
       }
+      .onReturn(activateSelection)
       .kitRowDensity(.compact)
       // Keep the selected file in view when it changes from outside the sidebar (a tab, Quick Open, a file opened
       // from Finder).
       .onChange(of: model.sidebarSelection) { _, url in
         if let url { DispatchQueue.main.async { withKitAnimation { proxy.scrollTo(url) } } }
       }
-    }
-    .onKeyPress(keys: [.upArrow, .downArrow, .leftArrow, .rightArrow, .return]) { press in
-      handleKey(press.key)
     }
     .onDeleteCommand {
       // Only the project's own files: not a package's.
@@ -65,6 +64,10 @@ struct SidebarView: View {
       // Typing in the search line searches the project; closing it goes back to the tree.
       model.navigator = text.isEmpty ? .project : .find
       if text.isEmpty { findSelection = nil }
+    }
+    .onChange(of: model.isFindLineOpen) { _, isOpen in
+      // ⇧⌘F and ⌘3 open the line on the Find navigator; closing it goes back to the tree.
+      if isOpen { model.navigator = .find } else if find.text.isEmpty { model.navigator = .project }
     }
     .task(id: find.text) {
       guard !find.text.isEmpty else {
@@ -91,8 +94,8 @@ struct SidebarView: View {
     KitSection(
       workspace.name, meta: projectMeta, systemImage: "folder", hue: .red, isExpanded: $isRootExpanded
     ) {
-      ForEach(lines) { line in
-        FileTreeRow(node: line.node, depth: line.depth)
+      KitOutline(treeItems, children: \.children, expanded: expandedFolders) { item in
+        FileTreeRow(node: item.node)
       }
     } accessory: {
       Menu {
@@ -114,18 +117,27 @@ struct SidebarView: View {
     return [kind, workspace.root.deletingLastPathComponent().abbreviatedPath].compactMap { $0 }
   }
 
-  /// The tree's visible rows in order, each with its depth under the project.
-  private var lines: [TreeLine] {
+  /// The project's top level, for the kit's outline (folders open from `workspace.tree.expanded`).
+  private var treeItems: [TreeItem] {
     guard isRootExpanded else { return [] }
-    var lines: [TreeLine] = []
-    func walk(_ node: FileNode, depth: Int) {
-      for child in Self.visibleChildren(of: node, workspace: workspace, model: model) {
-        lines.append(TreeLine(node: child, depth: depth))
-        if child.isDirectory, workspace.tree.expanded.contains(child.url) { walk(child, depth: depth + 1) }
-      }
-    }
-    walk(workspace.tree.root, depth: 0)
-    return lines
+    let children = { (node: FileNode) in Self.visibleChildren(of: node, workspace: workspace, model: model) }
+    return children(workspace.tree.root).map { TreeItem(node: $0, visibleChildren: children) }
+  }
+
+  /// The open folders: opening one reads it first; the session keeps them.
+  private var expandedFolders: Binding<Set<URL>> {
+    Binding(
+      get: { workspace.tree.expanded },
+      set: { expanded in
+        let tree = workspace.tree
+        for url in expanded.subtracting(tree.expanded) {
+          if let node = tree.node(for: url) { tree.setExpanded(node, true) }
+        }
+        for url in tree.expanded.subtracting(expanded) {
+          if let node = tree.node(for: url) { tree.setExpanded(node, false) }
+        }
+        workspace.saveSession()
+      })
   }
 
   private var selection: Binding<NavigatorItem?> {
@@ -153,46 +165,24 @@ struct SidebarView: View {
 
   // MARK: - Keyboard
 
-  /// ↑ ↓ move through the tree, → unfolds a folder, ← folds it (or goes to its folder), Return keeps a file open or
-  /// folds and unfolds a folder.
-  private func handleKey(_ key: KeyEquivalent) -> KeyPress.Result {
-    guard model.navigator == .project else { return .ignored }
-    let urls = lines.map(\.node.url)
-    let current = model.sidebarSelection
-    switch key {
-    case .upArrow, .downArrow:
-      guard !urls.isEmpty else { return .ignored }
-      let index = current.flatMap { urls.firstIndex(of: $0) }
-      let next =
-        key == .downArrow
-        ? index.map { min($0 + 1, urls.count - 1) } ?? 0 : index.map { max($0 - 1, 0) } ?? urls.count - 1
-      model.sidebarSelection = urls[next]
-      return .handled
-    case .rightArrow, .leftArrow:
-      guard let current, let node = workspace.tree.node(for: current) else { return .ignored }
-      let isExpanded = workspace.tree.expanded.contains(current)
-      if node.isDirectory, (key == .rightArrow) != isExpanded {
-        withKitAnimation { workspace.tree.setExpanded(node, key == .rightArrow) }
-        workspace.saveSession()
-      } else if key == .leftArrow {
-        let parent = current.deletingLastPathComponent()
-        if urls.contains(parent) { model.sidebarSelection = parent }
-      }
-      return .handled
-    case .return:
-      guard let current else { return .ignored }
-      model.activateNavigatorItem(current)
-      return .handled
-    default:
-      return .ignored
-    }
+  /// Return keeps the selected file open or folds and unfolds the selected folder (the kit's arrow keys move and fold).
+  private func activateSelection() {
+    guard model.navigator == .project, let url = model.sidebarSelection else { return }
+    model.activateNavigatorItem(url)
   }
 }
 
-struct TreeLine: Identifiable {
+/// A file or folder of the tree as the kit's outline sees it: a folder's children are the ones the navigator shows
+/// (none until it's read), a file has none.
+struct TreeItem: Identifiable {
   let node: FileNode
-  let depth: Int
+  let visibleChildren: (FileNode) -> [FileNode]
   var id: URL { node.url }
+
+  var children: [TreeItem]? {
+    guard node.isDirectory else { return nil }
+    return visibleChildren(node).map { TreeItem(node: $0, visibleChildren: visibleChildren) }
+  }
 }
 
 extension SidebarView {
@@ -234,11 +224,10 @@ extension WindowModel {
 
 // MARK: - Rows
 
-/// A file or folder of the tree: its disclosure, icon and name, dimmed while hidden; a checkbox while choosing
-/// visible files.
+/// A file or folder of the tree: its icon and name (the outline adds the disclosure and indent), dimmed while hidden;
+/// a checkbox while choosing visible files.
 struct FileTreeRow: View {
   let node: FileNode
-  let depth: Int
   @Environment(Workspace.self) private var workspace
   @Environment(WindowModel.self) private var model
   @AppStorage(EditorSettings.showExtensions) private var showExtensions = false
@@ -247,11 +236,10 @@ struct FileTreeRow: View {
     let isHidden = node.isHidden
     SidebarRow(value: NavigatorItem.file(node.url), FileName.display(node.url, showExtensions: showExtensions)) {
       HStack(spacing: 2) {
-        Disclosure(isDirectory: node.isDirectory, isExpanded: isExpanded)
         if model.isChoosingVisibleFiles {
-          Toggle(isOn: isVisible) {}
+          Toggle("Show \(node.name)", isOn: isVisible)
             .toggleStyle(.kitCheckbox)
-            .accessibilityLabel("Show \(node.name)")
+            .kitLabelsHidden()
             .disabled(node.isInHiddenFolder)
         }
         FileIconView(for: node.url, isDirectory: node.isDirectory, size: 14)
@@ -272,7 +260,6 @@ struct FileTreeRow: View {
           .accessibilityLabel("Hidden")
       }
     }
-    .kitRowIndent(depth)
     .opacity(isHidden ? 0.6 : 1)
     .id(node.url)
     .help(help)
@@ -292,40 +279,6 @@ struct FileTreeRow: View {
     Binding(
       get: { !node.isHidden },
       set: { workspace.setVisible(node.url, $0) })
-  }
-
-  private var isExpanded: Binding<Bool> {
-    Binding(
-      get: { workspace.tree.expanded.contains(node.url) },
-      set: { expanded in
-        withKitAnimation { workspace.tree.setExpanded(node, expanded) }
-        workspace.saveSession()
-      })
-  }
-}
-
-/// A tree row's disclosure chevron (an empty slot for a file, so names line up).
-struct Disclosure: View {
-  let isDirectory: Bool
-  @Binding var isExpanded: Bool
-
-  var body: some View {
-    if isDirectory {
-      Button {
-        isExpanded.toggle()
-      } label: {
-        Image(systemName: "chevron.right")
-          .font(.system(size: 9, weight: .bold))
-          .foregroundStyle(.kitTertiary)
-          .rotationEffect(.degrees(isExpanded ? 90 : 0))
-          .frame(width: 12, height: 16)
-          .contentShape(Rectangle())
-      }
-      .buttonStyle(.plain)
-      .accessibilityLabel(isExpanded ? "Collapse" : "Expand")
-    } else {
-      Color.clear.frame(width: 12, height: 16)
-    }
   }
 }
 
@@ -411,10 +364,7 @@ struct FileMenu: View {
     return false
   }
 
-  private func copy(_ string: String) {
-    NSPasteboard.general.clearContents()
-    NSPasteboard.general.setString(string, forType: .string)
-  }
+  private func copy(_ string: String) { KitPasteboard.copy(string) }
 }
 
 /// Above the tree while choosing visible files: what the checkboxes do, the project's `.gitignore` switch, Restore
