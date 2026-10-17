@@ -105,14 +105,11 @@ struct FindNavigatorView: View {
         options: [("Ignoring Case", false), ("Matching Case", true)])
     }
     KitSection("Results", meta: summary(find), systemImage: "magnifyingglass", status: status(find)) {
-      // Up to 10,000 light rows: a LazyVStack, which never lays out the rows it hasn't built.
-      LazyVStack(alignment: .leading, spacing: 2) {
-        ForEach(find.results) { file in
-          FileResultRow(file: file, isExpanded: isExpanded(file.path))
-          if !find.collapsed.contains(file.path) {
-            ForEach(Array(file.matches.enumerated()), id: \.offset) { index, match in
-              MatchRow(match: match, selection: FindSelection(path: file.path, match: index))
-            }
+      ForEach(find.results) { file in
+        FileResultRow(file: file, isExpanded: isExpanded(file.path))
+        if !find.collapsed.contains(file.path) {
+          ForEach(Array(file.matches.enumerated()), id: \.offset) { index, match in
+            MatchRow(match: match, selection: FindSelection(path: file.path, match: index))
           }
         }
       }
@@ -213,7 +210,6 @@ private struct FileResultRow: View {
         Count(file.matches.count)
       }
     }
-    .id(FindSelection(path: file.path, match: nil))
     .help(file.path)
   }
 }
@@ -228,7 +224,6 @@ private struct MatchRow: View {
     SidebarRow(value: NavigatorItem.match(selection), match.preview) { EmptyView() }
       .title(Text(attributed).font(.system(size: 11.5, design: .monospaced)))
       .kitRowIndent(1)
-      .id(selection)
       .help("Line \(match.line): \(match.preview)")
   }
 

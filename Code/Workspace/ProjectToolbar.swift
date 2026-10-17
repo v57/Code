@@ -181,21 +181,29 @@ private struct SchemeTools: View {
     let projects = Dictionary(grouping: actions.schemes, by: \.directory)
     let folders = projects.keys.sorted { $0.path < $1.path }
     ForEach(folders, id: \.self) { folder in
-      MenuSection(folders.count > 1 ? folder.lastPathComponent : nil, isFirst: folder == folders.first) {
-        ForEach(projects[folder] ?? []) { scheme in
-          Button {
-            actions.selectedSchemeID = scheme.id
-          } label: {
-            Label(
-              projects.count > 1 || scheme.toolchain != .xcode
-                ? "\(scheme.name) — \(scheme.toolchain.displayName)" : scheme.name,
-              systemImage: actions.selectedScheme?.id == scheme.id ? "checkmark" : scheme.toolchain.symbolName)
-          }
-        }
+      if folders.count > 1 {
+        if folder != folders.first { Divider() }
+        KitMenuSection(folder.lastPathComponent) { schemeRows(projects[folder] ?? [], projectCount: projects.count) }
+      } else {
+        schemeRows(projects[folder] ?? [], projectCount: projects.count)
       }
     }
     Divider()
     Button("Refresh Schemes") { actions.scan() }
+  }
+
+  private func schemeRows(_ schemes: [ActionScheme], projectCount: Int) -> some View {
+    let actions = model.services.actions
+    return ForEach(schemes) { scheme in
+      Button {
+        actions.selectedSchemeID = scheme.id
+      } label: {
+        Label(
+          projectCount > 1 || scheme.toolchain != .xcode
+            ? "\(scheme.name) — \(scheme.toolchain.displayName)" : scheme.name,
+          systemImage: actions.selectedScheme?.id == scheme.id ? "checkmark" : scheme.toolchain.symbolName)
+      }
+    }
   }
 
   @ViewBuilder private var destinationItems: some View {
@@ -204,7 +212,8 @@ private struct SchemeTools: View {
     let order = ["My Mac", "iOS Devices", "iOS Simulators", "Android Devices", "Android Emulators"]
     let shown = order.filter { sections[$0] != nil }
     ForEach(shown, id: \.self) { section in
-      MenuSection(section, isFirst: section == shown.first) {
+      if section != shown.first { Divider() }
+      KitMenuSection(section) {
         ForEach(sections[section] ?? []) { destination in
           Button {
             actions.selectedDestinationID = destination.id
@@ -219,37 +228,10 @@ private struct SchemeTools: View {
       }
     }
     if actions.destinations.isEmpty {
-      MenuSection(actions.isLoadingDestinations ? "Loading…" : "No Destinations", isFirst: true) {}
+      KitMenuSection(actions.isLoadingDestinations ? "Loading…" : "No Destinations") {}
     }
     Divider()
     Button("Refresh Devices") { actions.refreshDestinations() }
-  }
-}
-
-/// A group of a kit menu's rows under a caption, after a divider unless it comes first (the kit's menus have no
-/// section headers of their own).
-private struct MenuSection<Content: View>: View {
-  let title: String?
-  let isFirst: Bool
-  @ViewBuilder let content: Content
-
-  init(_ title: String?, isFirst: Bool, @ViewBuilder content: () -> Content) {
-    self.title = title
-    self.isFirst = isFirst
-    self.content = content()
-  }
-
-  var body: some View {
-    if !isFirst { Divider() }
-    if let title {
-      Text(title)
-        .font(.system(size: 11, weight: .semibold))
-        .foregroundStyle(.kitSecondary)
-        .padding(.horizontal, 8)
-        .padding(.top, 3)
-        .accessibilityAddTraits(.isHeader)
-    }
-    content
   }
 }
 

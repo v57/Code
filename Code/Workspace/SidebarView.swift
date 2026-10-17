@@ -49,10 +49,6 @@ struct SidebarView: View {
       .onChange(of: model.sidebarSelection) { _, url in
         if let url { DispatchQueue.main.async { withKitAnimation { proxy.scrollTo(url) } } }
       }
-      // And the selected result as ↑ and ↓ step through them (the kit's keys move the selection, not the scroll).
-      .onChange(of: findSelection) { _, match in
-        if let match { DispatchQueue.main.async { withKitAnimation { proxy.scrollTo(match) } } }
-      }
     }
     .onDeleteCommand {
       // Only the project's own files: not a package's.
