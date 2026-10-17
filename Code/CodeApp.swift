@@ -20,6 +20,8 @@ import UpdateKit
   var body: some Scene {
     WindowGroup(id: WorkspaceWindow.id, for: URL.self) { $root in
       WorkspaceWindow(root: $root)
+        // Screenshots show every row the window has room for, never one still on its way.
+        .kitLazyLoading(!ScreenshotDemo.isOn)
         .componentKit()
     }
     .defaultSize(width: 1200, height: 800)
