@@ -52,7 +52,7 @@ struct WelcomeView: View {
 
   private func item(_ folder: URL, isRecent: Bool) -> some View {
     RecentItem(folder.lastPathComponent, subtitle: folder.abbreviatedPath) { open(folder) }
-      .contextMenu {
+      .kitContextMenu {
         Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([folder]) }
         if isRecent {
           Button("Remove from Recents") { recents.remove(folder) }

@@ -30,7 +30,7 @@ private struct RunTools: View {
       }
       .help(actions.canPerform(.run) ? "Run (⌘R)" : "Build (⌘B)")
       .disabled(actions.selectedScheme == nil)
-      .contextMenu {
+      .kitContextMenu {
         Button("Run") { model.perform(.run) }
           .disabled(!actions.canPerform(.run))
         Button("Test") { model.perform(.test) }
@@ -111,7 +111,7 @@ private struct ProjectTitle: View {
   }
 }
 
-/// The issue counts (they open the issue list), then "Scheme › Destination": two menus in one tool group.
+/// The issue counts (they open the issue list), then "Scheme › Destination": two of the kit's menus in one tool group.
 private struct SchemeTools: View {
   let model: WindowModel
 
@@ -147,24 +147,26 @@ private struct SchemeTools: View {
         }
       }
       ToolGroup {
-        Menu {
-          schemeItems
+        Button {
+          model.openMenu = .scheme
         } label: {
           Label(
             actions.selectedScheme?.name ?? (actions.isScanning ? "Finding Schemes…" : "No Scheme"),
             systemImage: actions.selectedScheme?.toolchain.symbolName ?? "square.dashed")
         }
+        .kitMenu(isPresented: model.isPresented(.scheme)) { schemeItems }
         .help("Choose a scheme")
         Image(systemName: "chevron.right")
           .font(.system(size: 9, weight: .semibold))
           .foregroundStyle(.kitTertiary)
-        Menu {
-          destinationItems
+        Button {
+          model.openMenu = .destination
         } label: {
           Label(
             actions.selectedDestination?.name ?? (actions.isLoadingDestinations ? "Loading…" : "No Destination"),
             systemImage: actions.selectedDestination?.symbolName ?? "questionmark.app.dashed")
         }
+        .kitMenu(isPresented: model.isPresented(.destination)) { destinationItems }
         .help("Choose where to run")
       }
     }
@@ -175,7 +177,7 @@ private struct SchemeTools: View {
     let projects = Dictionary(grouping: actions.schemes, by: \.directory)
     let folders = projects.keys.sorted { $0.path < $1.path }
     ForEach(folders, id: \.self) { folder in
-      Section(folders.count > 1 ? folder.lastPathComponent : "") {
+      MenuSection(folders.count > 1 ? folder.lastPathComponent : nil, isFirst: folder == folders.first) {
         ForEach(projects[folder] ?? []) { scheme in
           Button {
             actions.selectedSchemeID = scheme.id
@@ -196,8 +198,9 @@ private struct SchemeTools: View {
     let actions = model.services.actions
     let sections = Dictionary(grouping: actions.destinations, by: \.section)
     let order = ["My Mac", "iOS Devices", "iOS Simulators", "Android Devices", "Android Emulators"]
-    ForEach(order.filter { sections[$0] != nil }, id: \.self) { section in
-      Section(section) {
+    let shown = order.filter { sections[$0] != nil }
+    ForEach(shown, id: \.self) { section in
+      MenuSection(section, isFirst: section == shown.first) {
         ForEach(sections[section] ?? []) { destination in
           Button {
             actions.selectedDestinationID = destination.id
@@ -212,10 +215,37 @@ private struct SchemeTools: View {
       }
     }
     if actions.destinations.isEmpty {
-      Text(actions.isLoadingDestinations ? "Loading…" : "No Destinations")
+      MenuSection(actions.isLoadingDestinations ? "Loading…" : "No Destinations", isFirst: true) {}
     }
     Divider()
     Button("Refresh Devices") { actions.refreshDestinations() }
+  }
+}
+
+/// A group of a kit menu's rows under a caption, after a divider unless it comes first (the kit's menus have no
+/// section headers of their own).
+private struct MenuSection<Content: View>: View {
+  let title: String?
+  let isFirst: Bool
+  @ViewBuilder let content: Content
+
+  init(_ title: String?, isFirst: Bool, @ViewBuilder content: () -> Content) {
+    self.title = title
+    self.isFirst = isFirst
+    self.content = content()
+  }
+
+  var body: some View {
+    if !isFirst { Divider() }
+    if let title {
+      Text(title)
+        .font(.system(size: 11, weight: .semibold))
+        .foregroundStyle(.kitSecondary)
+        .padding(.horizontal, 8)
+        .padding(.top, 3)
+        .accessibilityAddTraits(.isHeader)
+    }
+    content
   }
 }
 

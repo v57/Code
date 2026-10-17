@@ -97,7 +97,7 @@ private struct PackageDependencyRow: View {
       SidebarRow(value: NavigatorItem.file(location), dependency.name, icon: { icon }, trailing: { detail })
         .onDoubleClick { model.dependencyFolderExpansion(location).wrappedValue.toggle() }
         .help(help)
-        .contextMenu { FileMenu(url: location) }
+        .kitContextMenu { FileMenu(url: location) }
     } else {
       SidebarRow(dependency.name, icon: { icon }, trailing: { detail })
         .help(help)
@@ -126,6 +126,6 @@ private struct DependencyEntryRow: View {
     .onDoubleClick { model.activateNavigatorItem(url) }
     .id(url)
     .help(url.abbreviatedPath)
-    .contextMenu { FileMenu(url: url) }
+    .kitContextMenu { FileMenu(url: url) }
   }
 }

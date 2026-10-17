@@ -98,15 +98,12 @@ struct SidebarView: View {
         FileTreeRow(node: item.node)
       }
     } accessory: {
-      Menu {
-        FileMenu(url: nil)
-      } label: {
-        Label("Project", systemImage: "ellipsis")
-      }
-      .menuStyle(.button)
-      .menuIndicator(.hidden)
-      .labelStyle(.iconOnly)
-      .fixedSize()
+      Button("Project", systemImage: "ellipsis") { model.openMenu = .project }
+        .labelStyle(.iconOnly)
+        .buttonStyle(.kitIcon)
+        .controlSize(.small)
+        .kitMenu(isPresented: model.isPresented(.project)) { FileMenu(url: nil) }
+        .help("Project")
     }
     if !model.isChoosingVisibleFiles { PackageDependenciesSection() }
   }
@@ -264,7 +261,7 @@ struct FileTreeRow: View {
     .opacity(isHidden ? 0.6 : 1)
     .id(node.url)
     .help(help)
-    .contextMenu { FileMenu(url: node.url) }
+    .kitContextMenu { FileMenu(url: node.url) }
     .draggable(node.url)
   }
 
@@ -282,7 +279,7 @@ struct FileTreeRow: View {
   }
 }
 
-/// A file's, folder's or the project's menu (the row's context menu, the project card's "…").
+/// A file's, folder's or the project's menu, drawn by the kit (the row's context menu, the project card's "…").
 struct FileMenu: View {
   /// nil: the project itself.
   let url: URL?
@@ -329,7 +326,7 @@ struct FileMenu: View {
       Button("Copy Relative Path") { copy(workspace.tree.relativePath(of: node.url)) }
       Divider()
       Button("Rename…") { model.ask(.rename(node.url)) }
-      Button("Move to Trash") { model.trashCandidate = node.url }
+      Button("Move to Trash", role: .destructive) { model.trashCandidate = node.url }
       Divider()
       if !node.isInHiddenFolder {
         if node.hiddenReason != nil {

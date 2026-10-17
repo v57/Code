@@ -33,6 +33,8 @@ import SwiftUI
   /// The console under the editor (Xcode's debug area, ⇧⌘Y).
   var isConsoleVisible = false
   var isIssuesPresented = false
+  /// The kit menu open in the window's chrome (the toolbar's scheme and destination, the project card's "…").
+  var openMenu: ChromeMenu?
   /// The Notarization sheet: Export opens it until a profile is set up.
   var notarizationSetup: NotarizationSetupRequest?
   @ObservationIgnored private var installObserver: NSObjectProtocol?
@@ -200,4 +202,22 @@ extension FocusedValues {
   @Entry var windowModel: WindowModel?
   /// The document of a key window of its own (Open in New Window).
   @Entry var detachedDocument: TextDocument?
+}
+
+/// The menus of a project window's chrome that open from a button.
+enum ChromeMenu: String {
+  case project
+  case scheme
+  case destination
+}
+
+extension WindowModel {
+  /// Whether `menu` is the open one, for `.kitMenu(isPresented:)`.
+  func isPresented(_ menu: ChromeMenu) -> Binding<Bool> {
+    Binding(
+      get: { self.openMenu == menu },
+      set: { isOpen in
+        if isOpen { self.openMenu = menu } else if self.openMenu == menu { self.openMenu = nil }
+      })
+  }
 }

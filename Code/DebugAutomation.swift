@@ -22,7 +22,7 @@
   /// `dependency:<folder path>` (expands it under Package Dependencies),
   /// `select:<path>` (selects a navigator row, as a click does),
   /// `folder:<relative path>:on|off` (expands or collapses a tree folder),
-  /// `focus` (the editor takes the keyboard).
+  /// `focus` (the editor takes the keyboard), `menu:project|scheme|destination|off` (opens a kit menu).
   ///
   /// Launched with `-DebugAutomationName <name>`, the app listens for that
   /// name instead, so other Debug instances ignore the commands.
@@ -132,6 +132,7 @@
         if !argument.isEmpty { UserDefaults.standard.set(argument, forKey: "settings.tab") }
         AppState.shared.debugOpenSettings?()
       case "issues": model.isIssuesPresented.toggle()
+      case "menu": model.openMenu = ChromeMenu(rawValue: argument)
       case "hidden":
         // The navigator's Show Hidden Files: hidden:on|off.
         model.workspace.visibility.showsHiddenFiles = argument != "off"
