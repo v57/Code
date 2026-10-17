@@ -210,6 +210,7 @@ private struct FileResultRow: View {
         Count(file.matches.count)
       }
     }
+    .id(FindSelection(path: file.path, match: nil))
     .help(file.path)
   }
 }
@@ -224,6 +225,7 @@ private struct MatchRow: View {
     SidebarRow(value: NavigatorItem.match(selection), match.preview) { EmptyView() }
       .title(Text(attributed).font(.system(size: 11.5, design: .monospaced)))
       .kitRowIndent(1)
+      .id(selection)
       .help("Line \(match.line): \(match.preview)")
   }
 
