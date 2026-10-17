@@ -39,17 +39,11 @@ struct WorkspaceView: View {
       }
       .kitPane(.content)
       .codeStatusBar()
-      .toolbar {
-        if serviceSettings.settings.actionsEnabled {
-          ProjectToolbar(model: model)
-        }
-      }
+      .projectToolbar(model: model, actionsEnabled: serviceSettings.settings.actionsEnabled)
+      .kitSidebarToggle(columnVisibility: navigatorVisibility)
       .kitPaletteOverlay(isPresented: $model.isQuickOpenPresented) { QuickOpenView() }
       .kitPaletteOverlay(isPresented: $model.isGoToLinePresented) { GoToLineView() }
     }
-    .navigationTitle(workspace.name)
-    // The toolbar's rich title names the project.
-    .kitHidesSystemTitle()
     .onChange(of: serviceSettings.settings, initial: true) { _, settings in
       model.services.settings = settings
     }

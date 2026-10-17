@@ -22,7 +22,8 @@
   /// `dependency:<folder path>` (expands it under Package Dependencies),
   /// `select:<path>` (selects a navigator row, as a click does),
   /// `folder:<relative path>:on|off` (expands or collapses a tree folder),
-  /// `focus` (the editor takes the keyboard), `menu:project|scheme|destination|off` (opens a kit menu).
+  /// `focus` (the editor takes the keyboard), `menu:project|scheme|destination|off` (opens a kit menu),
+  /// `navigator:on|off`, `size:<width>x<height>` (the window's content size).
   ///
   /// Launched with `-DebugAutomationName <name>`, the app listens for that
   /// name instead, so other Debug instances ignore the commands.
@@ -133,6 +134,13 @@
         AppState.shared.debugOpenSettings?()
       case "issues": model.isIssuesPresented.toggle()
       case "menu": model.openMenu = ChromeMenu(rawValue: argument)
+      case "navigator": model.isNavigatorVisible = argument != "off"
+      case "size":
+        // size:<width>x<height>, the window's content size.
+        let sides = argument.split(separator: "x").compactMap { Double($0) }
+        if sides.count == 2, let window = NSApp.windows.first(where: { $0.title == model.workspace.name }) {
+          window.setContentSize(NSSize(width: sides[0], height: sides[1]))
+        }
       case "hidden":
         // The navigator's Show Hidden Files: hidden:on|off.
         model.workspace.visibility.showsHiddenFiles = argument != "off"

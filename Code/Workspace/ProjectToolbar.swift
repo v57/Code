@@ -2,19 +2,20 @@ import CodeKit
 import ComponentKit
 import SwiftUI
 
-/// Xcode's toolbar on the kit: Run and Stop in a tool group, the project's rich title (its live icon carries the
-/// running action, its meta line says what the project is doing), and the scheme › destination and issue counts in
-/// tool groups at the end.
-struct ProjectToolbar: ToolbarContent {
-  let model: WindowModel
-
-  var body: some ToolbarContent {
-    KitToolbarItem(placement: .navigation) { RunTools(model: model) }
-    KitToolbarItem(placement: .navigation) { ProjectTitle(model: model) }
-    if #available(macOS 26, *) {
-      ToolbarSpacer(.flexible)
+extension View {
+  /// Xcode's toolbar as the kit's bar: Run and Stop in a tool group before the project's rich title (its live icon
+  /// carries the running action, its meta line says what the project is doing), and the issue counts and
+  /// scheme › destination at the end, which go icon-only when the window narrows. Without actions (Settings ›
+  /// Tools), the project's name alone.
+  func projectToolbar(model: WindowModel, actionsEnabled: Bool) -> some View {
+    kitToolbar(model.workspace.name) {
+      HStack(spacing: KitMetrics.gutter) {
+        if actionsEnabled { RunTools(model: model) }
+        ProjectTitle(model: model, showsStatus: actionsEnabled)
+      }
+    } tools: {
+      if actionsEnabled { SchemeTools(model: model) }
     }
-    KitToolbarItem(placement: .primaryAction) { SchemeTools(model: model) }
   }
 }
 
@@ -52,14 +53,15 @@ private struct RunTools: View {
 /// action's state in the live icon.
 private struct ProjectTitle: View {
   let model: WindowModel
+  let showsStatus: Bool
 
   var body: some View {
     KitTitle(
-      model.workspace.name, meta: status, systemImage: "chevron.left.forwardslash.chevron.right", hue: .orange,
-      status: workStatus
+      model.workspace.name, meta: showsStatus ? [status] : [],
+      systemImage: "chevron.left.forwardslash.chevron.right", hue: .orange, status: showsStatus ? workStatus : .idle
     )
     .frame(minWidth: 120, idealWidth: 280, maxWidth: 420, alignment: .leading)
-    .help(status)
+    .help(showsStatus ? status : model.workspace.name)
   }
 
   private var workStatus: WorkStatus {
