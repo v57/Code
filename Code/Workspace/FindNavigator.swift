@@ -105,11 +105,14 @@ struct FindNavigatorView: View {
         options: [("Ignoring Case", false), ("Matching Case", true)])
     }
     KitSection("Results", meta: summary(find), systemImage: "magnifyingglass", status: status(find)) {
-      ForEach(find.results) { file in
-        FileResultRow(file: file, isExpanded: isExpanded(file.path))
-        if !find.collapsed.contains(file.path) {
-          ForEach(Array(file.matches.enumerated()), id: \.offset) { index, match in
-            MatchRow(match: match, selection: FindSelection(path: file.path, match: index))
+      // Up to 10,000 light rows: a LazyVStack, which never lays out the rows it hasn't built.
+      LazyVStack(alignment: .leading, spacing: 2) {
+        ForEach(find.results) { file in
+          FileResultRow(file: file, isExpanded: isExpanded(file.path))
+          if !find.collapsed.contains(file.path) {
+            ForEach(Array(file.matches.enumerated()), id: \.offset) { index, match in
+              MatchRow(match: match, selection: FindSelection(path: file.path, match: index))
+            }
           }
         }
       }
