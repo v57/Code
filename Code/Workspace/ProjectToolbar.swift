@@ -50,7 +50,7 @@ private struct RunTools: View {
 }
 
 /// The project's name over what it is doing ("Building — Compiling 31 of 48", "Build Failed · 2 errors"), the
-/// action's state in the live icon.
+/// action's state in the live icon, and the kit's success or failure effect as it ends.
 private struct ProjectTitle: View {
   let model: WindowModel
   let showsStatus: Bool
@@ -61,6 +61,8 @@ private struct ProjectTitle: View {
       systemImage: "chevron.left.forwardslash.chevron.right", hue: .orange, status: showsStatus ? workStatus : .idle
     )
     .frame(minWidth: 120, idealWidth: 280, maxWidth: 420, alignment: .leading)
+    // A finished build, test or run plays the kit's success or failure.
+    .status(showsStatus ? workStatus : .idle)
     .help(showsStatus ? status : model.workspace.name)
   }
 
@@ -261,7 +263,7 @@ struct IssuesList: View {
     let groups = Dictionary(grouping: issues) { $0.url }
     let files = groups.keys.sorted { ($0?.path ?? "") < ($1?.path ?? "") }
     ScrollView {
-      VStack(spacing: KitMetrics.gutter) {
+      KitLazyStack(spacing: KitMetrics.gutter) {
         ForEach(files, id: \.self) { file in
           let fileIssues = groups[file] ?? []
           let errors = fileIssues.filter { $0.severity == .error }.count
