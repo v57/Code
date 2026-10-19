@@ -34,6 +34,26 @@
   }
 
   @MainActor @Suite struct EditorTests {
+    /// A long text's lines get their indents a batch per run-loop turn after opening (all at once stalled it),
+    /// down to the last line.
+    @Test func longTextGetsEveryLineIndentInBatches() async throws {
+      let count = CodeTextView.lineAttributesBatch * 3
+      let view = makeEditor((0..<count).map { "    let value\($0) = \($0)" }.joined(separator: "\n"))
+      let storage = try #require(view.textStorage)
+      func headIndent(ofLine line: Int) -> CGFloat {
+        let style = storage.attribute(.paragraphStyle, at: view.lineIndex.starts[line], effectiveRange: nil)
+        return (style as? NSParagraphStyle)?.headIndent ?? 0
+      }
+      // Four spaces of indent, plus four for wrapped rows.
+      let expected = headIndent(ofLine: 0)
+      #expect(expected > 0)
+      for _ in 0..<200 where headIndent(ofLine: count - 1) != expected {
+        try await Task.sleep(for: .milliseconds(10))
+      }
+      #expect(headIndent(ofLine: count - 1) == expected)
+      #expect(headIndent(ofLine: count / 2) == expected)
+    }
+
     @Test func drawsKeywordColorsFromTheHighlighter() {
       let view = makeEditor("return return return return\n")
       #expect(draws(view, color: EditorTheme.githubLight.syntax.keyword))

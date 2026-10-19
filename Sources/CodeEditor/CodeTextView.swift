@@ -240,8 +240,7 @@
     private var paragraphStyle: NSParagraphStyle {
       let style = NSMutableParagraphStyle()
       style.tabStops = []
-      let space = (" " as NSString).size(withAttributes: [.font: baseFont]).width
-      style.defaultTabInterval = space * CGFloat(max(1, configuration.tabWidth))
+      style.defaultTabInterval = spaceWidth * CGFloat(max(1, configuration.tabWidth))
       style.minimumLineHeight = lineHeight
       style.maximumLineHeight = lineHeight
       return style
@@ -294,6 +293,7 @@
       let fontsChanged =
         force || newBase != baseFont || newKindFonts != kindFonts || newLineHeight != lineHeight
       baseFont = newBase
+      spaceWidth = (" " as NSString).size(withAttributes: [.font: newBase]).width
       kindFonts = newKindFonts
       lineHeight = newLineHeight
       baseline = round((lineHeight - (newBase.ascender - newBase.descender)) / 2 + newBase.ascender)
@@ -310,13 +310,20 @@
         if fontsChanged {
           defaultParagraphStyle = paragraphStyle
           paragraphStyles = [:]
-          applyLineAttributes(in: full)
         }
       }
       typingAttributes = baseAttributes
       enclosingScrollView?.backgroundColor = backgroundColor
       (enclosingScrollView?.verticalRulerView as? LineNumberRuler)?.updateThickness(force: true)
-      invalidateAllColors()
+      if fontsChanged {
+        // Fonts and indents live in the text storage: every line's are set again (once; this walked the whole
+        // text twice, and again on every appearance change, which stalled opening a large file).
+        invalidateAllColors()
+      } else if let storage = textStorage, storage.length > 0 {
+        // Colors are drawn from the theme (temporary attributes): redrawing is enough.
+        layoutManager?.invalidateDisplay(forCharacterRange: NSRange(location: 0, length: storage.length))
+        onLayoutChange?()
+      }
       rulerNeedsDisplay()
     }
 
@@ -372,9 +379,10 @@
       return width
     }
 
-    private var spaceWidth: CGFloat {
-      (" " as NSString).size(withAttributes: [.font: baseFont]).width
-    }
+    /// The base font's space, measured when the font changes (indents are counted in it for every line).
+    private var spaceWidth = (" " as NSString).size(withAttributes: [
+      .font: NSFont.monospacedSystemFont(ofSize: 13, weight: .regular)
+    ]).width
 
     /// Paragraph styles by indent, shared across lines.
     private var paragraphStyles: [CGFloat: NSParagraphStyle] = [:]
@@ -526,6 +534,7 @@
         else { return nil }
         return shifted
       }
+      if lineAttributesTask != nil { restartLineAttributes() }
       if highlighter != nil {
         let lines = highlighter!.edit(
           range: oldRange, replacementLength: editedRange.length, in: text,
@@ -637,16 +646,62 @@
     }
 
     /// Redraws everything after a full scan or theme change, setting fonts
-    /// for the whole text first.
+    /// for the whole text first. A long text gets the lines in view at once
+    /// and the rest a batch per run-loop turn, so opening it doesn't stall.
     private func invalidateAllColors() {
       guard let storage = textStorage, storage.length > 0 else { return }
       let full = NSRange(location: 0, length: storage.length)
       if !kindFonts.isEmpty && highlighter == nil {
         storage.addAttribute(.font, value: baseFont, range: full)
       }
-      applyLineAttributes(in: full)
+      lineAttributesTask?.cancel()
+      lineAttributesTask = nil
+      if lineIndex.count <= Self.lineAttributesBatch {
+        applyLineAttributes(in: full)
+      } else {
+        if let layoutManager, let textContainer {
+          var visible = visibleRect
+          visible.origin.y -= textContainerOrigin.y
+          let glyphs = layoutManager.glyphRange(forBoundingRect: visible, in: textContainer)
+          applyLineAttributes(in: layoutManager.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil))
+        }
+        applyLineAttributesGradually()
+      }
       layoutManager?.invalidateDisplay(forCharacterRange: full)
       onLayoutChange?()
+    }
+
+    /// Starts the batches over after an edit, outside the storage's edit callback.
+    private func restartLineAttributes() {
+      DispatchQueue.main.async { [weak self] in
+        if self?.lineAttributesTask != nil { self?.applyLineAttributesGradually() }
+      }
+    }
+
+    /// Lines whose attributes `invalidateAllColors` sets in one run-loop turn.
+    static let lineAttributesBatch = 2000
+    /// Setting every line's attributes, a batch at a time.
+    private var lineAttributesTask: Task<Void, Never>?
+
+    /// Sets every line's attributes from the top, a batch per run-loop turn. An edit meanwhile starts it over (it
+    /// moves the lines it would count on; setting them again is harmless).
+    private func applyLineAttributesGradually() {
+      lineAttributesTask?.cancel()
+      lineAttributesTask = Task { [weak self] in
+        var line = 0
+        while true {
+          // A turn of the run loop between batches, so events and drawing get through.
+          try? await Task.sleep(for: .milliseconds(1))
+          guard !Task.isCancelled, let self else { return }
+          let count = self.lineIndex.count
+          guard line < count else { break }
+          let end = min(line + Self.lineAttributesBatch, count)
+          self.applyLineAttributes(
+            in: NSUnionRange(self.lineIndex.range(ofLine: line), self.lineIndex.range(ofLine: end - 1)))
+          line = end
+        }
+        self?.lineAttributesTask = nil
+      }
     }
 
     public nonisolated func layoutManager(
