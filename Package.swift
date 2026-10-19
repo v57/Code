@@ -15,6 +15,9 @@ let swiftSettings: [SwiftSetting] = [.enableUpcomingFeature("ApproachableConcurr
 ///   SwiftPM, Cargo, Go, Gradle/Android, Node, Python, …), run destinations
 ///   (Mac, simulators, devices, Android), and running build/run/test with
 ///   progress and the build log's issues (macOS).
+/// - CodeProgress: progress of operations made of stages (builds, downloads
+///   and installs, batches), estimated from how long each stage took before,
+///   by the resource it waits on and the size of its work (platform-neutral).
 /// - CodeLSP: language server client (JSON-RPC over stdio) and the servers
 ///   for each language, installed from their official sources (macOS).
 /// - CodeMinimap: Xcode's minimap, drawn as shapes, with marks (AppKit).
@@ -45,12 +48,14 @@ let package = Package(
     .library(name: "CodeFormatting", targets: ["CodeFormatting"]),
     .library(name: "CodeAutocompletion", targets: ["CodeAutocompletion"]),
     .library(name: "CodeIcons", targets: ["CodeIcons"]),
+    .library(name: "CodeProgress", targets: ["CodeProgress"]),
   ],
   targets: [
     .target(name: "CodeHighlighting", swiftSettings: swiftSettings),
     .target(name: "CodeWorkspace", dependencies: ["CodeHighlighting"], swiftSettings: swiftSettings),
     .target(name: "CodeEditor", dependencies: ["CodeHighlighting"], swiftSettings: swiftSettings),
-    .target(name: "CodeActions", swiftSettings: swiftSettings),
+    .target(name: "CodeProgress", swiftSettings: swiftSettings),
+    .target(name: "CodeActions", dependencies: ["CodeProgress"], swiftSettings: swiftSettings),
     .target(name: "CodeLSP", swiftSettings: swiftSettings),
     .target(name: "CodeMinimap", dependencies: ["CodeHighlighting"], swiftSettings: swiftSettings),
     .target(name: "CodeFormatting", swiftSettings: swiftSettings),
@@ -62,7 +67,7 @@ let package = Package(
       name: "CodeKit",
       dependencies: [
         "CodeHighlighting", "CodeWorkspace", "CodeEditor", "CodeActions", "CodeLSP", "CodeMinimap",
-        "CodeFormatting", "CodeAutocompletion", "CodeIcons",
+        "CodeFormatting", "CodeAutocompletion", "CodeIcons", "CodeProgress",
       ],
       swiftSettings: swiftSettings),
 
@@ -80,6 +85,8 @@ let package = Package(
       name: "CodeAutocompletionTests", dependencies: ["CodeAutocompletion"],
       swiftSettings: swiftSettings),
     .testTarget(name: "CodeIconsTests", dependencies: ["CodeIcons"], swiftSettings: swiftSettings),
+    .testTarget(
+      name: "CodeProgressTests", dependencies: ["CodeProgress"], swiftSettings: swiftSettings),
     .testTarget(
       name: "CodeFormattingTests", dependencies: ["CodeFormatting"], swiftSettings: swiftSettings),
   ])

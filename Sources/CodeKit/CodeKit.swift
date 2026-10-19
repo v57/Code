@@ -7,4 +7,5 @@
 @_exported import CodeIcons
 @_exported import CodeLSP
 @_exported import CodeMinimap
+@_exported import CodeProgress
 @_exported import CodeWorkspace

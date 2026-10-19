@@ -43,6 +43,13 @@ Libraries
     CodeIcons          file icons for languages, data and project files:
                        FileIcon by name or extension, FileIconView (an SF
                        Symbol, else 1-3 colored letters) (SwiftUI, neutral)
+    CodeProgress       progress of operations made of stages (builds,
+                       downloads and installs, batches): each stage's share
+                       from how long it took before, by its size; slow or
+                       fast stages predict the run's later stages on the
+                       same resource (CPU, disk, network, remote); dynamic
+                       stages that end early never make the bar jump; units
+                       counted against earlier runs (neutral, no dependencies)
     CodeKit            re-exports them all; CodeEditorView(document:) edits a
                        workspace document (autosave, reload, ⌘S trimming,
                        minimap, issues, breakpoints); ProjectServices connects
@@ -76,6 +83,8 @@ Layout
                                 WordCompletionProvider, CompletionController,
                                 CompletionWindow
     Sources/CodeIcons/          FileIcon (the icons, +Lookup), FileIconView
+    Sources/CodeProgress/       ProgressStage (+ resource, timing, snapshot,
+                                curve), ProgressHistory, ProgressTracker
     Sources/CodeKit/            CodeKit (re-exports), CodeEditorView,
                                 ProjectServices, DebugSession, QuickHelpPopover,
                                 DocumentCompletion
