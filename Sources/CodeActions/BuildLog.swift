@@ -51,18 +51,59 @@ public struct ActionProgress: Equatable, Sendable {
   }
 }
 
+/// What a build or test run did, counted from its log: xcodebuild's tasks
+/// (it prints no totals, unlike SwiftPM's "[12/40]") and finished tests. The
+/// counts of the last run like it stand in for the totals of the next.
+public struct WorkCount: Codable, Equatable, Sendable {
+  /// Tasks run ("SwiftCompile …", "Ld …"): the most a build of the scheme
+  /// has run, as an incremental build runs only some.
+  public var tasks = 0
+  /// The targets in the build's dependency graph; a different count resets
+  /// `tasks`, as the project changed.
+  public var targets = 0
+  /// Tests passed, failed or skipped in the last run.
+  public var tests = 0
+
+  public init(tasks: Int = 0, targets: Int = 0, tests: Int = 0) {
+    self.tasks = tasks
+    self.targets = targets
+    self.tests = tests
+  }
+
+  /// The totals to expect next time, after a run that counted `self`.
+  /// `buildFinished` says whether its build got through (a failing build
+  /// ran only some of its tasks).
+  public func remembered(after previous: WorkCount?, buildFinished: Bool) -> WorkCount {
+    var next = previous ?? WorkCount()
+    if buildFinished, tasks > 0 {
+      next.tasks = targets == next.targets ? max(tasks, next.tasks) : tasks
+      next.targets = targets
+    }
+    if tests > 0 { next.tests = tests }
+    return next
+  }
+}
+
 /// Reads a build or test log line by line and picks out issues (in the
 /// formats of Swift/Clang, Go, Rust, TypeScript, Kotlin, Java, C#, Dart,
 /// Elixir, Python and Zig) and progress.
 public struct BuildLogParser {
   public let directory: URL
+  /// The counts of the last run like this one, for xcodebuild's fraction
+  /// and the tests'.
+  public var expected: WorkCount?
+  /// What this run did so far.
+  public private(set) var counted = WorkCount()
   /// A Rust or Elixir message waiting for the line with its location.
   private var pendingMessage: (severity: BuildIssue.Severity, message: String)?
   /// The last "File …, line N" of a Python traceback.
   private var tracebackLocation: (url: URL, line: Int)?
+  /// The last fraction, kept for progress lines that give none.
+  private var fraction: Double?
 
-  public init(directory: URL) {
+  public init(directory: URL, expected: WorkCount? = nil) {
     self.directory = directory
+    self.expected = expected
   }
 
   public enum Event: Equatable, Sendable {
@@ -74,7 +115,10 @@ public struct BuildLogParser {
     let line = rawLine.trimmingCharacters(in: .newlines)
     var events: [Event] = []
     if let issue = issue(in: line) { events.append(.issue(issue)) }
-    if let progress = Self.progress(in: line) { events.append(.progress(progress)) }
+    if var progress = countedProgress(in: line) ?? Self.progress(in: line) {
+      if let value = progress.fraction { fraction = value } else { progress.fraction = fraction }
+      events.append(.progress(progress))
+    }
     return events
   }
 
@@ -228,8 +272,57 @@ public struct BuildLogParser {
     ("CompileXIB", "Compiling"), ("SwiftEmitModule", "Emitting module"),
     ("SwiftDriver", "Planning"), ("ProcessProductPackaging", "Packaging"),
     ("Copy", "Copying"), ("CpResource", "Copying"), ("GenerateDSYMFile", "Generating dSYM"),
-    ("ResolvePackageGraph", "Resolving packages"), ("Validate", "Validating"),
+    ("ResolvePackageGraph", "Resolving packages"), ("Resolve Package Graph", "Resolving packages"),
+    ("Validate", "Validating"), ("Compute", "Planning"), ("CreateBuildDescription", "Planning"),
   ]
+
+  /// "SwiftCompile normal arm64 /path/A.swift (in target 'A' from project 'P')":
+  /// one of xcodebuild's tasks, each printed as it runs.
+  static let xcodeTask = try! NSRegularExpression(
+    pattern: #"^[A-Z][A-Za-z]+ .*\(in target '([^']+)' from project '[^']+'"#)
+  static let targetGraph = try! NSRegularExpression(
+    pattern: #"Target dependency graph \((\d+) targets?\)"#)
+  /// XCTest's "Test Case '-[A.B testC]' passed (0.001 seconds)." and
+  /// xcodebuild's "Test case 'B/c()' passed on 'My Mac …'".
+  static let xcTestResult = try! NSRegularExpression(
+    pattern: #"^\s*Test [Cc]ase '(?:-\[)?([^'\]]+)\]?' (?:passed|failed|skipped)"#)
+  /// Swift Testing's "✔ Test c() passed after 0.001 seconds." (any symbol).
+  static let swiftTestingResult = try! NSRegularExpression(
+    pattern: #"^\s*\S{1,2}\s+Test (?!run with)(.+?) (?:passed|failed|skipped)\b"#)
+
+  /// Progress from what this run counted: xcodebuild's tasks and the tests,
+  /// against the counts of the last run like it.
+  private mutating func countedProgress(in line: String) -> ActionProgress? {
+    if let groups = Self.first(Self.targetGraph, in: line), let targets = Int(groups[0]) {
+      counted.targets = targets
+      return nil
+    }
+    if let groups = Self.first(Self.xcodeTask, in: line) {
+      counted.tasks += 1
+      fraction = Self.fraction(counted.tasks, of: expected?.tasks)
+      // "Compiling A.swift", else the target ("Linking GetKit").
+      let task = line.prefix { $0 != " " }
+      let verb = Self.xcodeTasks.first { task.hasPrefix($0.0.trimmingCharacters(in: .whitespaces)) }?.1 ?? "Building"
+      let message = Self.progress(in: line)?.message ?? verb
+      return ActionProgress(message: message == verb ? "\(verb) \(groups[0])" : message)
+    }
+    var test = Self.first(Self.swiftTestingResult, in: line)?[0]
+    if let groups = Self.first(Self.xcTestResult, in: line) {
+      // "A.B testC" → "testC".
+      test = groups[0].split(separator: " ").last.map(String.init) ?? groups[0]
+    }
+    if let test {
+      counted.tests += 1
+      fraction = Self.fraction(counted.tests, of: expected?.tests)
+      return ActionProgress(message: "Testing \(test)")
+    }
+    return nil
+  }
+
+  static func fraction(_ done: Int, of total: Int?) -> Double? {
+    guard let total, total > 0 else { return nil }
+    return min(1, Double(done) / Double(total))
+  }
 
   static func progress(in line: String) -> ActionProgress? {
     if let groups = first(counted, in: line), let done = Double(groups[0]),

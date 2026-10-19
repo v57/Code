@@ -196,7 +196,13 @@
         stepsOverride?(kind, scheme, destination)
         ?? ActionPlanner.steps(for: kind, scheme: scheme, destination: destination)
 
-      let sink = OutputSink(directory: scheme.directory) { [weak self] batch, events in
+      // Run builds as Build does, so they share the counts.
+      let countsKey = key(
+        "counts.\(kind == .run ? ActionKind.build.rawValue : kind.rawValue).\(scheme.id).\(destination?.id ?? "")")
+      let expected = defaults.data(forKey: countsKey).flatMap {
+        try? JSONDecoder().decode(WorkCount.self, from: $0)
+      }
+      let sink = OutputSink(directory: scheme.directory, expected: expected) { [weak self] batch, events in
         self?.receive(batch, events)
       }
       let context = ActionContext(
@@ -209,12 +215,14 @@
         await previous?.value
         await willPerform?()
         var failure: Error?
+        var completed = 0
         for step in steps {
           if context.isCancelled { break }
           stepTitle = step.title
           progress = step.title == "Run" && kind == .run ? nil : ActionProgress(message: step.title)
           do {
             try await step.work(context)
+            completed += 1
           } catch {
             failure = error
             break
@@ -222,6 +230,15 @@
         }
         sink.flush()
         await Task.yield()
+        if !context.isCancelled {
+          // The build got through when a step after it ran, or tests did.
+          let counted = sink.counted
+          let next = counted.remembered(
+            after: expected, buildFinished: failure == nil || completed > 0 || counted.tests > 0)
+          if next != (expected ?? WorkCount()), let data = try? JSONEncoder().encode(next) {
+            defaults.set(data, forKey: countsKey)
+          }
+        }
         finish(kind, failure: failure, context: context)
       }
     }
@@ -305,12 +322,15 @@
     private let deliver: @MainActor ([ActionLog.Entry], [BuildLogParser.Event]) -> Void
 
     init(
-      directory: URL,
+      directory: URL, expected: WorkCount?,
       deliver: @escaping @MainActor ([ActionLog.Entry], [BuildLogParser.Event]) -> Void
     ) {
-      parser = BuildLogParser(directory: directory)
+      parser = BuildLogParser(directory: directory, expected: expected)
       self.deliver = deliver
     }
+
+    /// What the log showed was done (tasks, tests).
+    var counted: WorkCount { lock.withLock { parser.counted } }
 
     func add(_ line: PTYProcess.Line) {
       lock.withLock {
