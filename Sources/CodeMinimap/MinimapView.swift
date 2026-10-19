@@ -88,8 +88,12 @@
     public static let defaultWidth: CGFloat = 120
     static let leadingInset: CGFloat = 8
 
-    /// Offset into the drawn lines when they are taller than the view.
+    /// Where the frame was grabbed, in lines from its top, while dragging.
     private var dragOffset: CGFloat?
+    /// How many lines the frame held when the drag began: the drag maps the mouse with it, and the editor's count
+    /// wavers as it scrolls (a line taller here, wrapped there), which near the end of a long file moved the editor
+    /// by several lines back and forth.
+    private var dragVisibleCount: Double?
 
     /// The bars of `tileLines` lines each, drawn once into a bitmap: scrolling
     /// only copies them, where drawing every bar again took a frame's time.
@@ -320,6 +324,7 @@
       let offset = scrollOffset
       let visible = dataSource.minimapVisibleLines
       let clicked = line(atY: point.y, offset: offset)
+      dragVisibleCount = visible.upperBound - visible.lowerBound
       if visible.contains(clicked) {
         // Dragging the frame keeps the grabbed point under the mouse.
         dragOffset = CGFloat(clicked - visible.lowerBound)
@@ -337,7 +342,7 @@
       // While dragging, follow the mouse in the unscrolled drawing so the
       // minimap's own scrolling doesn't fight the drag.
       let visible = dataSource.minimapVisibleLines
-      let visibleCount = visible.upperBound - visible.lowerBound
+      let visibleCount = dragVisibleCount ?? (visible.upperBound - visible.lowerBound)
       let count = Double(dataSource.minimapLineCount)
       let overflow = contentHeight - bounds.height
       let line: Double
@@ -354,6 +359,7 @@
 
     public override func mouseUp(with event: NSEvent) {
       dragOffset = nil
+      dragVisibleCount = nil
     }
 
     public override func scrollWheel(with event: NSEvent) {

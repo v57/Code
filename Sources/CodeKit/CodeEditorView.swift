@@ -300,13 +300,19 @@
       let lines = textView.lineIndex
       let first = lines.line(containing: characters.location)
       let last = lines.line(containing: max(characters.location, NSMaxRange(characters) - 1))
-      // The fraction of the first line scrolled away.
+      // The fraction of the first line scrolled away, and of the last one shown: whole lines at the bottom made the
+      // count jump by a line as the editor scrolled, which the minimap's drag multiplied into jumps near the end.
       var start = Double(first)
       if let rect = textView.rect(ofLine: first), rect.height > 0 {
         let hidden = (textView.visibleRect.minY - rect.minY) / rect.height
         start += Double(min(max(hidden, 0), 1))
       }
-      return start...max(start, Double(last + 1))
+      var end = Double(last + 1)
+      if let rect = textView.rect(ofLine: last), rect.height > 0 {
+        let shown = (textView.visibleRect.maxY - rect.minY) / rect.height
+        end = Double(last) + Double(min(max(shown, 0), 1))
+      }
+      return start...max(start, end)
     }
 
     func minimapScroll(toTopLine line: Double) {
