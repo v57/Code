@@ -75,20 +75,10 @@ import Testing
     #expect(BuildLogParser.progress(in: "hello") == nil)
   }
 
-  func progress(_ lines: [String], expected: WorkCount?) -> (BuildLogParser, [ActionProgress]) {
-    var parser = BuildLogParser(directory: directory, expected: expected)
-    let found = lines.flatMap { parser.consume($0) }.compactMap {
-      if case .progress(let progress) = $0 { return progress }
-      return nil
-    }
-    return (parser, found)
-  }
-
   let xcodebuildLog = [
     "note: Target dependency graph (2 targets)",
     "SwiftCompile normal arm64 Compiling\\ A.swift /tmp/project/A.swift (in target 'Kit' from project 'P')",
     "    cd /tmp/project",
-    "    Signing Identity:     \"Sign to Run Locally\"",
     "WriteAuxiliaryFile /tmp/x.json (in target 'Kit' from project 'P' at path '/tmp/project/P.xcodeproj')",
     "Ld /tmp/build/App normal (in target 'App' from project 'P')",
     "Test Case '-[KitTests.ATests testAdds]' passed (0.001 seconds).",
@@ -98,32 +88,25 @@ import Testing
   ]
 
   @Test func countsXcodebuildTasksAndTests() {
-    let (parser, found) = progress(xcodebuildLog, expected: WorkCount(tasks: 4, targets: 2, tests: 3))
-    #expect(parser.counted == WorkCount(tasks: 3, targets: 2, tests: 3))
-    #expect(found.map(\.message) == [
-      "Compiling A.swift", "Signing Identity:     \"Sign to Run Locally\"", "Building Kit", "Linking App",
+    var parser = BuildLogParser(directory: directory)
+    let events = xcodebuildLog.flatMap { parser.consume($0) }
+    let units = events.compactMap { if case .unit(let unit) = $0 { return unit } else { return nil } }
+    #expect(units == [.task, .task, .task, .test, .test, .test])
+    let messages = events.compactMap { if case .progress(let progress) = $0 { return progress.message } else { return nil } }
+    #expect(messages == [
+      "Compiling A.swift", "Building Kit", "Linking App",
       "Testing testAdds", "Testing BTests/subtracts()", "Testing \"Adds numbers\"",
     ])
-    #expect(found.map(\.fraction) == [0.25, 0.25, 0.5, 0.75, 1.0 / 3, 2.0 / 3, 1])
   }
 
-  @Test func noFractionWithoutAnEarlierRun() {
-    let (parser, found) = progress(xcodebuildLog, expected: nil)
-    #expect(parser.counted.tasks == 3)
-    #expect(found.allSatisfy { $0.fraction == nil })
-  }
-
-  @Test func remembersTheLargestBuild() {
-    let full = WorkCount(tasks: 300, targets: 5, tests: 20)
-    // An incremental build keeps the full build's count; tests keep the last.
+  @Test func countsSwiftPMSteps() {
+    var parser = BuildLogParser(directory: directory)
     #expect(
-      WorkCount(tasks: 10, targets: 5, tests: 18).remembered(after: full, buildFinished: true)
-        == WorkCount(tasks: 300, targets: 5, tests: 18))
-    // A failed build counts nothing; a changed target graph starts over.
-    #expect(WorkCount(tasks: 10, targets: 5).remembered(after: full, buildFinished: false) == full)
-    #expect(
-      WorkCount(tasks: 40, targets: 6).remembered(after: full, buildFinished: true)
-        == WorkCount(tasks: 40, targets: 6, tests: 20))
+      parser.consume("[12/40] Compiling CodeKit A.swift")
+        == [.count(done: 12, total: 40), .progress(ActionProgress(message: "Compiling CodeKit A.swift"))])
+    #expect(parser.consume("[23\u{2009}/\u{2009}31] ProgTest") == [
+      .count(done: 23, total: 31), .progress(ActionProgress(message: "Building ProgTest")),
+    ])
   }
 
   @Test func stripsEscapes() {

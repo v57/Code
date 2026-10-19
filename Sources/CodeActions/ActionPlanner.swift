@@ -1,21 +1,32 @@
+import CodeProgress
 import Foundation
 
 #if os(macOS)
 /// One step of an action ("Build", "Install", "Launch"), run in order.
 public struct ActionStep: Sendable {
   public var title: String
+  /// What bounds its speed and whether it takes about as long each time,
+  /// for the action's progress estimate.
+  public var resource: ProgressResource
+  public var timing: ProgressStage.Timing
   public var work: @Sendable (ActionContext) async throws -> Void
 
-  public init(_ title: String, work: @escaping @Sendable (ActionContext) async throws -> Void) {
+  public init(
+    _ title: String, resource: ProgressResource = .cpu, timing: ProgressStage.Timing = .dynamic,
+    work: @escaping @Sendable (ActionContext) async throws -> Void
+  ) {
     self.title = title
+    self.resource = resource
+    self.timing = timing
     self.work = work
   }
 
   /// A step that runs a shell command in the scheme's folder.
   public static func shell(
-    _ title: String, _ command: String, environment: [String: String] = [:]
+    _ title: String, _ command: String, environment: [String: String] = [:],
+    resource: ProgressResource = .cpu, timing: ProgressStage.Timing = .dynamic
   ) -> ActionStep {
-    ActionStep(title) { context in
+    ActionStep(title, resource: resource, timing: timing) { context in
       try await context.run(command, title: title, environment: environment)
     }
   }
@@ -138,7 +149,7 @@ public struct ActionStep: Sendable {
       switch kind {
       case .build: return [.shell("Build", "xcodebuild \(arguments) build")]
       case .test: return [.shell("Test", "xcodebuild \(arguments) test")]
-      case .clean: return [.shell("Clean", "xcodebuild \(arguments) clean")]
+      case .clean: return [.shell("Clean", "xcodebuild \(arguments) clean", resource: .disk)]
       case .lint, .install, .export, .upload:
         return scheme.commands[kind].map { [.shell(kind.title, $0)] } ?? []
       case .run: break
@@ -209,7 +220,9 @@ public struct ActionStep: Sendable {
       let environment: [String: String] =
         ShellEnvironment.shared.androidSDK.map { ["ANDROID_HOME": $0.path] } ?? [:]
       guard kind == .run else {
-        return scheme.commands[kind].map { [.shell(kind.title, $0, environment: environment)] } ?? []
+        return scheme.commands[kind].map {
+          [.shell(kind.title, $0, environment: environment)]
+        } ?? []
       }
       guard let destination, destination.platform == .android else {
         return [

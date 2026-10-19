@@ -206,7 +206,7 @@
           "destinations: " + actions.destinations.map { "\($0.name)[\($0.kind.rawValue)]" }.joined(separator: ", "),
           "destination: \(actions.selectedDestination?.name ?? "-")",
           "state: \(actions.state)",
-          "progress: \(actions.progress.map { "\($0.fraction.map { String(format: "%.2f", $0) } ?? "-") \($0.message)" } ?? "-")",
+          "progress: \(actions.progress.map { "\($0.fraction.map { String(format: "%.2f", $0) } ?? "-") \($0.remaining.map { String(format: "%.0fs left", $0) } ?? "") \($0.message)" } ?? "-")",
           "issues: \(services.issues.count) (errors \(services.errorCount), warnings \(services.warningCount))",
           "servers: \(services.languageServers.states)",
           "document: \(document?.url.path ?? "-") line \(document?.textView?.currentSelection.line ?? 0)",

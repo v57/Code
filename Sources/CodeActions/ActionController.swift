@@ -1,4 +1,5 @@
 #if os(macOS)
+  import CodeProgress
   import Foundation
   import Observation
 
@@ -96,6 +97,12 @@
     @ObservationIgnored public var stepsOverride:
       (@MainActor (ActionKind, ActionScheme, RunDestination?) -> [ActionStep]?)?
 
+    /// Where the steps' durations are kept, for the progress estimate.
+    @ObservationIgnored public var progressHistory: ProgressHistory = .standard
+    @ObservationIgnored private var tracker: ProgressTracker?
+    /// What the log said last, under the tracker's fraction.
+    @ObservationIgnored private var progressMessage = ""
+    @ObservationIgnored private var progressTimer: Task<Void, Never>?
     @ObservationIgnored private var task: Task<Void, Never>?
     @ObservationIgnored private var context: ActionContext?
     @ObservationIgnored private let defaults = UserDefaults.standard
@@ -196,13 +203,25 @@
         stepsOverride?(kind, scheme, destination)
         ?? ActionPlanner.steps(for: kind, scheme: scheme, destination: destination)
 
-      // Run builds as Build does, so they share the counts.
-      let countsKey = key(
-        "counts.\(kind == .run ? ActionKind.build.rawValue : kind.rawValue).\(scheme.id).\(destination?.id ?? "")")
-      let expected = defaults.data(forKey: countsKey).flatMap {
-        try? JSONDecoder().decode(WorkCount.self, from: $0)
+      // Steps are stages, named so that Run's build and Build's share their
+      // history. Run's last step runs the app, which has no end to estimate.
+      let place = "\(scheme.id)|\(destination?.id ?? "")"
+      let stages = steps.map {
+        ProgressStage(
+          id: "\(place)|\($0.title.lowercased())", title: $0.title, resource: $0.resource, timing: $0.timing)
       }
-      let sink = OutputSink(directory: scheme.directory, expected: expected) { [weak self] batch, events in
+      var planned = kind == .run ? stages.filter { $0.title != "Run" } : stages
+      // Tests run after the build in the same command (see `receive`).
+      if kind == .test { planned = planned.flatMap { [$0, Self.testsStage(after: $0)] } }
+      let operation = "\(place)|\(kind.rawValue)"
+      let tracker = ProgressTracker(
+        operation: operation, stages: progressHistory.plan(for: operation) ?? planned,
+        history: progressHistory)
+      self.tracker = tracker
+      progressMessage = "Preparing"
+      startProgressTimer()
+
+      let sink = OutputSink(directory: scheme.directory) { [weak self] batch, events in
         self?.receive(batch, events)
       }
       let context = ActionContext(
@@ -215,14 +234,21 @@
         await previous?.value
         await willPerform?()
         var failure: Error?
-        var completed = 0
-        for step in steps {
+        for (step, stage) in zip(steps, stages) {
           if context.isCancelled { break }
+          sink.flush()
           stepTitle = step.title
-          progress = step.title == "Run" && kind == .run ? nil : ActionProgress(message: step.title)
+          if step.title == "Run" && kind == .run {
+            // The build is done; the app runs as long as it likes.
+            tracker.complete()
+            progress = nil
+          } else {
+            tracker.begin(stage)
+            progressMessage = step.title
+            updateProgress()
+          }
           do {
             try await step.work(context)
-            completed += 1
           } catch {
             failure = error
             break
@@ -230,15 +256,7 @@
         }
         sink.flush()
         await Task.yield()
-        if !context.isCancelled {
-          // The build got through when a step after it ran, or tests did.
-          let counted = sink.counted
-          let next = counted.remembered(
-            after: expected, buildFinished: failure == nil || completed > 0 || counted.tests > 0)
-          if next != (expected ?? WorkCount()), let data = try? JSONEncoder().encode(next) {
-            defaults.set(data, forKey: countsKey)
-          }
-        }
+        if failure == nil && !context.isCancelled { tracker.complete() } else { tracker.cancel() }
         finish(kind, failure: failure, context: context)
       }
     }
@@ -248,6 +266,9 @@
       guard self.context === context else { return }
       let cancelled = context.isCancelled
       self.context = nil
+      tracker = nil
+      progressTimer?.cancel()
+      progressTimer = nil
       progress = nil
       stepTitle = nil
       let date = Date()
@@ -299,13 +320,51 @@
     private func receive(_ batch: [ActionLog.Entry], _ events: [BuildLogParser.Event]) {
       log.append(batch)
       var known = Set(issues.map(\.id))
+      // A running program's output isn't build progress.
+      let measured = isRunning && !(runningKind == .run && stepTitle == "Run")
       for event in events {
         switch event {
         case .issue(let issue):
           if known.insert(issue.id).inserted { issues.append(issue) }
-        case .progress(let progress):
-          // A running program's output isn't build progress.
-          if isRunning, !(runningKind == .run && stepTitle == "Run") { self.progress = progress }
+        case .progress(let progress) where measured:
+          if !progress.message.isEmpty { progressMessage = progress.message }
+          if let fraction = progress.fraction { tracker?.report(fraction: fraction) }
+        case .count(let done, let total) where measured:
+          tracker?.update(units: Double(done), of: Double(total))
+        case .unit(let unit) where measured:
+          guard let tracker else { break }
+          // Tests follow the build in the same command: a stage of their own.
+          if unit == .test, let stage = tracker.snapshot().stage, !stage.id.hasSuffix("|tests") {
+            tracker.begin(Self.testsStage(after: stage))
+          }
+          tracker.advance()
+        default: break
+        }
+      }
+      if measured { updateProgress() }
+    }
+
+    /// The tests a test command runs once it has built them.
+    static func testsStage(after build: ProgressStage) -> ProgressStage {
+      ProgressStage(id: build.id + "|tests", title: "Tests", resource: .cpu, timing: .static)
+    }
+
+    /// The tracker's estimate under the log's last message.
+    private func updateProgress() {
+      guard let tracker, isRunning, !(runningKind == .run && stepTitle == "Run") else { return }
+      let snapshot = tracker.snapshot()
+      let next = ActionProgress(
+        fraction: snapshot.fraction, message: progressMessage, remaining: snapshot.remaining)
+      if next != progress { progress = next }
+    }
+
+    /// Moves the estimate with time between log lines.
+    private func startProgressTimer() {
+      progressTimer?.cancel()
+      progressTimer = Task { [weak self] in
+        while !Task.isCancelled {
+          try? await Task.sleep(for: .milliseconds(250))
+          self?.updateProgress()
         }
       }
     }
@@ -322,15 +381,12 @@
     private let deliver: @MainActor ([ActionLog.Entry], [BuildLogParser.Event]) -> Void
 
     init(
-      directory: URL, expected: WorkCount?,
+      directory: URL,
       deliver: @escaping @MainActor ([ActionLog.Entry], [BuildLogParser.Event]) -> Void
     ) {
-      parser = BuildLogParser(directory: directory, expected: expected)
+      parser = BuildLogParser(directory: directory)
       self.deliver = deliver
     }
-
-    /// What the log showed was done (tasks, tests).
-    var counted: WorkCount { lock.withLock { parser.counted } }
 
     func add(_ line: PTYProcess.Line) {
       lock.withLock {

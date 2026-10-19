@@ -39,48 +39,19 @@ public struct BuildIssue: Hashable, Sendable, Identifiable {
   }
 }
 
-/// How far a build got: a fraction when the tool counts its steps
-/// ("[12/40] Compiling …"), and what it is doing.
+/// How far an action got and what it is doing: from the log, a fraction
+/// when the tool counts its steps ("[12/40] Compiling …"); in the
+/// controller, the action's estimate (`CodeProgress`).
 public struct ActionProgress: Equatable, Sendable {
   public var fraction: Double?
   public var message: String
+  /// Time left, when every step left has run before.
+  public var remaining: TimeInterval?
 
-  public init(fraction: Double? = nil, message: String) {
+  public init(fraction: Double? = nil, message: String, remaining: TimeInterval? = nil) {
     self.fraction = fraction
     self.message = message
-  }
-}
-
-/// What a build or test run did, counted from its log: xcodebuild's tasks
-/// (it prints no totals, unlike SwiftPM's "[12/40]") and finished tests. The
-/// counts of the last run like it stand in for the totals of the next.
-public struct WorkCount: Codable, Equatable, Sendable {
-  /// Tasks run ("SwiftCompile …", "Ld …"): the most a build of the scheme
-  /// has run, as an incremental build runs only some.
-  public var tasks = 0
-  /// The targets in the build's dependency graph; a different count resets
-  /// `tasks`, as the project changed.
-  public var targets = 0
-  /// Tests passed, failed or skipped in the last run.
-  public var tests = 0
-
-  public init(tasks: Int = 0, targets: Int = 0, tests: Int = 0) {
-    self.tasks = tasks
-    self.targets = targets
-    self.tests = tests
-  }
-
-  /// The totals to expect next time, after a run that counted `self`.
-  /// `buildFinished` says whether its build got through (a failing build
-  /// ran only some of its tasks).
-  public func remembered(after previous: WorkCount?, buildFinished: Bool) -> WorkCount {
-    var next = previous ?? WorkCount()
-    if buildFinished, tasks > 0 {
-      next.tasks = targets == next.targets ? max(tasks, next.tasks) : tasks
-      next.targets = targets
-    }
-    if tests > 0 { next.tests = tests }
-    return next
+    self.remaining = remaining
   }
 }
 
@@ -89,34 +60,45 @@ public struct WorkCount: Codable, Equatable, Sendable {
 /// Elixir, Python and Zig) and progress.
 public struct BuildLogParser {
   public let directory: URL
-  /// The counts of the last run like this one, for xcodebuild's fraction
-  /// and the tests'.
-  public var expected: WorkCount?
-  /// What this run did so far.
-  public private(set) var counted = WorkCount()
   /// A Rust or Elixir message waiting for the line with its location.
   private var pendingMessage: (severity: BuildIssue.Severity, message: String)?
   /// The last "File …, line N" of a Python traceback.
   private var tracebackLocation: (url: URL, line: Int)?
-  /// The last fraction, kept for progress lines that give none.
-  private var fraction: Double?
 
-  public init(directory: URL, expected: WorkCount? = nil) {
+  public init(directory: URL) {
     self.directory = directory
-    self.expected = expected
+  }
+
+  /// Work the log shows done, one at a time, for tools that print no totals.
+  public enum Unit: Equatable, Sendable {
+    /// One of xcodebuild's tasks ("SwiftCompile …", "Ld …").
+    case task
+    /// A test passed, failed or skipped.
+    case test
   }
 
   public enum Event: Equatable, Sendable {
     case issue(BuildIssue)
     case progress(ActionProgress)
+    case unit(Unit)
+    /// Steps done of a total, from tools that count them ("[12/40]"); the
+    /// total can grow as the tool plans.
+    case count(done: Int, total: Int)
   }
 
   public mutating func consume(_ rawLine: String) -> [Event] {
     let line = rawLine.trimmingCharacters(in: .newlines)
     var events: [Event] = []
     if let issue = issue(in: line) { events.append(.issue(issue)) }
-    if var progress = countedProgress(in: line) ?? Self.progress(in: line) {
-      if let value = progress.fraction { fraction = value } else { progress.fraction = fraction }
+    if let (unit, progress) = Self.unit(in: line) {
+      events += [.unit(unit), .progress(progress)]
+    } else if var progress = Self.progress(in: line) {
+      // Counted steps go as a count, which the controller weighs against
+      // earlier runs; the fraction left is Gradle's percentage.
+      if let count = Self.count(in: line) {
+        events.append(.count(done: count.done, total: count.total))
+        progress.fraction = nil
+      }
       events.append(.progress(progress))
     }
     return events
@@ -256,7 +238,9 @@ public struct BuildLogParser {
 
   // MARK: - Progress
 
-  static let counted = try! NSRegularExpression(pattern: #"^\s*\[(\d+)/(\d+)\]\s*(.*)$"#)
+  /// "[12/40] Compiling …"; SwiftPM 6.4 puts thin spaces around the slash.
+  static let counted = try! NSRegularExpression(
+    pattern: #"^\s*\[(\d+)[\s\x{2009}]*/[\s\x{2009}]*(\d+)\]\s*(.*)$"#)
   static let cargoBar = try! NSRegularExpression(
     pattern: #"^\s*Building\s*\[[=> ]*\]\s*(\d+)/(\d+):?\s*(.*)$"#)
   static let gradlePercent = try! NSRegularExpression(
@@ -280,8 +264,6 @@ public struct BuildLogParser {
   /// one of xcodebuild's tasks, each printed as it runs.
   static let xcodeTask = try! NSRegularExpression(
     pattern: #"^[A-Z][A-Za-z]+ .*\(in target '([^']+)' from project '[^']+'"#)
-  static let targetGraph = try! NSRegularExpression(
-    pattern: #"Target dependency graph \((\d+) targets?\)"#)
   /// XCTest's "Test Case '-[A.B testC]' passed (0.001 seconds)." and
   /// xcodebuild's "Test case 'B/c()' passed on 'My Mac …'".
   static let xcTestResult = try! NSRegularExpression(
@@ -290,45 +272,38 @@ public struct BuildLogParser {
   static let swiftTestingResult = try! NSRegularExpression(
     pattern: #"^\s*\S{1,2}\s+Test (?!run with)(.+?) (?:passed|failed|skipped)\b"#)
 
-  /// Progress from what this run counted: xcodebuild's tasks and the tests,
-  /// against the counts of the last run like it.
-  private mutating func countedProgress(in line: String) -> ActionProgress? {
-    if let groups = Self.first(Self.targetGraph, in: line), let targets = Int(groups[0]) {
-      counted.targets = targets
-      return nil
-    }
-    if let groups = Self.first(Self.xcodeTask, in: line) {
-      counted.tasks += 1
-      fraction = Self.fraction(counted.tasks, of: expected?.tasks)
+  /// A task or test the line shows done, and what to say about it.
+  static func unit(in line: String) -> (Unit, ActionProgress)? {
+    if let groups = first(xcodeTask, in: line) {
       // "Compiling A.swift", else the target ("Linking GetKit").
       let task = line.prefix { $0 != " " }
-      let verb = Self.xcodeTasks.first { task.hasPrefix($0.0.trimmingCharacters(in: .whitespaces)) }?.1 ?? "Building"
-      let message = Self.progress(in: line)?.message ?? verb
-      return ActionProgress(message: message == verb ? "\(verb) \(groups[0])" : message)
+      let verb = xcodeTasks.first { task.hasPrefix($0.0.trimmingCharacters(in: .whitespaces)) }?.1 ?? "Building"
+      let message = progress(in: line)?.message ?? verb
+      return (.task, ActionProgress(message: message == verb ? "\(verb) \(groups[0])" : message))
     }
-    var test = Self.first(Self.swiftTestingResult, in: line)?[0]
-    if let groups = Self.first(Self.xcTestResult, in: line) {
+    var test = first(swiftTestingResult, in: line)?[0]
+    if let groups = first(xcTestResult, in: line) {
       // "A.B testC" → "testC".
       test = groups[0].split(separator: " ").last.map(String.init) ?? groups[0]
     }
-    if let test {
-      counted.tests += 1
-      fraction = Self.fraction(counted.tests, of: expected?.tests)
-      return ActionProgress(message: "Testing \(test)")
-    }
-    return nil
+    return test.map { (.test, ActionProgress(message: "Testing \($0)")) }
   }
 
-  static func fraction(_ done: Int, of total: Int?) -> Double? {
-    guard let total, total > 0 else { return nil }
-    return min(1, Double(done) / Double(total))
+  /// "[12/40] …" and Cargo's "Building [===>  ] 12/40: …".
+  static func count(in line: String) -> (done: Int, total: Int)? {
+    guard let groups = first(counted, in: line) ?? first(cargoBar, in: line),
+      let done = Int(groups[0]), let total = Int(groups[1]), total > 0
+    else { return nil }
+    return (done, total)
   }
 
   static func progress(in line: String) -> ActionProgress? {
     if let groups = first(counted, in: line), let done = Double(groups[0]),
       let total = Double(groups[1]), total > 0
     {
-      return ActionProgress(fraction: min(1, done / total), message: groups[2])
+      // SwiftPM 6.4 names only the target: "[23 / 31] ProgTest".
+      let message = groups[2].contains(" ") || groups[2].isEmpty ? groups[2] : "Building " + groups[2]
+      return ActionProgress(fraction: min(1, done / total), message: message)
     }
     if let groups = first(cargoBar, in: line), let done = Double(groups[0]),
       let total = Double(groups[1]), total > 0
