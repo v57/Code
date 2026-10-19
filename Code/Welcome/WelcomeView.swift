@@ -81,7 +81,9 @@ struct WelcomeView: View {
   }
 
   private func item(_ folder: URL, isRecent: Bool) -> some View {
-    RecentItem(folder.lastPathComponent, subtitle: folder.abbreviatedPath) { open(folder) }
+    let path = folder.standardizedFileURL.path
+    let icon = vault.localProjects.first { $0.localPath == path }?.icon.flatMap(Image.init(data:))
+    return RecentItem(folder.lastPathComponent, subtitle: folder.abbreviatedPath, image: icon) { open(folder) }
       .kitContextMenu {
         Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([folder]) }
         if isRecent {

@@ -64,7 +64,11 @@ struct ProjectsSection: View {
   private func projectRow(_ project: VaultProject) -> some View {
     let folder = project.localURL?.standardizedFileURL
     return SidebarRow(project.name) {
-      Avatar(name: project.name, kind: .thing, size: 18)
+      if let icon = project.icon.flatMap(Image.init(data:)) {
+        Avatar(name: project.name, image: icon, kind: .thing, size: 18)
+      } else {
+        Avatar(name: project.name, kind: .thing, size: 18)
+      }
     } trailing: {
       EmptyView()
     }

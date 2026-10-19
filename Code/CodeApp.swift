@@ -2,6 +2,7 @@ import CodeKit
 import ComponentKit
 import SwiftUI
 import UpdateKit
+import VaultKit
 
 /// Code: a folder-based code editor. Each window shows one project folder;
 /// a window without one shows the Welcome screen.
@@ -15,6 +16,10 @@ import UpdateKit
   init() {
     updater.start()
     if ScreenshotDemo.isOn { ScreenshotDemo.prepare() }
+    // The shared projects get their app icons, for this app's lists and the other v57 apps'.
+    if !ScreenshotDemo.isOn {
+      Vault.shared.findProjectIcons(with: { ProjectIcon.find(in: $0) }) { ProjectIcon.thumbnail(of: $0) }
+    }
   }
 
   var body: some Scene {
