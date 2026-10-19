@@ -2,29 +2,44 @@ import CodeKit
 import ComponentKit
 import SwiftUI
 
-/// Open files as the kit's tab strip, floating over the editor: each with its file icon, the selected tab raised, a
-/// close button on the selected and hovered tab, a dot on one whose edits are still being saved, the preview tab's
-/// name in italics. A double click keeps the preview tab open; tabs reorder by dragging; a tab's context menu has the tab actions (also
-/// in the File menu).
+/// Go Back and Go Forward in a tool group, then the open files as the kit's tab strip, floating over the editor:
+/// each with its file icon, the selected tab raised, a close button on the selected and hovered tab, a dot on one
+/// whose edits are still being saved, the preview tab's name in italics. A double click keeps the preview tab open;
+/// tabs reorder by dragging; a tab's context menu has the tab actions (also in the File menu).
 struct TabBar: View {
   @Environment(Workspace.self) private var workspace
   @Environment(WindowModel.self) private var model
   @AppStorage(EditorSettings.showExtensions) private var showExtensions = false
 
   var body: some View {
-    KitTabStrip(
-      tabs: workspace.tabs.map(tab), selection: selectedTab,
-      onClose: { id in
-        if let document = document(id) { workspace.close(document) }
-      },
-      onMove: move
-    )
-    .onTabDoubleClick { id in
-      if let document = document(id) { workspace.keep(document) }
+    let services = model.services
+    HStack(alignment: .top, spacing: 0) {
+      // The strip keeps the gutter before itself; it isn't there for a single tab.
+      ToolGroup(iconOnly: true) {
+        Button("Go Back", systemImage: "chevron.left") { services.goBack() }
+          .help("Go Back (⌃⌘←)")
+          .disabled(!services.canGoBack)
+        Button("Go Forward", systemImage: "chevron.right") { services.goForward() }
+          .help("Go Forward (⌃⌘→)")
+          .disabled(!services.canGoForward)
+      }
+      .padding([.leading, .bottom], KitMetrics.gutter)
+      .kitBar()
+      KitTabStrip(
+        tabs: workspace.tabs.map(tab), selection: selectedTab,
+        onClose: { id in
+          if let document = document(id) { workspace.close(document) }
+        },
+        onMove: move
+      )
+      .onTabDoubleClick { id in
+        if let document = document(id) { workspace.keep(document) }
+      }
+      .tabContextMenu { id in
+        if let document = document(id) { menu(for: document) }
+      }
     }
-    .tabContextMenu { id in
-      if let document = document(id) { menu(for: document) }
-    }
+    .frame(maxWidth: .infinity, alignment: .leading)
   }
 
   private var selectedTab: Binding<TextDocument.ID?> {

@@ -117,8 +117,8 @@ Architecture
   editor itself stays AppKit. The navigator is the kit's compact sidebar: the
   project's tree in a card (extensions hidden; Settings › Files shows them),
   Package Dependencies in another, and the bottom bar's search button opening
-  the search line, which is Find in Project. Above the editor: the kit's tab
-  strip and path bar; under it, the status bar card with "Line: Col:" and the
+  the search line, which is Find in Project. Above the editor: Back and
+  Forward with the kit's tab strip; under it, the status bar card with "Line: Col:" and the
   console's runs as run blocks. Run, Stop, the project's rich title (its live
   icon carries the running action) and scheme › destination are the toolbar's
   tool groups; Open Quickly and Go to Line are the kit's palette, Settings the
