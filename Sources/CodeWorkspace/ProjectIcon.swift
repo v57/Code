@@ -6,11 +6,13 @@ import Foundation
   import UniformTypeIdentifiers
 #endif
 
-/// A project's icon, found in its folder: an Xcode asset catalog's app icon, else an Android launcher icon, else an
-/// `icon.png`-like file near the top. Apps keep a small thumbnail of it (the vault's project icon).
+/// A project's icon, found in its folder: an Xcode asset catalog's app icon, else an Icon Composer icon (`.icon`),
+/// else an Android launcher icon, else an `icon.png`-like file near the top. Apps keep a small thumbnail of it (the
+/// vault's project icon).
 public enum ProjectIcon {
-  /// The image file that is the icon of the project in `root`, or nil. Walks at most `maxDepth` folders down,
-  /// skipping hidden folders, dependencies and build output, and gives up after `maxEntries` entries.
+  /// The image file that is the icon of the project in `root` (an Icon Composer icon's `icon.json`), or nil. Walks at
+  /// most `maxDepth` folders down, skipping hidden folders, dependencies and build output, and gives up after
+  /// `maxEntries` entries.
   public static func find(in root: URL, maxDepth: Int = 6, maxEntries: Int = 20_000) -> URL? {
     let fileManager = FileManager.default
     guard
@@ -36,11 +38,18 @@ public enum ProjectIcon {
             best = (rank, depth, file)
           }
         }
+        if url.pathExtension == "icon" {
+          let rank = name == "AppIcon.icon" ? 2 : 3
+          let file = url.appendingPathComponent("icon.json")
+          if fileManager.fileExists(atPath: file.path), isBetter(rank, depth, than: best) {
+            best = (rank, depth, file)
+          }
+        }
         continue
       }
       let rank: Int
       if name == "ic_launcher.png", url.deletingLastPathComponent().lastPathComponent.hasPrefix("mipmap-") {
-        rank = 2 + mipmapOrder(url.deletingLastPathComponent().lastPathComponent)
+        rank = 4 + mipmapOrder(url.deletingLastPathComponent().lastPathComponent)
       } else if depth <= 2, iconNames.contains(name.lowercased()) {
         rank = 10
       } else {
@@ -51,13 +60,12 @@ public enum ProjectIcon {
     return best?.url
   }
 
-  /// A square PNG of `pixels` × `pixels` made from an image file, with the transparent margin a macOS icon draws
-  /// around its shape trimmed off. nil when the file isn't an image (or on platforms without ImageIO).
+  /// A square PNG of `pixels` × `pixels` made from an image file (or an Icon Composer icon's `icon.json`), with the
+  /// transparent margin a macOS icon draws around its shape trimmed off. nil when the file isn't an image (or on
+  /// platforms without ImageIO).
   public static func thumbnail(of file: URL, pixels: Int = 64) -> Data? {
     #if canImport(ImageIO) && canImport(CoreGraphics)
-      guard let source = CGImageSourceCreateWithURL(file as CFURL, nil),
-        let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
-      else { return nil }
+      guard let image = image(of: file, pixels: pixels) else { return nil }
       let shape = opaqueBounds(of: image).flatMap { image.cropping(to: $0) } ?? image
       guard
         let context = CGContext(
@@ -82,6 +90,15 @@ public enum ProjectIcon {
       return nil
     #endif
   }
+
+  #if canImport(ImageIO) && canImport(CoreGraphics)
+    /// The picture in `file`; an Icon Composer icon drawn at four times the thumbnail's size.
+    static func image(of file: URL, pixels: Int) -> CGImage? {
+      if isIconComposerFile(file) { return renderIconComposer(file, side: max(pixels * 4, 256)) }
+      guard let source = CGImageSourceCreateWithURL(file as CFURL, nil) else { return nil }
+      return CGImageSourceCreateImageAtIndex(source, 0, nil)
+    }
+  #endif
 
   // MARK: - Finding
 
