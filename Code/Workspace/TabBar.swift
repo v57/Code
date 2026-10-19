@@ -2,9 +2,9 @@ import CodeKit
 import ComponentKit
 import SwiftUI
 
-/// Open files as the kit's tab strip over the editor (no band of its own): each with its file icon, the selected tab raised, a close button on the
-/// selected and hovered tab, a dot on one whose edits are still being saved, the preview tab's name in italics. A
-/// double click keeps the preview tab open; tabs reorder by dragging; a tab's context menu has the tab actions (also
+/// Open files as the kit's tab strip, floating over the editor: each with its file icon, the selected tab raised, a
+/// close button on the selected and hovered tab, a dot on one whose edits are still being saved, the preview tab's
+/// name in italics. A double click keeps the preview tab open; tabs reorder by dragging; a tab's context menu has the tab actions (also
 /// in the File menu).
 struct TabBar: View {
   @Environment(Workspace.self) private var workspace
@@ -19,8 +19,6 @@ struct TabBar: View {
       },
       onMove: move
     )
-    // No band: the tabs sit on the editor, which runs on under them.
-    .tabStripBackground(.hidden)
     .onTabDoubleClick { id in
       if let document = document(id) { workspace.keep(document) }
     }

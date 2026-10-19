@@ -18,7 +18,7 @@ private struct CodeStatusBar: ViewModifier {
   func body(content: Content) -> some View {
     content.safeAreaInset(edge: .bottom, spacing: 0) {
       if hasContent {
-        StatusBar(systemImage: icon.systemImage, hue: icon.hue, status: icon.status, alignment: .trailing) {
+        StatusBar(systemImage: icon.systemImage, hue: icon.hue, status: icon.status) {
           leading
             .padding(.trailing, 4)
           if let document = workspace.selectedDocument, document.isSaving {

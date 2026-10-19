@@ -28,8 +28,10 @@ struct JumpBar: View {
     .padding(.horizontal, 4)
     .frame(height: 32)
     .kitSurface(.card)
+    .kitBar()
     .frame(maxWidth: .infinity, alignment: .leading)
-    .padding([.horizontal, .top], KitMetrics.gutter)
+    // The tab strip above keeps the gutter under itself.
+    .padding(.horizontal, KitMetrics.gutter)
     .padding(.bottom, KitMetrics.gutter / 2)
   }
 
