@@ -145,9 +145,7 @@ private struct SchemeTools: View {
             }
           }
           .help("Show Issues (⌘5)")
-          .popover(isPresented: $model.isIssuesPresented, arrowEdge: .bottom) {
-            IssuesList(services: services) { model.isIssuesPresented = false }
-          }
+          .kitMenu(isPresented: $model.isIssuesPresented) { IssuesMenu(services: services) }
         }
       }
       ToolGroup {
@@ -235,39 +233,36 @@ private struct SchemeTools: View {
   }
 }
 
-/// The project's issues as a card per file; a click opens the line.
-struct IssuesList: View {
+/// The project's issues as the kit's menu: a section per file, each issue a row with its severity and its line;
+/// picking one opens the line.
+struct IssuesMenu: View {
   let services: ProjectServices
-  let dismiss: () -> Void
 
   var body: some View {
-    let issues = services.issues
-    let groups = Dictionary(grouping: issues) { $0.url }
+    let groups = Dictionary(grouping: services.issues) { $0.url }
     let files = groups.keys.sorted { ($0?.path ?? "") < ($1?.path ?? "") }
-    ScrollView {
-      KitLazyStack(spacing: KitMetrics.gutter) {
-        ForEach(files, id: \.self) { file in
-          let fileIssues = groups[file] ?? []
-          let errors = fileIssues.filter { $0.severity == .error }.count
-          KitSection(
-            file.map { services.workspace.tree.relativePath(of: $0) } ?? "Other",
-            meta: [errors > 0 ? "\(errors) error\(errors == 1 ? "" : "s")" : nil, "\(fileIssues.count) issues"]
-              .compactMap { $0 },
-            systemImage: "doc.text", hue: errors > 0 ? .red : .orange
-          ) {
-            ForEach(fileIssues) { issue in
-              IssueRow(issue: issue) {
-                services.open(issue)
-                dismiss()
-              }
+    ForEach(files, id: \.self) { file in
+      if file != files.first { Divider() }
+      KitMenuSection(file.map { services.workspace.tree.relativePath(of: $0) } ?? "Other") {
+        ForEach(groups[file] ?? []) { issue in
+          Button {
+            services.open(issue)
+          } label: {
+            Label {
+              // Long messages end in "…" (the tooltip has all of it) rather than widening the menu.
+              Text(issue.message)
+                .truncationMode(.tail)
+                .frame(maxWidth: 420, alignment: .leading)
+            } icon: {
+              Image(systemName: Self.symbol(issue.severity))
+                .foregroundStyle(Self.hue(issue.severity).fill)
             }
           }
+          .kitMenuHint(issue.line.map { "Line \($0)\(issue.source == .languageServer ? "" : " · Build")" })
+          .help(issue.message)
         }
       }
-      .padding(KitMetrics.gutter)
     }
-    .frame(width: 460, height: min(480, CGFloat(issues.count) * 48 + CGFloat(files.count) * 56 + 16))
-    .background(.kitPanel)
   }
 
   static func symbol(_ severity: LineAnnotation.Severity) -> String {
@@ -284,40 +279,5 @@ struct IssuesList: View {
     case .warning: return .yellow
     case .note: return .gray
     }
-  }
-}
-
-/// An issue: its severity, message and line.
-private struct IssueRow: View {
-  let issue: ProjectIssue
-  let action: () -> Void
-  @State private var isHovered = false
-
-  var body: some View {
-    Button(action: action) {
-      HStack(alignment: .firstTextBaseline, spacing: 8) {
-        Image(systemName: IssuesList.symbol(issue.severity))
-          .foregroundStyle(IssuesList.hue(issue.severity).fill)
-        VStack(alignment: .leading, spacing: 2) {
-          Text(issue.message)
-            .lineLimit(3)
-            .fixedSize(horizontal: false, vertical: true)
-          if let line = issue.line {
-            Text("Line \(line)\(issue.source == .languageServer ? "" : " · Build")")
-              .kitFont(.caption)
-          }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-      }
-      .padding(.horizontal, 6)
-      .padding(.vertical, 5)
-      .background {
-        RoundedRectangle(cornerRadius: KitMetrics.radius, style: .continuous)
-          .fill(isHovered ? AnyShapeStyle(.kitHover) : AnyShapeStyle(Color.clear))
-      }
-      .contentShape(Rectangle())
-    }
-    .buttonStyle(.plain)
-    .onHover { isHovered = $0 }
   }
 }
