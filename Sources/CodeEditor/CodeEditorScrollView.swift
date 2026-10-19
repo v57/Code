@@ -75,6 +75,35 @@
       if hadFocus { window?.makeFirstResponder(textView) }
     }
 
+    /// The part of the window, from its top-left corner (SwiftUI's global space), that bars floating over the
+    /// editor leave clear: the host turns it into insets for the editor, whose text runs on under the bars.
+    public var unobscuredFrame: CGRect? {
+      didSet { if unobscuredFrame != oldValue { needsLayout = true } }
+    }
+    /// How far the bars reach in from the host's top and bottom (from `unobscuredFrame`).
+    public private(set) var contentInsets = NSEdgeInsets()
+    /// Called when `contentInsets` change.
+    public var onContentInsetsChange: ((NSEdgeInsets) -> Void)?
+
+    public override func layout() {
+      super.layout()
+      updateContentInsets()
+    }
+
+    private func updateContentInsets() {
+      var insets = NSEdgeInsets()
+      if let clear = unobscuredFrame, let height = window?.contentView?.bounds.height {
+        let frame = convert(bounds, to: nil)
+        let top = height - frame.maxY
+        let bottom = height - frame.minY
+        insets.top = max(0, clear.minY - top)
+        insets.bottom = max(0, bottom - clear.maxY)
+      }
+      guard insets.top != contentInsets.top || insets.bottom != contentInsets.bottom else { return }
+      contentInsets = insets
+      onContentInsetsChange?(insets)
+    }
+
     public override func viewDidMoveToWindow() {
       super.viewDidMoveToWindow()
       // A new window (or tab) opens with the caret in the editor.

@@ -21,24 +21,25 @@ struct WorkspaceView: View {
         .navigationSplitViewColumnWidth(min: 200, ideal: KitMetrics.sidebarWidth, max: 420)
         .toolbar(removing: .sidebarToggle)
     } detail: {
-      VStack(spacing: 0) {
-        // The tabs on the panel ground, the path bar's card on the editor's, over it as the status bar is under it.
-        if !workspace.tabs.isEmpty {
-          TabBar()
-        }
-        Group {
-          if model.isConsoleVisible {
-            ResizableSplit("console.height", pane: .bottom, height: 220, range: 80...900, mainMinHeight: 120) {
-              EditorArea()
-            } pane: {
-              ConsoleView()
-            }
-          } else {
+      Group {
+        if model.isConsoleVisible {
+          ResizableSplit("console.height", pane: .bottom, height: 220, range: 80...900, mainMinHeight: 120) {
             EditorArea()
+          } pane: {
+            ConsoleView()
           }
+        } else {
+          EditorArea()
         }
-        .safeAreaInset(edge: .top, spacing: 0) {
-          if !workspace.tabs.isEmpty { JumpBar() }
+      }
+      // The tabs and the path bar's card float over the editor, as the toolbar does above them and the status bar
+      // under it: the editor runs on under all of them.
+      .safeAreaInset(edge: .top, spacing: 0) {
+        if !workspace.tabs.isEmpty {
+          VStack(spacing: 0) {
+            TabBar()
+            JumpBar()
+          }
         }
       }
       .kitPane(.content)

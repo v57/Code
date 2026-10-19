@@ -74,6 +74,13 @@
     public var sections: [MinimapSection] = [] {
       didSet { if sections != oldValue { needsDisplay = true } }
     }
+    /// Room at the top and bottom where bars float over the editor (a tab strip, a status bar): the map is laid out
+    /// between them and runs on under them as the editor's text does.
+    public var contentInsets = NSEdgeInsets() {
+      didSet {
+        if contentInsets.top != oldValue.top || contentInsets.bottom != oldValue.bottom { needsDisplay = true }
+      }
+    }
 
     /// Height of a line, of its bar, and width of a column.
     public var rowHeight: CGFloat = 3 {
@@ -127,11 +134,16 @@
       CGFloat(dataSource?.minimapLineCount ?? 0) * rowHeight
     }
 
+    /// The height the map is laid out in: the view's, less its insets.
+    private var mapHeight: CGFloat {
+      max(0, bounds.height - contentInsets.top - contentInsets.bottom)
+    }
+
     /// How far the drawing is scrolled: like Xcode's, the minimap scrolls
     /// along with the editor when the file is taller than the view.
     private var scrollOffset: CGFloat {
       guard let dataSource else { return 0 }
-      let overflow = contentHeight - bounds.height
+      let overflow = contentHeight - mapHeight
       guard overflow > 0 else { return 0 }
       let visible = dataSource.minimapVisibleLines
       let count = Double(dataSource.minimapLineCount)
@@ -141,11 +153,11 @@
     }
 
     private func y(ofLine line: Double, offset: CGFloat) -> CGFloat {
-      CGFloat(line) * rowHeight - offset
+      CGFloat(line) * rowHeight - offset + contentInsets.top
     }
 
     private func line(atY y: CGFloat, offset: CGFloat) -> Double {
-      Double((y + offset) / rowHeight)
+      Double((y - contentInsets.top + offset) / rowHeight)
     }
 
     // MARK: - Drawing
@@ -344,14 +356,15 @@
       let visible = dataSource.minimapVisibleLines
       let visibleCount = dragVisibleCount ?? (visible.upperBound - visible.lowerBound)
       let count = Double(dataSource.minimapLineCount)
-      let overflow = contentHeight - bounds.height
+      let overflow = contentHeight - mapHeight
+      let y = point.y - contentInsets.top
       let line: Double
       if overflow > 0 {
-        // Map the mouse over the view's height onto the scrollable range.
-        let fraction = Double(max(0, min(1, (point.y - dragOffset * rowHeight) / max(1, bounds.height - CGFloat(visibleCount) * rowHeight))))
+        // Map the mouse over the map's height onto the scrollable range.
+        let fraction = Double(max(0, min(1, (y - dragOffset * rowHeight) / max(1, mapHeight - CGFloat(visibleCount) * rowHeight))))
         line = fraction * max(0, count - visibleCount)
       } else {
-        line = Double(point.y / rowHeight) - Double(dragOffset)
+        line = Double(y / rowHeight) - Double(dragOffset)
       }
       dataSource.minimapScroll(toTopLine: max(0, line))
       needsDisplay = true

@@ -1178,8 +1178,13 @@
           // negative, and the visible rect's x (0) would slide the text
           // under them.
           let clip = scrollView.contentView
-          let maxY = max(0, frame.height - clip.bounds.height)
-          clip.scroll(to: NSPoint(x: clip.bounds.minX, y: min(maxY, max(0, rect.midY - visible.height / 2))))
+          // In the middle of what the scroll view's insets (bars floating over the editor) leave clear.
+          let insets = scrollView.contentInsets
+          let shown = clip.bounds.height - insets.top - insets.bottom
+          let minY = -insets.top
+          let maxY = max(minY, frame.height - clip.bounds.height + insets.bottom)
+          let y = rect.midY - shown / 2 - insets.top
+          clip.scroll(to: NSPoint(x: clip.bounds.minX, y: min(maxY, max(minY, y))))
           scrollView.reflectScrolledClipView(clip)
         } else {
           scroll(NSPoint(x: visible.minX, y: max(0, rect.midY - visible.height / 2)))

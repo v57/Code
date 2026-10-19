@@ -210,6 +210,15 @@
     let scrollView: CodeEditorScrollView
     let minimap = MinimapView()
 
+    /// Room at the top and bottom where the host's bars float over the editor: the text and the minimap run on under
+    /// them, and start and end clear of them.
+    var contentInsets = NSEdgeInsets() {
+      didSet {
+        guard contentInsets.top != oldValue.top || contentInsets.bottom != oldValue.bottom else { return }
+        applyInsets(from: oldValue)
+      }
+    }
+
     var showsMinimap = true {
       didSet {
         guard showsMinimap != oldValue else { return }
@@ -223,6 +232,22 @@
       super.init(frame: NSRect(x: 0, y: 0, width: 600, height: 400))
       addSubview(scrollView)
       addSubview(minimap)
+      scrollView.automaticallyAdjustsContentInsets = false
+    }
+
+    /// Sets the scroll view's insets, keeping the text where it was on screen: an editor at its top stays at its top,
+    /// clear of the bars.
+    private func applyInsets(from old: NSEdgeInsets) {
+      let clipView = scrollView.contentView
+      var origin = clipView.bounds.origin
+      origin.y -= contentInsets.top - old.top
+      var insets = scrollView.contentInsets
+      insets.top = contentInsets.top
+      insets.bottom = contentInsets.bottom
+      scrollView.contentInsets = insets
+      minimap.contentInsets = NSEdgeInsets(top: contentInsets.top, left: 0, bottom: contentInsets.bottom, right: 0)
+      clipView.scroll(to: clipView.constrainBoundsRect(NSRect(origin: origin, size: clipView.bounds.size)).origin)
+      scrollView.reflectScrolledClipView(clipView)
     }
 
     @available(*, unavailable)
@@ -293,7 +318,9 @@
       guard let textView, let layoutManager = textView.layoutManager,
         let container = textView.textContainer, textView.lineIndex.count > 0
       else { return 0...0 }
-      var visible = textView.visibleRect
+      // What shows between the bars floating over the editor.
+      let shown = unobscuredRect(of: textView)
+      var visible = shown
       visible.origin.y -= textView.textContainerOrigin.y
       let glyphs = layoutManager.glyphRange(forBoundingRect: visible, in: container)
       let characters = layoutManager.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
@@ -304,13 +331,13 @@
       // count jump by a line as the editor scrolled, which the minimap's drag multiplied into jumps near the end.
       var start = Double(first)
       if let rect = textView.rect(ofLine: first), rect.height > 0 {
-        let hidden = (textView.visibleRect.minY - rect.minY) / rect.height
+        let hidden = (shown.minY - rect.minY) / rect.height
         start += Double(min(max(hidden, 0), 1))
       }
       var end = Double(last + 1)
       if let rect = textView.rect(ofLine: last), rect.height > 0 {
-        let shown = (textView.visibleRect.maxY - rect.minY) / rect.height
-        end = Double(last) + Double(min(max(shown, 0), 1))
+        let fraction = (shown.maxY - rect.minY) / rect.height
+        end = Double(last) + Double(min(max(fraction, 0), 1))
       }
       return start...max(start, end)
     }
@@ -319,10 +346,22 @@
       guard let textView, let scrollView = textView.enclosingScrollView else { return }
       let index = min(max(Int(line), 0), max(textView.lineIndex.count - 1, 0))
       guard let rect = textView.rect(ofLine: index) else { return }
-      let y = rect.minY + rect.height * CGFloat(line - Double(index))
-      let maxY = max(0, textView.frame.height - scrollView.contentView.bounds.height)
-      scrollView.contentView.scroll(to: NSPoint(x: scrollView.contentView.bounds.minX, y: min(max(0, y), maxY)))
-      scrollView.reflectScrolledClipView(scrollView.contentView)
+      let clipView = scrollView.contentView
+      let insets = scrollView.contentInsets
+      // The line's top at the top of what shows under the bars.
+      let y = rect.minY + rect.height * CGFloat(line - Double(index)) - insets.top
+      let maxY = textView.frame.height - clipView.bounds.height + insets.bottom
+      clipView.scroll(to: NSPoint(x: clipView.bounds.minX, y: min(max(-insets.top, y), max(-insets.top, maxY))))
+      scrollView.reflectScrolledClipView(clipView)
+    }
+
+    /// The text view's visible rect less what the scroll view's top and bottom insets cover.
+    private func unobscuredRect(of textView: CodeTextView) -> NSRect {
+      var rect = textView.visibleRect
+      guard let insets = textView.enclosingScrollView?.contentInsets else { return rect }
+      rect.origin.y += insets.top
+      rect.size.height = max(0, rect.height - insets.top - insets.bottom)
+      return rect
     }
   }
 
@@ -341,11 +380,16 @@
     /// debugger's line change, so SwiftUI updates the editor.
     public var marks: Int
     public var features: EditorFeatures
+    /// For an editor that runs on under bars floating over it (it ignores the safe area): the part of the window,
+    /// in SwiftUI's global space, that the bars leave clear (the safe area's frame). Its text starts and ends there
+    /// and scrolls on under the bars.
+    public var unobscuredFrame: CGRect?
     public var onSelectionChange: @MainActor (EditorSelection) -> Void
 
     public init(
       document: TextDocument, revision: Int, configuration: EditorConfiguration = .init(),
       services: ProjectServices? = nil, marks: Int = 0, features: EditorFeatures = .init(),
+      unobscuredFrame: CGRect? = nil,
       onSelectionChange: @escaping @MainActor (EditorSelection) -> Void = { _ in }
     ) {
       self.document = document
@@ -354,6 +398,7 @@
       self.services = services
       self.marks = marks
       self.features = features
+      self.unobscuredFrame = unobscuredFrame
       self.onSelectionChange = onSelectionChange
     }
 
@@ -372,6 +417,10 @@
       if let services { editor.connect(services, document: document) }
       editor.apply(services, document: document, features: features)
       host.show(editor.container, focusing: textView)
+      let container = editor.container
+      host.onContentInsetsChange = { [weak container] insets in container?.contentInsets = insets }
+      host.unobscuredFrame = unobscuredFrame
+      container.contentInsets = host.contentInsets
       editor.applyPendingSelection(of: document)
       let selection = textView.currentSelection
       Task { @MainActor in onSelectionChange(selection) }

@@ -12,6 +12,7 @@ struct EditorArea: View {
   @Environment(WindowModel.self) private var model
   private let settings = EditorConfigurationReader()
   private let serviceSettings = ServiceSettingsReader()
+  @State private var safeFrame: CGRect?
 
   var body: some View {
     Group {
@@ -30,16 +31,24 @@ struct EditorArea: View {
       LiveIcon(systemImage: "doc.text", status: .working, size: 28)
     case .text:
       let services = serviceSettings.settings
-      CodeEditorView(
-        document: document, revision: document.revision, configuration: settings.configuration,
-        services: model.services, marks: marks(for: document),
-        features: EditorFeatures(
-          showsMinimap: services.showsMinimap, showsIssueMessages: services.showsIssueMessages,
-          breakpointsEnabled: services.breakpointsEnabled,
-          suggestsCompletions: services.suggestsCompletions)
-      ) { selection in
-        // The status bar shows the project window's editor.
-        if detachedDocument == nil { model.selection = selection }
+      // The editor fills the window's column, the toolbar, tabs, path bar and status bar floating over it: its text
+      // starts and ends in the safe area they leave (measured by a view that keeps to it) and scrolls on under them.
+      ZStack {
+        Color.clear
+          .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { safeFrame = $0 }
+        CodeEditorView(
+          document: document, revision: document.revision, configuration: settings.configuration,
+          services: model.services, marks: marks(for: document),
+          features: EditorFeatures(
+            showsMinimap: services.showsMinimap, showsIssueMessages: services.showsIssueMessages,
+            breakpointsEnabled: services.breakpointsEnabled,
+            suggestsCompletions: services.suggestsCompletions),
+          unobscuredFrame: safeFrame
+        ) { selection in
+          // The status bar shows the project window's editor.
+          if detachedDocument == nil { model.selection = selection }
+        }
+        .ignoresSafeArea(.container, edges: .vertical)
       }
 
     case .binary:
