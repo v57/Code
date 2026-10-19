@@ -18,7 +18,7 @@ Libraries
     CodeWorkspace      file tree, .gitignore and hidden files, file watching,
                        Quick Open index, Find in Project, package
                        dependencies, text documents with autosave, tabs
-                       and sessions (neutral)
+                       and sessions, the project's icon (neutral)
     CodeEditor         the AppKit editor: CodeTextView, line numbers,
                        CodeEditorScrollView, SwiftUI CodeTextEditor(text:)
     CodeActions        schemes found in a folder (Xcode, SwiftPM, Cargo, Go,
@@ -62,7 +62,7 @@ Layout
                                 SyntaxHighlighter, LineIndex, Language, Delimiters,
                                 CodeColorScheme, EditorTheme
     Sources/CodeWorkspace/      FileTree, FileNode, FileWatcher, FileIndex,
-                                FuzzyMatch, TextDocument, Workspace
+                                FuzzyMatch, TextDocument, Workspace, ProjectIcon
     Sources/CodeEditor/         CodeTextView (+EditAssists), LineNumberRuler,
                                 CodeEditorScrollView, CodeTextEditor,
                                 EditorConfiguration
