@@ -8,8 +8,8 @@ nonisolated enum NavigatorItem: Hashable, Sendable {
   case match(FindSelection)
 }
 
-/// The navigator: the kit's compact sidebar. The project's file tree is a card whose header names the project (the
-/// kit's outline); a click opens a file in the preview tab, a double click (or Return) keeps it open, the kit's arrow
+/// The navigator: the kit's compact sidebar. The projects the v57 apps share lead in a card that stays closed until
+/// it's wanted; the project's file tree is a card whose header names the project (the kit's outline); a click opens a file in the preview tab, a double click (or Return) keeps it open, the kit's arrow
 /// keys move and fold. The bottom bar's search button opens the search line (⇧⌘F, ⌘3), which searches the project
 /// (Find in Project): while it has text, the sidebar lists the results instead of the tree.
 ///
@@ -90,6 +90,7 @@ struct SidebarView: View {
   // MARK: - Project
 
   @ViewBuilder private var projectContent: some View {
+    if !model.isChoosingVisibleFiles { ProjectsSection() }
     if model.isChoosingVisibleFiles { ChooseVisibleFilesCard() }
     KitSection(
       workspace.name, meta: projectMeta, systemImage: "folder", hue: .red, isExpanded: $isRootExpanded

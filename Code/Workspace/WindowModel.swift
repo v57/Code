@@ -43,6 +43,9 @@ import SwiftUI
   /// The text field of the current prompt.
   var promptText = ""
   var trashCandidate: URL?
+  /// Shows another project folder in this window (the sidebar's Projects card), or brings forward the window it is
+  /// open in. Set by the window.
+  @ObservationIgnored var switchProject: (URL) -> Void = { AppState.shared.open($0) }
   var sidebarSelection: URL?
   /// The navigator (sidebar) column, toggled with ⌘0.
   var isNavigatorVisible = true

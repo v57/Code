@@ -187,6 +187,9 @@
         {
           model.workspace.tree.setExpanded(node, argument[argument.index(after: colon)...] != "off")
         }
+      case "switchproject":
+        // The sidebar's Projects card: switchproject:<folder> shows it in this window.
+        model.switchProject(URL(fileURLWithPath: argument, isDirectory: true))
       case "newwindow":
         // Open in New Window: the selected document, or newwindow:<path>.
         if !argument.isEmpty {

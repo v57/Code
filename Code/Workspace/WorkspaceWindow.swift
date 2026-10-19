@@ -23,6 +23,8 @@ struct WorkspaceWindow: View {
         WorkspaceView()
           .environment(model)
           .environment(model.workspace)
+          // Another project is a new view: the old one's disappearing saves and closes its project.
+          .id(model.workspace.root)
           .frame(minWidth: 640, minHeight: 400)
       } else {
         WelcomeView { open($0) }
@@ -73,6 +75,13 @@ struct WorkspaceWindow: View {
     root = folder
   }
 
+  /// Shows another project in this window (the Projects card), or brings forward the window it is open in.
+  private func switchProject(to folder: URL) {
+    let folder = folder.standardizedFileURL
+    guard folder != model?.workspace.root, !AppState.shared.focus(folder) else { return }
+    root = folder
+  }
+
   private func makeModel(_ root: URL?) {
     guard let root else {
       // Back to Welcome: the project's window is gone.
@@ -96,10 +105,13 @@ struct WorkspaceWindow: View {
       DispatchQueue.main.async { [window] in window.window?.close() }
       return
     }
+    // The project this window showed until now (the Projects card switched it).
+    if let previous = model?.workspace { AppState.shared.unregister(previous) }
     let workspace = Workspace(
       root: root, hidesIgnoredFiles: EditorSettings.storedHidesIgnoredFiles,
       defaults: ScreenshotDemo.isOn ? ScreenshotDemo.defaults : .standard)
     let model = WindowModel(workspace: workspace)
+    model.switchProject = { [self] in switchProject(to: $0) }
     AppState.shared.register(model, window: window)
     AppState.shared.recents.add(root)
     for file in AppState.shared.takePendingFiles(for: root) {
