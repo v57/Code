@@ -3,8 +3,9 @@ import ComponentKit
 import SwiftUI
 
 extension View {
-  /// The editor's status bar, the kit's card under the editor: a failed save or file operation, indexing and the
-  /// language server's work lead (in the live icon), the caret position trails and opens Go to Line.
+  /// The editor's status bar, the kit's card under the editor at its trailing side, as wide as what it shows: a failed
+  /// save or file operation, indexing and the language server's work lead (in the live icon), the caret position
+  /// trails and opens Go to Line. With nothing to show there is no card.
   func codeStatusBar() -> some View {
     modifier(CodeStatusBar())
   }
@@ -15,18 +16,29 @@ private struct CodeStatusBar: ViewModifier {
   @Environment(WindowModel.self) private var model
 
   func body(content: Content) -> some View {
-    content.kitStatusBar(systemImage: icon.systemImage, hue: icon.hue, status: icon.status) {
-      leading
-      Spacer(minLength: 8)
-      if let document = workspace.selectedDocument, document.isSaving {
-        Text("Formatting…")
-      }
-      if let document = workspace.selectedDocument, document.content == .text {
-        Button(position) { model.isGoToLinePresented = true }
-          .buttonStyle(.plain)
-          .help("Go to Line (⌘L)")
+    content.safeAreaInset(edge: .bottom, spacing: 0) {
+      if hasContent {
+        StatusBar(systemImage: icon.systemImage, hue: icon.hue, status: icon.status, alignment: .trailing) {
+          leading
+            .padding(.trailing, 4)
+          if let document = workspace.selectedDocument, document.isSaving {
+            Text("Formatting…")
+          }
+          if let document = workspace.selectedDocument, document.content == .text {
+            Button(position) { model.isGoToLinePresented = true }
+              .buttonStyle(.plain)
+              .help("Go to Line (⌘L)")
+          }
+        }
+        .transition(.opacity)
       }
     }
+    .animation(.kit, value: hasContent)
+  }
+
+  /// A message, work going on, or a text document's caret.
+  private var hasContent: Bool {
+    icon.systemImage != nil || workspace.selectedDocument?.content == .text
   }
 
   /// What the status bar's message is about; no icon while there is none.

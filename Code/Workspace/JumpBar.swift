@@ -3,7 +3,8 @@ import ComponentKit
 import SwiftUI
 
 /// The selected file's path under the tabs, as in Xcode's jump bar: back and forward, then the kit's path bar of the
-/// project, its folders and the file, each with its icon. A click on a folder shows it in the sidebar.
+/// project, its folders and the file, each with its icon, on a card as wide as they are. A click on a folder shows it
+/// in the sidebar.
 struct JumpBar: View {
   @Environment(Workspace.self) private var workspace
   @Environment(WindowModel.self) private var model
@@ -20,13 +21,16 @@ struct JumpBar: View {
         .disabled(!services.canGoForward)
       if let document = workspace.selectedDocument {
         KitPathBar(components: segments(for: document.url))
-          .padding(.leading, 6)
+          .padding(.leading, 4)
       }
-      Spacer(minLength: 0)
     }
     .buttonStyle(.kitIcon)
-    .padding(.horizontal, 10)
-    .frame(height: 36)
+    .padding(.horizontal, 4)
+    .frame(height: 32)
+    .kitSurface(.card)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .padding([.horizontal, .top], KitMetrics.gutter)
+    .padding(.bottom, KitMetrics.gutter / 2)
   }
 
   /// The project, each folder down to the file, and the file.

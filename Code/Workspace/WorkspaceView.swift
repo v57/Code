@@ -22,19 +22,23 @@ struct WorkspaceView: View {
         .toolbar(removing: .sidebarToggle)
     } detail: {
       VStack(spacing: 0) {
-        // The tabs on the panel ground, the path bar on the editor's.
+        // The tabs on the panel ground, the path bar's card on the editor's, over it as the status bar is under it.
         if !workspace.tabs.isEmpty {
           TabBar()
-          JumpBar()
         }
-        if model.isConsoleVisible {
-          ResizableSplit("console.height", pane: .bottom, height: 220, range: 80...900, mainMinHeight: 120) {
+        Group {
+          if model.isConsoleVisible {
+            ResizableSplit("console.height", pane: .bottom, height: 220, range: 80...900, mainMinHeight: 120) {
+              EditorArea()
+            } pane: {
+              ConsoleView()
+            }
+          } else {
             EditorArea()
-          } pane: {
-            ConsoleView()
           }
-        } else {
-          EditorArea()
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+          if !workspace.tabs.isEmpty { JumpBar() }
         }
       }
       .kitPane(.content)
