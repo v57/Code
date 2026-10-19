@@ -55,10 +55,15 @@ public struct XcodeDetector: ProjectDetector {
       "security find-identity -v -p codesigning | grep -q \"Developer ID Application: .*($(/usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:Team' \(shellQuote("\(folder)/\(scheme).xcarchive/Info.plist"))))\""
     let exportDeveloperID =
       "echo '{\"method\":\"developer-id\"}' | plutil -convert xml1 -o \(shellQuote("\(folder)/DeveloperID.plist")) - && rm -rf \(developerID) && xcodebuild -exportArchive -archivePath \(archive) -exportOptionsPlist \(shellQuote("\(folder)/DeveloperID.plist")) -exportPath \(developerID) -allowProvisioningUpdates"
-    let installed = shellQuote("/Applications/\(scheme).app")
+    // Replaces the copy in ~/Applications when there is one, else installs
+    // into /Applications.
+    let app = shellQuote("\(scheme).app")
+    let chooseInstalled =
+      "installed=\"$HOME\"/Applications/\(app); if [ ! -e \"$installed\" ]; then installed=/Applications/\(app); fi"
+    let installed = "\"$installed\""
     let archived = shellQuote("\(folder)/\(scheme).xcarchive/Products/Applications/\(scheme).app")
     commands[.install] =
-      "\(archiveMac) && if \(hasDeveloperID); then \(exportDeveloperID) && rm -rf \(installed) && ditto \(developerIDApp) \(installed); else rm -rf \(installed) && ditto \(archived) \(installed); fi"
+      "\(chooseInstalled); \(archiveMac) && if \(hasDeveloperID); then \(exportDeveloperID) && rm -rf \(installed) && ditto \(developerIDApp) \(installed); else rm -rf \(installed) && ditto \(archived) \(installed); fi"
     let exportFolder = shellQuote("\(folder)/Export")
     let notarizeZip = shellQuote("\(folder)/Export/notarize.zip")
     let zip = shellQuote("\(folder)/Export/\(scheme).zip")

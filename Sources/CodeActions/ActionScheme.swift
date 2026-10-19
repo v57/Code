@@ -8,7 +8,8 @@ public enum ActionKind: String, CaseIterable, Codable, Sendable {
   case test
   case clean
   case lint
-  /// Archives the Mac app and copies it into /Applications: exported with
+  /// Archives the Mac app and copies it into ~/Applications when it is already
+  /// there, else into /Applications: exported with
   /// Developer ID when the keychain has that identity, so other Macs open it.
   case install
   /// Archives the Mac app, exports it with Developer ID, notarizes and staples
