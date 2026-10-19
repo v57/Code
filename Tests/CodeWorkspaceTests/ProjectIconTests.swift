@@ -66,7 +66,10 @@ struct ProjectIconTests {
     #expect(ProjectIcon.find(in: android)?.path.hasSuffix("mipmap-xxxhdpi/ic_launcher.png") == true)
     let web = try folder(["public/favicon.png": Data([1]), "docs/deep/er/icon.png": Data([1])])
     #expect(ProjectIcon.find(in: web)?.lastPathComponent == "favicon.png")
-    let none = try folder(["node_modules/x/Assets.xcassets/AppIcon.appiconset/a.png": Data([1])])
+    let none = try folder([
+      "node_modules/x/Assets.xcassets/AppIcon.appiconset/a.png": Data([1]),
+      "Ports/App/Assets.xcassets/AppIcon.appiconset/a.png": Data([1]),
+    ])
     #expect(ProjectIcon.find(in: none) == nil)
   }
 

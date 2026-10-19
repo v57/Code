@@ -85,9 +85,12 @@ public enum ProjectIcon {
 
   // MARK: - Finding
 
+  /// Dependencies, build output, and other apps' code (examples, ports, test fixtures), whose icons aren't the
+  /// project's.
   static let skippedFolders: Set<String> = [
     "build", "Build", "DerivedData", "node_modules", "Pods", "Carthage", "vendor", "venv", "dist", "target",
-    "site-packages", "__pycache__",
+    "site-packages", "__pycache__", "Examples", "Example", "Samples", "Demos", "Ports", "Tests", "Fixtures",
+    "ThirdParty", "third_party", "External",
   ]
   static let skippedExtensions: Set<String> = ["xcodeproj", "xcworkspace", "app", "framework", "bundle", "icon"]
   static let iconNames: Set<String> = [
