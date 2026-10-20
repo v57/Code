@@ -133,9 +133,16 @@ public enum ProjectScanner {
 
 /// Shell quoting for paths and names put into commands.
 public func shellQuote(_ text: String) -> String {
-  let safe = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_./:=@%+,"))
-  if !text.isEmpty, text.unicodeScalars.allSatisfy(safe.contains) { return text }
-  return "'" + text.replacingOccurrences(of: "'", with: "'\\''") + "'"
+  #if os(Windows)
+    // cmd: double quotes; programs read \" as a quote inside them (the C runtime's rule).
+    let safe = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_./:=@+,\\"))
+    if !text.isEmpty, text.unicodeScalars.allSatisfy(safe.contains) { return text }
+    return "\"" + text.replacingOccurrences(of: "\"", with: "\\\"") + "\""
+  #else
+    let safe = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_./:=@%+,"))
+    if !text.isEmpty, text.unicodeScalars.allSatisfy(safe.contains) { return text }
+    return "'" + text.replacingOccurrences(of: "'", with: "'\\''") + "'"
+  #endif
 }
 
 /// The first match of `pattern`'s capture groups in `text`, for each match.

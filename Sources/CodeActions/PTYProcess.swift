@@ -264,12 +264,11 @@ import Foundation
       var env = environment
       env["PYTHONUNBUFFERED"] = "1"
       env["NSUnbufferedIO"] = "YES"
-      let shell = env["ComSpec"] ?? env["COMSPEC"] ?? "C:\\Windows\\System32\\cmd.exe"
       do {
-        // cmd takes the rest of its command line as is with /s: the command keeps its own quoting.
         child = try ChildProcess(
-          executable: URL(fileURLWithPath: shell), arguments: ["/d", "/s", "/c", "\"" + command + "\""],
-          directory: directory, environment: env, verbatimArguments: true)
+          executable: URL(fileURLWithPath: SubprocessCapture.shellPath),
+          arguments: SubprocessCapture.shellArguments(command), directory: directory, environment: env,
+          verbatimArguments: true)
       } catch {
         throw ActionError.launchFailed(error.localizedDescription)
       }

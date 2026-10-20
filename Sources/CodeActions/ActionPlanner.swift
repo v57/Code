@@ -88,8 +88,8 @@ public struct ActionStep: Sendable {
       let environment = environment
       return await Task.detached {
         SubprocessCapture.run(
-          "/bin/zsh", ["-c", command], directory: directory, environment: environment,
-          timeout: timeout)
+          SubprocessCapture.shellPath, SubprocessCapture.shellArguments(command), directory: directory,
+          environment: environment, timeout: timeout)
       }.value
     }
 

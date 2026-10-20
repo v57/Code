@@ -1,5 +1,9 @@
 import Foundation
 
+#if os(Windows)
+  import SwiftUIPortability
+#endif
+
 /// The environment of the user's login shell. An app opened from the Dock
 /// gets launchd's minimal PATH, without Homebrew, ~/.local/bin, Bun, Cargo
 /// or the Android SDK; commands run with this environment instead, so they
@@ -19,17 +23,38 @@ public final class ShellEnvironment: @unchecked Sendable {
   }
 
   public var path: [String] {
-    (variables["PATH"] ?? "").split(separator: ":").map(String.init)
+    #if os(Windows)
+      // Windows names it Path, and separates folders with ";".
+      let value = variables.first { $0.key.uppercased() == "PATH" }?.value ?? ""
+      return value.split(separator: ";").map(String.init)
+    #else
+      return (variables["PATH"] ?? "").split(separator: ":").map(String.init)
+    #endif
   }
 
   /// The full path of `tool` on the PATH, or nil.
   public func which(_ tool: String) -> String? {
-    if tool.hasPrefix("/") { return FileManager.default.isExecutableFile(atPath: tool) ? tool : nil }
-    for directory in path {
-      let candidate = directory + "/" + tool
-      if FileManager.default.isExecutableFile(atPath: candidate) { return candidate }
-    }
-    return nil
+    #if os(Windows)
+      let fileManager = FileManager.default
+      if tool.contains("\\") || tool.contains(":") { return fileManager.fileExists(atPath: tool) ? tool : nil }
+      for directory in path {
+        for suffix in ["", ".exe", ".cmd", ".bat"] {
+          let candidate = URL(fileURLWithPath: directory).appendingPathComponent(tool + suffix).path
+          var isDirectory: ObjCBool = false
+          if fileManager.fileExists(atPath: candidate, isDirectory: &isDirectory), !isDirectory.boolValue {
+            return candidate
+          }
+        }
+      }
+      return nil
+    #else
+      if tool.hasPrefix("/") { return FileManager.default.isExecutableFile(atPath: tool) ? tool : nil }
+      for directory in path {
+        let candidate = directory + "/" + tool
+        if FileManager.default.isExecutableFile(atPath: candidate) { return candidate }
+      }
+      return nil
+    #endif
   }
 
   /// The Android SDK: $ANDROID_HOME, $ANDROID_SDK_ROOT or Android Studio's
@@ -69,6 +94,10 @@ public final class ShellEnvironment: @unchecked Sendable {
   /// Runs the login shell once (interactive, so .zshrc counts too) and reads
   /// its environment; falls back to this process's environment.
   static func load() -> [String: String] {
+    #if os(Windows)
+      // An app started from the Start menu or Explorer has the user's environment already.
+      return ProcessInfo.processInfo.environment
+    #else
     var result = ProcessInfo.processInfo.environment
     let shell = result["SHELL"].flatMap { $0.isEmpty ? nil : $0 } ?? "/bin/zsh"
     let marker = "__CODE_ENVIRONMENT__"
@@ -103,6 +132,7 @@ public final class ShellEnvironment: @unchecked Sendable {
     for extra in fallbackPaths(home: home) where !path.contains(extra) { path.append(extra) }
     result["PATH"] = path.joined(separator: ":")
     return result
+    #endif
   }
 }
 
@@ -145,8 +175,54 @@ public enum SubprocessCapture {
       _ = readDone.wait(timeout: .now() + 2)
       if requireSuccess, process.terminationStatus != 0 { return nil }
       return String(decoding: data, as: UTF8.self)
+    #elseif os(Windows)
+      guard
+        let child = try? ChildProcess(
+          executable: URL(fileURLWithPath: executable), arguments: arguments, directory: directory,
+          environment: environment ?? ProcessInfo.processInfo.environment, verbatimArguments: executable == shellPath)
+      else { return nil }
+      nonisolated(unsafe) var data = Data()
+      let readDone = DispatchSemaphore(value: 0)
+      Thread.detachNewThread {
+        child.read(.output) { data.append($0) }
+        readDone.signal()
+      }
+      Thread.detachNewThread { child.read(.error) { _ in } }
+      let exited = DispatchSemaphore(value: 0)
+      nonisolated(unsafe) var status: Int32 = 0
+      Thread.detachNewThread {
+        status = child.waitUntilExit()
+        exited.signal()
+      }
+      if exited.wait(timeout: .now() + timeout) == .timedOut {
+        child.terminate()
+        _ = readDone.wait(timeout: .now() + 1)
+        return nil
+      }
+      _ = readDone.wait(timeout: .now() + 2)
+      if requireSuccess, status != 0 { return nil }
+      return String(decoding: data, as: UTF8.self)
     #else
       return nil
+    #endif
+  }
+
+  /// The shell commands run in: zsh, or cmd on Windows.
+  #if os(Windows)
+    public static let shellPath =
+      ProcessInfo.processInfo.environment["ComSpec"] ?? ProcessInfo.processInfo.environment["COMSPEC"]
+      ?? "C:\\Windows\\System32\\cmd.exe"
+  #else
+    public static let shellPath = "/bin/zsh"
+  #endif
+
+  /// The shell's arguments for running `command`.
+  public static func shellArguments(_ command: String) -> [String] {
+    #if os(Windows)
+      // cmd takes the rest of its command line as is with /s: the command keeps its own quoting.
+      ["/d", "/s", "/c", "\"" + command + "\""]
+    #else
+      ["-c", command]
     #endif
   }
 
@@ -156,7 +232,7 @@ public enum SubprocessCapture {
     requireSuccess: Bool = true
   ) -> String? {
     run(
-      "/bin/zsh", ["-c", command], directory: directory,
+      shellPath, shellArguments(command), directory: directory,
       environment: ShellEnvironment.shared.variables, timeout: timeout,
       requireSuccess: requireSuccess)
   }
