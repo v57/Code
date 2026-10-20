@@ -172,6 +172,10 @@ private struct SchemeTools: View {
         .help("Choose where to run")
       }
     }
+    // Other machines that have this project: the devices on the user's Hubs, kept current as the vault changes.
+    .onChange(of: RemoteDestinations.targets(for: model.workspace.root), initial: true) { _, targets in
+      actions.remoteTargets = targets
+    }
   }
 
   @ViewBuilder private var schemeItems: some View {
@@ -207,7 +211,9 @@ private struct SchemeTools: View {
   @ViewBuilder private var destinationItems: some View {
     let actions = model.services.actions
     let sections = Dictionary(grouping: actions.destinations, by: \.section)
-    let order = [RunDestination.localName, "iOS Devices", "iOS Simulators", "Android Devices", "Android Emulators"]
+    let order = [
+      RunDestination.localName, "Other Machines", "iOS Devices", "iOS Simulators", "Android Devices", "Android Emulators",
+    ]
     let shown = order.filter { sections[$0] != nil }
     ForEach(shown, id: \.self) { section in
       if section != shown.first { Divider() }

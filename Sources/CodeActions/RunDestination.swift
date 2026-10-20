@@ -12,6 +12,8 @@ public struct RunDestination: Identifiable, Hashable, Codable, Sendable {
     case androidEmulator
     /// An Android virtual device that isn't running; Run starts it.
     case androidVirtualDevice
+    /// Another machine the actions run on over SSH (`SSHExecutor`): a device on the user's Hub, a saved host.
+    case remote
   }
 
   /// "mac", a simulator or device UDID, an adb serial, or "avd:<name>".
@@ -42,7 +44,7 @@ public struct RunDestination: Identifiable, Hashable, Codable, Sendable {
 
   public var platform: Platform {
     switch kind {
-    case .mac: return .mac
+    case .mac, .remote: return .mac
     case .iOSSimulator, .iOSDevice: return .iOS
     case .androidDevice, .androidEmulator, .androidVirtualDevice: return .android
     }
@@ -60,6 +62,7 @@ public struct RunDestination: Identifiable, Hashable, Codable, Sendable {
     case .iOSDevice: return name.contains("iPad") ? "ipad" : "iphone.gen3"
     case .androidDevice: return "smartphone"
     case .androidEmulator, .androidVirtualDevice: return "candybarphone"
+    case .remote: return "point.3.connected.trianglepath.dotted"
     }
   }
 
@@ -71,6 +74,7 @@ public struct RunDestination: Identifiable, Hashable, Codable, Sendable {
     case .iOSSimulator: return "iOS Simulators"
     case .androidDevice: return "Android Devices"
     case .androidEmulator, .androidVirtualDevice: return "Android Emulators"
+    case .remote: return "Other Machines"
     }
   }
 }

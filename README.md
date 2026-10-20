@@ -71,6 +71,8 @@ Layout
                                 + Placeholders and EditorPlaceholder (<#…#>)
     Sources/CodeActions/        ActionScheme, ProjectScanner, Detectors/,
                                 RunDestination, ShellEnvironment, PTYProcess,
+                                ActionExecutor (here, or SSHExecutor: another
+                                machine, e.g. a device on the user's Hub),
                                 BuildLog, ActionPlanner, ActionController,
                                 Notarization
     Sources/CodeLSP/            JSONValue, LSPConnection, LanguageServerCatalog,

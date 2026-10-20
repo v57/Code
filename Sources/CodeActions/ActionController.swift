@@ -72,6 +72,14 @@
     }
     public private(set) var destinations: [RunDestination] = []
     public private(set) var isLoadingDestinations = false
+    /// Other machines the actions can run on over SSH, listed with the destinations (the app gives the devices on
+    /// the user's Hub that have this project).
+    public var remoteTargets: [SSHExecutor.Target] = [] {
+      didSet {
+        guard remoteTargets != oldValue else { return }
+        destinations = destinations.filter { $0.kind != .remote } + remoteDestinations
+      }
+    }
     public var selectedDestinationID: String? {
       didSet { defaults.set(selectedDestinationID, forKey: key("destination")) }
     }
@@ -174,9 +182,27 @@
       destinationsTask = Task {
         let destinations = await DestinationProvider.load(platforms: platforms)
         guard !Task.isCancelled else { return }
-        self.destinations = destinations
+        self.destinations = destinations + self.remoteDestinations
         self.isLoadingDestinations = false
       }
+    }
+
+    /// The remote targets as destinations, for schemes that build for the Mac (or any computer).
+    private var remoteDestinations: [RunDestination] {
+      guard selectedScheme?.platforms.contains(.mac) ?? true else { return [] }
+      return remoteTargets.map {
+        RunDestination(id: Self.remotePrefix + $0.id, name: $0.name, kind: .remote, detail: $0.detail)
+      }
+    }
+
+    private static let remotePrefix = "ssh:"
+
+    /// Where the destination's commands run: over SSH for another machine, else here.
+    private func executor(for destination: RunDestination?) -> any ActionExecutor {
+      guard let destination, destination.kind == .remote,
+        let target = remoteTargets.first(where: { Self.remotePrefix + $0.id == destination.id })
+      else { return LocalExecutor() }
+      return SSHExecutor(target: target, localRoot: root)
     }
 
     // MARK: - Running
@@ -199,8 +225,9 @@
       progress = ActionProgress(message: "Preparing")
       stepTitle = nil
       state = .running(kind)
+      // The debugger (the override) runs here, never on another machine.
       let steps =
-        stepsOverride?(kind, scheme, destination)
+        (destination?.kind == .remote ? nil : stepsOverride?(kind, scheme, destination))
         ?? ActionPlanner.steps(for: kind, scheme: scheme, destination: destination)
 
       // Steps are stages, named so that Run's build and Build's share their
@@ -226,7 +253,8 @@
       }
       let context = ActionContext(
         directory: scheme.directory,
-        environment: ShellEnvironment.shared.variables.merging(environment) { $1 }
+        environment: ShellEnvironment.shared.variables.merging(environment) { $1 },
+        executor: executor(for: destination)
       ) { line in sink.add(line) }
       self.context = context
 

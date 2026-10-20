@@ -37,18 +37,21 @@ public struct ActionStep: Sendable {
   public final class ActionContext: @unchecked Sendable {
     public let directory: URL
     public let environment: [String: String]
+    /// Where `run` runs commands: this computer, or another machine (`SSHExecutor`).
+    public let executor: any ActionExecutor
     private let output: @Sendable (PTYProcess.Line) -> Void
     private let lock = NSLock()
-    private var current: PTYProcess?
+    private var current: (any ActionCommand)?
     private var stopHandlers: [@Sendable () -> Void] = []
     private var cancelled = false
 
     public init(
-      directory: URL, environment: [String: String],
+      directory: URL, environment: [String: String], executor: any ActionExecutor = LocalExecutor(),
       output: @escaping @Sendable (PTYProcess.Line) -> Void
     ) {
       self.directory = directory
       self.environment = environment
+      self.executor = executor
       self.output = output
     }
 
@@ -69,8 +72,7 @@ public struct ActionStep: Sendable {
       if isCancelled { throw ActionError.cancelled }
       var environment = environment
       for (key, value) in extra { environment[key] = value }
-      let process = try PTYProcess(
-        command: command, directory: directory ?? self.directory, environment: environment)
+      let process = try executor.start(command, directory: directory ?? self.directory, environment: environment)
       lock.withLock { current = process }
       log("$ " + command)
       let status = await process.run(onLine: output)
@@ -100,7 +102,7 @@ public struct ActionStep: Sendable {
 
     /// Stops the running command and runs the Stop handlers.
     public func cancel() {
-      let (process, handlers) = lock.withLock { () -> (PTYProcess?, [@Sendable () -> Void]) in
+      let (process, handlers) = lock.withLock { () -> ((any ActionCommand)?, [@Sendable () -> Void]) in
         cancelled = true
         defer { stopHandlers = [] }
         return (current, stopHandlers)
@@ -117,9 +119,39 @@ public struct ActionStep: Sendable {
     public static func steps(
       for kind: ActionKind, scheme: ActionScheme, destination: RunDestination?
     ) -> [ActionStep] {
+      if destination?.kind == .remote { return remoteSteps(kind, scheme) }
       switch scheme.toolchain {
       case .xcode: return xcodeSteps(kind, scheme, destination)
       case .android: return androidSteps(kind, scheme, destination)
+      default:
+        guard let command = scheme.commands[kind] else { return [] }
+        return [.shell(kind.title, command)]
+      }
+    }
+
+    // MARK: - Another machine
+
+    /// The steps on another machine (`SSHExecutor`): the scheme's own commands, and xcodebuild for the Mac there.
+    /// Running an Xcode app there and installing to devices it reaches come later.
+    static func remoteSteps(_ kind: ActionKind, _ scheme: ActionScheme) -> [ActionStep] {
+      switch scheme.toolchain {
+      case .xcode:
+        let arguments = xcodeArguments(scheme, .mac)
+        switch kind {
+        case .build: return [.shell("Build", "xcodebuild \(arguments) build")]
+        case .test: return [.shell("Test", "xcodebuild \(arguments) test")]
+        case .clean: return [.shell("Clean", "xcodebuild \(arguments) clean", resource: .disk)]
+        default:
+          return [
+            ActionStep(kind.title) { _ in
+              throw ActionError.missing("\(kind.title) runs on this Mac for now; Build, Test and Clean run on the other one.")
+            }
+          ]
+        }
+      case .android:
+        return [
+          ActionStep(kind.title) { _ in throw ActionError.missing("Android actions run on this Mac for now.") }
+        ]
       default:
         guard let command = scheme.commands[kind] else { return [] }
         return [.shell(kind.title, command)]
