@@ -301,9 +301,9 @@ struct FileMenu: View {
     if model.isFile(url) {
       Button("Open in New Tab") { workspace.open(url) }
       Button("Open in New Window") { model.openInNewWindow(url) }
-      Button("Open with Default App") { NSWorkspace.shared.open(url) }
+      Button("Open with Default App") { KitDesktop.open(url) }
     }
-    Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+    Button("Show in \(KitDesktop.fileManagerName)") { KitDesktop.reveal([url]) }
     Divider()
     Button("Copy Path") { copy(url.path) }
     Divider()
@@ -319,9 +319,9 @@ struct FileMenu: View {
       if !node.isDirectory {
         Button("Open in New Tab") { workspace.open(node.url) }
         Button("Open in New Window") { model.openInNewWindow(node.url) }
-        Button("Open with Default App") { NSWorkspace.shared.open(node.url) }
+        Button("Open with Default App") { KitDesktop.open(node.url) }
       }
-      Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([node.url]) }
+      Button("Show in \(KitDesktop.fileManagerName)") { KitDesktop.reveal([node.url]) }
       Divider()
       Button("Copy Path") { copy(node.url.path) }
       Button("Copy Relative Path") { copy(workspace.tree.relativePath(of: node.url)) }
@@ -342,7 +342,7 @@ struct FileMenu: View {
       editHiddenFilesButton
     } else {
       Divider()
-      Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([workspace.root]) }
+      Button("Show in \(KitDesktop.fileManagerName)") { KitDesktop.reveal([workspace.root]) }
       Button("Copy Path") { copy(workspace.root.path) }
       Button("Reload") { workspace.tree.reloadAll() }
       Divider()

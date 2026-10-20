@@ -33,9 +33,11 @@ struct DetachedEditorWindow: View {
     }
     .frame(minWidth: 320, minHeight: 200)
     .background(DetachedWindowReader(reference: window))
-    .toolbar {
-      ToolbarItem(placement: .primaryAction) { alwaysOnTopButton }
-    }
+    #if os(macOS)
+      .toolbar {
+        ToolbarItem(placement: .primaryAction) { alwaysOnTopButton }
+      }
+    #endif
     .focusedSceneValue(\.detachedDocument, document)
     .onAppear { AppState.shared.registerDetachedWindow(window, for: documentID) }
     .onChange(of: document == nil, initial: true) { _, isGone in
@@ -67,6 +69,13 @@ struct DetachedEditorWindow: View {
   }
 
   private func toggleAlwaysOnTop() {
+    #if os(macOS)
+      toggleWindowLevel()
+    #endif
+  }
+
+  #if os(macOS)
+  private func toggleWindowLevel() {
     guard let window = window.window else { return }
     isAlwaysOnTop.toggle()
     if isAlwaysOnTop {
@@ -77,8 +86,16 @@ struct DetachedEditorWindow: View {
       window.level = .normal
     }
   }
+  #endif
 }
 
+#if !os(macOS)
+  private struct DetachedWindowReader: View {
+    let reference: WindowReference
+
+    var body: some View { Color.clear }
+  }
+#else
 /// Records the window in a `WindowReference` and keeps it out of state
 /// restoration, as project windows are.
 private struct DetachedWindowReader: NSViewRepresentable {
@@ -107,3 +124,4 @@ private struct DetachedWindowReader: NSViewRepresentable {
     }
   }
 }
+#endif

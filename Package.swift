@@ -109,4 +109,26 @@ for target in package.targets where target.type == .regular {
     target.dependencies += [.product(name: "SwiftUI", package: "SwiftUI")]
   }
 }
+#if os(Windows)
+// The app: a DLL the SwiftUI WinUI host loads (SwiftUI's Windows/scripts/build-app.ps1 -PackagePath <this package>
+// -Product CodeWinUI), built from the Xcode project's sources with its settings.
+package.dependencies += [v57("Component"), v57("Vault"), v57("UpdateKit"), v57("Dev")]
+package.targets.append(
+  .target(
+    name: "CodeApp",
+    dependencies: [
+      "CodeKit", .product(name: "SwiftUI", package: "SwiftUI"), .product(name: "ComponentKit", package: "Component"),
+      .product(name: "VaultKit", package: "Vault"), .product(name: "UpdateKit", package: "UpdateKit"),
+      .product(name: "DevScreenshots", package: "Dev"),
+    ],
+    path: "Code", exclude: ["Assets.xcassets", "Code.entitlements"],
+    swiftSettings: [
+      .swiftLanguageMode(.v6), .defaultIsolation(MainActor.self), .enableUpcomingFeature("ApproachableConcurrency"),
+      // On Apple platforms `import Foundation` brings Combine (ObservableObject, @Published), URLSession and the
+      // file APIs SwiftUIPortability adds along: every file gets them here too.
+      .unsafeFlags(
+        ["Combine", "FoundationNetworking", "SwiftUIPortability"].flatMap { ["-Xfrontend", "-import-module", "-Xfrontend", $0] }),
+    ]))
+package.products.append(.library(name: "CodeWinUI", type: .dynamic, targets: ["CodeApp"]))
+#endif
 #endif

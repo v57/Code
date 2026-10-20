@@ -27,7 +27,7 @@ struct GoToLineView: View {
     }
   }
 
-  private var lineCount: Int { workspace.selectedDocument?.textView?.lineIndex.count ?? 1 }
+  private var lineCount: Int { workspace.selectedDocument?.textView?.lineCount ?? 1 }
 
   private var target: (line: Int, column: Int)? {
     let parts = text.split(separator: ":").compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }

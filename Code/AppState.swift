@@ -1,4 +1,5 @@
 import CodeKit
+import ComponentKit
 import SwiftUI
 
 /// App-wide state: recent projects and the open workspaces.
@@ -63,21 +64,29 @@ import SwiftUI
   @discardableResult
   func focus(_ folder: URL) -> Bool {
     guard let entry = entry(for: folder) else { return false }
-    entry.window.window?.makeKeyAndOrderFront(nil)
+    entry.window.bringToFront()
     return true
   }
 
   /// Shows an Open panel and opens the chosen folders and files, each in
   /// its project's window.
   func chooseFolder() {
-    let panel = NSOpenPanel()
-    panel.canChooseDirectories = true
-    panel.canChooseFiles = true
-    panel.allowsMultipleSelection = true
-    panel.prompt = "Open"
-    panel.message = "Choose a folder to open as a project."
-    guard panel.runModal() == .OK else { return }
-    for url in panel.urls { open(url) }
+    #if os(macOS)
+      let panel = NSOpenPanel()
+      panel.canChooseDirectories = true
+      panel.canChooseFiles = true
+      panel.allowsMultipleSelection = true
+      panel.prompt = "Open"
+      panel.message = "Choose a folder to open as a project."
+      guard panel.runModal() == .OK else { return }
+      for url in panel.urls { open(url) }
+    #else
+      Task {
+        let urls = await KitDesktop.chooseFolders(
+          prompt: "Open", message: "Choose a folder to open as a project.", allowsMultipleSelection: true)
+        for url in urls { open(url) }
+      }
+    #endif
   }
 
   func takePendingFiles(for folder: URL) -> [URL] {
@@ -127,13 +136,13 @@ import SwiftUI
 
   /// Brings a document's own window to the front.
   func focusDetachedWindow(for document: UUID) {
-    detachedWindows[document]?.window?.makeKeyAndOrderFront(nil)
+    detachedWindows[document]?.bringToFront()
   }
 
   /// Closes the own windows of a closing project's documents.
   func closeDetachedWindows(of workspace: Workspace) {
     for document in workspace.detachedDocuments {
-      detachedWindows[document.id]?.window?.close()
+      detachedWindows[document.id]?.close()
     }
   }
 

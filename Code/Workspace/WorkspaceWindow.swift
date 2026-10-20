@@ -14,6 +14,7 @@ struct WorkspaceWindow: View {
 
   @Binding var root: URL?
   @Environment(\.openWindow) private var openWindow
+  @Environment(\.dismissWindow) private var dismissWindow
   @State private var model: WindowModel?
   @State private var window = WindowReference()
 
@@ -102,7 +103,11 @@ struct WorkspaceWindow: View {
     // focuses the first and closes.
     if AppState.shared.workspace(for: root) != nil {
       AppState.shared.focus(root)
-      DispatchQueue.main.async { [window] in window.window?.close() }
+      #if os(macOS)
+        DispatchQueue.main.async { [window] in window.window?.close() }
+      #else
+        DispatchQueue.main.async { [dismissWindow] in dismissWindow() }
+      #endif
       return
     }
     // The project this window showed until now (the Projects card switched it).
@@ -122,10 +127,36 @@ struct WorkspaceWindow: View {
   }
 }
 
-/// The NSWindow a view is in, filled in by `WindowReader`.
+/// The window a view is in, filled in by `WindowReader` (the NSWindow on the Mac).
 @MainActor final class WindowReference {
-  weak var window: NSWindow?
+  #if os(macOS)
+    weak var window: NSWindow?
+  #endif
+
+  /// Brings the window to the front.
+  func bringToFront() {
+    #if os(macOS)
+      window?.makeKeyAndOrderFront(nil)
+    #endif
+  }
+
+  /// Closes the window (off the Mac a detached editor closes itself once its document is gone).
+  func close() {
+    #if os(macOS)
+      window?.close()
+    #endif
+  }
 }
+
+#if !os(macOS)
+  /// Off the Mac the scene's style is the window's (no restyling between Welcome and a project).
+  private struct WindowReader: View {
+    let reference: WindowReference
+    let isWelcome: Bool
+
+    var body: some View { Color.clear }
+  }
+#else
 
 /// Records its window in a `WindowReference`, keeps the window out of
 /// state restoration (Code launches to the Welcome window, never reopening
@@ -196,3 +227,4 @@ private struct WindowReader: NSViewRepresentable {
     }
   }
 }
+#endif

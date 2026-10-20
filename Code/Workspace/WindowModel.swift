@@ -146,8 +146,8 @@ import SwiftUI
     isNavigatorVisible = true
     navigator = .find
     isFindLineOpen = true
-    if let textView = workspace.selectedDocument?.textView, textView.window?.firstResponder === textView {
-      let range = textView.selectedRange()
+    if let textView = workspace.selectedDocument?.textView, textView.isFocused {
+      let range = textView.selectionRange
       let selected = (textView.string as NSString).substring(with: range)
       if range.length > 0, range.length < 500, !selected.contains("\n") {
         find.text = selected

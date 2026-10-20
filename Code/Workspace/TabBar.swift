@@ -79,7 +79,7 @@ struct TabBar: View {
       workspace.tree.reveal(document.url)
       model.sidebarSelection = document.url
     }
-    Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([document.url]) }
+    Button("Show in \(KitDesktop.fileManagerName)") { KitDesktop.reveal([document.url]) }
     Button("Copy Path") { KitPasteboard.copy(document.url.path) }
   }
 

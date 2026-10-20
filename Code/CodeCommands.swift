@@ -1,4 +1,6 @@
-import AppKit
+#if os(macOS)
+  import AppKit
+#endif
 import CodeKit
 import SwiftUI
 
@@ -57,8 +59,10 @@ struct CodeCommands: Commands {
         .disabled(workspace?.tabs.isEmpty != false)
       Button("Keep Tab Open") { workspace?.selectedDocument.map { workspace?.keep($0) } }
         .disabled(workspace?.selectedDocument.map { workspace?.isPreview($0) == true } != true)
-      Button("Close Window") { NSApp.keyWindow?.performClose(nil) }
-        .keyboardShortcut("w", modifiers: [.command, .shift])
+      #if os(macOS)
+        Button("Close Window") { NSApp.keyWindow?.performClose(nil) }
+          .keyboardShortcut("w", modifiers: [.command, .shift])
+      #endif
     }
 
     CommandMenu("Go") {
@@ -91,7 +95,7 @@ struct CodeCommands: Commands {
         guard let services, let document = workspace?.selectedDocument,
           let textView = document.textView
         else { return }
-        services.jumpToDefinition(in: document, at: textView.selectedRange().location)
+        services.jumpToDefinition(in: document, at: textView.caretLocation)
       }
       .keyboardShortcut("j", modifiers: [.command, .control])
       .disabled(workspace?.selectedDocument?.textView == nil)
@@ -99,7 +103,7 @@ struct CodeCommands: Commands {
         guard let services, let document = workspace?.selectedDocument,
           let textView = document.textView
         else { return }
-        services.showQuickHelp(in: document, at: textView.selectedRange().location)
+        services.showQuickHelp(in: document, at: textView.caretLocation)
       }
       .keyboardShortcut("/", modifiers: [.command, .control, .shift])
       .disabled(workspace?.selectedDocument?.textView == nil)
@@ -156,13 +160,13 @@ struct CodeCommands: Commands {
       .keyboardShortcut("y", modifiers: [.command, .control])
       .disabled(debugger == nil)
       Button("Step Over") { debugger?.stepOver() }
-        .keyboardShortcut(KeyEquivalent(Character(UnicodeScalar(NSF6FunctionKey)!)), modifiers: [])
+        .keyboardShortcut(KeyEquivalent(Character(UnicodeScalar(Self.f6)!)), modifiers: [])
         .disabled(!isPaused)
       Button("Step Into") { debugger?.stepInto() }
-        .keyboardShortcut(KeyEquivalent(Character(UnicodeScalar(NSF7FunctionKey)!)), modifiers: [])
+        .keyboardShortcut(KeyEquivalent(Character(UnicodeScalar(Self.f7)!)), modifiers: [])
         .disabled(!isPaused)
       Button("Step Out") { debugger?.stepOut() }
-        .keyboardShortcut(KeyEquivalent(Character(UnicodeScalar(NSF8FunctionKey)!)), modifiers: [])
+        .keyboardShortcut(KeyEquivalent(Character(UnicodeScalar(Self.f8)!)), modifiers: [])
         .disabled(!isPaused)
       Divider()
       Button(services?.breakpointsActive == false ? "Activate Breakpoints" : "Deactivate Breakpoints") {
@@ -180,21 +184,23 @@ struct CodeCommands: Commands {
         .disabled(services?.hasBreakpoints != true)
     }
 
-    CommandMenu("Editor") {
-      Button("Toggle Comment") { send(#selector(CodeTextView.toggleComment(_:))) }
-        .keyboardShortcut("/")
-      Button("Indent") { send(#selector(CodeTextView.shiftRight(_:))) }
-        .keyboardShortcut("]")
-      Button("Outdent") { send(#selector(CodeTextView.shiftLeft(_:))) }
-        .keyboardShortcut("[")
-      Divider()
-      Button("Show Completions") { send(#selector(NSTextView.complete(_:))) }
-        .keyboardShortcut(.space, modifiers: [.control])
-      Button("Select Next Placeholder") { send(#selector(CodeTextView.selectNextPlaceholder(_:))) }
-        .keyboardShortcut("/", modifiers: [.control])
-      Button("Select Previous Placeholder") { send(#selector(CodeTextView.selectPreviousPlaceholder(_:))) }
-        .keyboardShortcut("/", modifiers: [.control, .shift])
-    }
+    #if os(macOS)
+      CommandMenu("Editor") {
+        Button("Toggle Comment") { send(#selector(CodeTextView.toggleComment(_:))) }
+          .keyboardShortcut("/")
+        Button("Indent") { send(#selector(CodeTextView.shiftRight(_:))) }
+          .keyboardShortcut("]")
+        Button("Outdent") { send(#selector(CodeTextView.shiftLeft(_:))) }
+          .keyboardShortcut("[")
+        Divider()
+        Button("Show Completions") { send(#selector(NSTextView.complete(_:))) }
+          .keyboardShortcut(.space, modifiers: [.control])
+        Button("Select Next Placeholder") { send(#selector(CodeTextView.selectNextPlaceholder(_:))) }
+          .keyboardShortcut("/", modifiers: [.control])
+        Button("Select Previous Placeholder") { send(#selector(CodeTextView.selectPreviousPlaceholder(_:))) }
+          .keyboardShortcut("/", modifiers: [.control, .shift])
+      }
+    #endif
 
     CommandGroup(after: .toolbar) {
       // Xcode's ⌘0 shows and hides the navigator.
@@ -288,7 +294,9 @@ struct CodeCommands: Commands {
     if let workspace, let document = workspace.selectedDocument {
       workspace.close(document)
     } else {
-      NSApp.keyWindow?.performClose(nil)
+      #if os(macOS)
+        NSApp.keyWindow?.performClose(nil)
+      #endif
     }
   }
 
@@ -297,10 +305,15 @@ struct CodeCommands: Commands {
     fontSize = min(max(fontSize + step, Double(range.lowerBound)), Double(range.upperBound))
   }
 
-  /// Sends an editor action to the focused text view.
-  private func send(_ action: Selector) {
-    NSApp.sendAction(action, to: nil, from: nil)
-  }
+  /// F6, F7 and F8 (AppKit's function-key characters, which WinUI's keys arrive as too).
+  private static let f6 = 0xF709, f7 = 0xF70A, f8 = 0xF70B
+
+  #if os(macOS)
+    /// Sends an editor action to the focused text view.
+    private func send(_ action: Selector) {
+      NSApp.sendAction(action, to: nil, from: nil)
+    }
+  #endif
 }
 
 private struct RecentMenu: View {

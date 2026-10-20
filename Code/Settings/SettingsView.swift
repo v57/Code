@@ -1,4 +1,6 @@
-import AppKit
+#if os(macOS)
+  import AppKit
+#endif
 import CodeKit
 import ComponentKit
 import SwiftUI
@@ -46,14 +48,19 @@ private struct EditorSettingsView: View {
 
   /// Installed fixed-pitch font families.
   private let monospacedFamilies: [String] = {
-    let manager = NSFontManager.shared
-    return manager.availableFontFamilies.filter { family in
-      guard let members = manager.availableMembers(ofFontFamily: family),
-        let name = members.first?.first as? String,
-        let font = NSFont(name: name, size: 12)
-      else { return false }
-      return font.isFixedPitch
-    }
+    #if os(macOS)
+      let manager = NSFontManager.shared
+      return manager.availableFontFamilies.filter { family in
+        guard let members = manager.availableMembers(ofFontFamily: family),
+          let name = members.first?.first as? String,
+          let font = NSFont(name: name, size: 12)
+        else { return false }
+        return font.isFixedPitch
+      }
+    #else
+      // Windows' own fixed-pitch families.
+      return ["Cascadia Code", "Cascadia Mono", "Consolas", "Courier New", "Lucida Console"]
+    #endif
   }()
 
   var body: some View {

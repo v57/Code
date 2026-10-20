@@ -1,6 +1,9 @@
 import CodeKit
 import DevScreenshots
 import Foundation
+#if os(Windows)
+  import WinSDK
+#endif
 
 /// Debug builds: `--screenshot-demo` runs Code on demo projects for the screenshots (`.dev/screenshots.json`), never
 /// the user's. A debug build shares the installed app's defaults and the vault, so in this mode recent projects and
@@ -42,7 +45,13 @@ enum ScreenshotDemo {
     let vault = FileManager.default.temporaryDirectory.appendingPathComponent("CodeScreenshotDemo/Vault")
     try? FileManager.default.removeItem(at: vault)
     try? FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
-    setenv("VAULT_DIRECTORY", vault.path, 1)
+    #if os(Windows)
+      _ = "VAULT_DIRECTORY".withCString(encodedAs: UTF16.self) { name in
+        vault.path.withCString(encodedAs: UTF16.self) { SetEnvironmentVariableW(name, $0) }
+      }
+    #else
+      setenv("VAULT_DIRECTORY", vault.path, 1)
+    #endif
     #if DEBUG
       Screenshots.prepare(waitsForReady: true) { scene in await show(scene.arguments) }
     #endif
@@ -103,11 +112,13 @@ enum ScreenshotDemo {
       reset(model)
       // The project's index, schemes and language server, before anything searches or opens.
       await waitUntil { isSettled(model) }
-      for command in scene.commands {
-        DebugAutomation.run(command)
-        await waitUntil(timeout: .seconds(10)) { isSettled(model) }
-        if command.hasPrefix("open:") { DebugAutomation.run("focus") }
-      }
+      #if os(macOS)
+        for command in scene.commands {
+          DebugAutomation.run(command)
+          await waitUntil(timeout: .seconds(10)) { isSettled(model) }
+          if command.hasPrefix("open:") { DebugAutomation.run("focus") }
+        }
+      #endif
       await waitUntil { isSettled(model) }
     }
 
@@ -136,7 +147,11 @@ enum ScreenshotDemo {
         !services.languageServers.states.values.contains(.starting)
       else { return false }
       guard let document = workspace.selectedDocument else { return true }
-      return document.content != .loading && DebugAutomation.isShown(document)
+      #if os(macOS)
+        return document.content != .loading && DebugAutomation.isShown(document)
+      #else
+        return document.content != .loading
+      #endif
     }
 
     /// Until `condition` has held for a moment (a loaded file is drawn, a search shows its results), or `timeout`.

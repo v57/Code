@@ -7,7 +7,9 @@ import VaultKit
 /// Code: a folder-based code editor. Each window shows one project folder;
 /// a window without one shows the Welcome screen.
 @main struct CodeApp: App {
-  @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+  #if os(macOS)
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+  #endif
 
   /// Updates from GitHub Releases (Code.zip): checked daily once the user turns on automatic
   /// checks (never before), installed in place with a relaunch.

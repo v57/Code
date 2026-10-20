@@ -87,7 +87,7 @@ struct EditorArea: View {
     _ title: String, systemImage: String, description: String, document: TextDocument
   ) -> some View {
     EmptyState(systemImage: systemImage, title: title, message: description) {
-      Button("Open with Default App") { NSWorkspace.shared.open(document.url) }
+      Button("Open with Default App") { KitDesktop.open(document.url) }
         .buttonStyle(.kit)
     }
   }

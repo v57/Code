@@ -79,7 +79,7 @@ struct ProjectsSection: View {
       if let folder {
         Button("Open in New Window", systemImage: "macwindow.badge.plus") { AppState.shared.open(folder) }
           .disabled(folder == workspace.root)
-        Button("Show in Finder", systemImage: "folder") { NSWorkspace.shared.activateFileViewerSelecting([folder]) }
+        Button("Show in \(KitDesktop.fileManagerName)", systemImage: "folder") { KitDesktop.reveal([folder]) }
       }
     }
   }
@@ -107,7 +107,7 @@ struct ProjectsSection: View {
     .help(group.localPath ?? group.name)
     .kitContextMenu {
       if let folder = group.localURL {
-        Button("Show in Finder", systemImage: "folder") { NSWorkspace.shared.activateFileViewerSelecting([folder]) }
+        Button("Show in \(KitDesktop.fileManagerName)", systemImage: "folder") { KitDesktop.reveal([folder]) }
       }
     }
   }

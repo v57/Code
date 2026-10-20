@@ -85,7 +85,7 @@ struct WelcomeView: View {
     let icon = vault.localProjects.first { $0.localPath == path }?.icon.flatMap(Image.init(data:))
     return RecentItem(folder.lastPathComponent, subtitle: folder.abbreviatedPath, image: icon) { open(folder) }
       .kitContextMenu {
-        Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([folder]) }
+        Button("Show in \(KitDesktop.fileManagerName)") { KitDesktop.reveal([folder]) }
         if isRecent {
           Button("Remove from Recents") { recents.remove(folder) }
         }
@@ -120,7 +120,7 @@ struct WelcomeView: View {
     }
     .kitContextMenu {
       if let folder = group.localURL {
-        Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([folder]) }
+        Button("Show in \(KitDesktop.fileManagerName)") { KitDesktop.reveal([folder]) }
       }
     }
   }

@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 
 /// Saves on deactivation and quit, and serves the Dock menu of recent
@@ -44,3 +45,4 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     AppState.shared.open(folder)
   }
 }
+#endif

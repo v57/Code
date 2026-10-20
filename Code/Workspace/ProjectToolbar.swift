@@ -83,7 +83,7 @@ private struct ProjectTitle: View {
   private var status: String {
     let actions = model.services.actions
     let scheme = actions.selectedScheme?.name ?? ""
-    let destination = actions.selectedDestination?.name ?? "My Mac"
+    let destination = actions.selectedDestination?.name ?? RunDestination.localName
     switch actions.state {
     case .running(let kind):
       if model.services.debugger != nil {
@@ -207,7 +207,7 @@ private struct SchemeTools: View {
   @ViewBuilder private var destinationItems: some View {
     let actions = model.services.actions
     let sections = Dictionary(grouping: actions.destinations, by: \.section)
-    let order = ["My Mac", "iOS Devices", "iOS Simulators", "Android Devices", "Android Emulators"]
+    let order = [RunDestination.localName, "iOS Devices", "iOS Simulators", "Android Devices", "Android Emulators"]
     let shown = order.filter { sections[$0] != nil }
     ForEach(shown, id: \.self) { section in
       if section != shown.first { Divider() }
