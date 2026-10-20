@@ -158,9 +158,13 @@ import Observation
   /// enumerators report it ("/private/var/…" for "/var/…"; Foundation's
   /// `resolvingSymlinksInPath()` keeps "/var").
   public nonisolated static func realPath(of url: URL) -> String {
-    guard let resolved = realpath(url.path, nil) else { return url.path }
-    defer { free(resolved) }
-    return String(cString: resolved)
+    #if os(Windows)
+      return url.resolvingSymlinksInPath().path
+    #else
+      guard let resolved = realpath(url.path, nil) else { return url.path }
+      defer { free(resolved) }
+      return String(cString: resolved)
+    #endif
   }
 
   private func list(_ node: FileNode) -> [FileNode] {

@@ -1,5 +1,9 @@
 import CodeHighlighting
 import Foundation
+
+#if !canImport(ObjectiveC) && canImport(SwiftUIPortability)
+  import SwiftUIPortability  // NSFileCoordinator
+#endif
 import Observation
 
 /// One open text file: its content, language and encoding, and the autosave
@@ -176,14 +180,19 @@ import Observation
     }
     if data.prefix(8192).contains(0) { return .binary }
     if let text = String(data: data, encoding: .utf8) { return .text(text, .utf8) }
-    var converted: NSString?
-    var lossy = ObjCBool(false)
-    let detected = NSString.stringEncoding(
-      for: data, encodingOptions: [.allowLossyKey: false], convertedString: &converted,
-      usedLossyConversion: &lossy)
-    if detected != 0, let converted {
-      return .text(converted as String, String.Encoding(rawValue: detected))
-    }
+    #if canImport(ObjectiveC)
+      var converted: NSString?
+      var lossy = ObjCBool(false)
+      let detected = NSString.stringEncoding(
+        for: data, encodingOptions: [.allowLossyKey: false], convertedString: &converted,
+        usedLossyConversion: &lossy)
+      if detected != 0, let converted {
+        return .text(converted as String, String.Encoding(rawValue: detected))
+      }
+    #else
+      // No encoding detection in swift-corelibs-foundation: Windows' own 8-bit encoding takes any bytes.
+      if let text = String(data: data, encoding: .windowsCP1252) { return .text(text, .windowsCP1252) }
+    #endif
     return .text(String(decoding: data, as: UTF8.self), .utf8)
   }
 

@@ -1,3 +1,5 @@
+// Project icons are drawn with ImageIO (Apple platforms).
+#if canImport(ImageIO)
 import CoreGraphics
 import Foundation
 import ImageIO
@@ -201,3 +203,4 @@ struct ProjectIconTests {
     #expect(IconFill.color("srgb:1,0") == nil && IconFill.color("lab:1,2,3,1") == nil)
   }
 }
+#endif

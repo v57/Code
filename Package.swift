@@ -90,3 +90,23 @@ let package = Package(
     .testTarget(
       name: "CodeFormattingTests", dependencies: ["CodeFormatting"], swiftSettings: swiftSettings),
   ])
+
+#if os(Windows) || os(Linux)
+/// Another v57 repository: GitHub's main branch, or the checkout next to this one with `V57_LOCAL=1`.
+func v57(_ name: String) -> Package.Dependency {
+  Context.environment["V57_LOCAL"] == nil
+    ? .package(url: "https://github.com/v57/\(name).git", branch: "main") : .package(path: "../\(name)")
+}
+// Off Apple platforms SwiftUI, CryptoKit and os are v57/SwiftUI's, and SwiftUIPortability adds the Foundation APIs
+// swift-corelibs-foundation lacks.
+package.dependencies += [v57("SwiftUI")]
+for target in package.targets where target.type == .regular {
+  target.dependencies += [
+    .product(name: "SwiftUIPortability", package: "SwiftUI"), .product(name: "os", package: "SwiftUI"),
+    .product(name: "CryptoKit", package: "SwiftUI"),
+  ]
+  if ["CodeIcons", "CodeKit"].contains(target.name) {
+    target.dependencies += [.product(name: "SwiftUI", package: "SwiftUI")]
+  }
+}
+#endif

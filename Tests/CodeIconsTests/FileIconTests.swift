@@ -16,10 +16,12 @@ import Testing
 @Test func lettersFitAndSymbolsExist() {
   for icon in FileIcon.all {
     #expect((1...3).contains(icon.letters.count), "\(icon.name): \(icon.letters)")
-    if let symbol = FileIcon.catalog[icon.name]?.symbol {
-      // Catches a misspelled symbol: this system has every symbol the catalog uses.
-      #expect(icon.symbol == symbol, "\(icon.name): no SF Symbol \(symbol)")
-    }
+    #if canImport(AppKit) || canImport(UIKit)
+      if let symbol = FileIcon.catalog[icon.name]?.symbol {
+        // Catches a misspelled symbol: this system has every symbol the catalog uses (elsewhere icons are letters).
+        #expect(icon.symbol == symbol, "\(icon.name): no SF Symbol \(symbol)")
+      }
+    #endif
   }
 }
 
