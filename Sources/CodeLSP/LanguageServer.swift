@@ -1,4 +1,4 @@
-#if os(macOS)
+#if os(macOS) || os(Windows)
   import Foundation
 
   /// A position in a document: line and UTF-16 character offset, from 0.

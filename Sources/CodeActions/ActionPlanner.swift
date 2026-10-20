@@ -1,7 +1,7 @@
 import CodeProgress
 import Foundation
 
-#if os(macOS)
+#if os(macOS) || os(Windows)
 /// One step of an action ("Build", "Install", "Launch"), run in order.
 public struct ActionStep: Sendable {
   public var title: String

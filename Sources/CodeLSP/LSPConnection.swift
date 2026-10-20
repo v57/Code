@@ -1,4 +1,4 @@
-#if os(macOS)
+#if os(macOS) || os(Windows)
   import Foundation
 
   /// A JSON-RPC connection to a language server over its standard input and

@@ -192,5 +192,22 @@ public enum Notarization {
         return (process.terminationStatus, String(decoding: data, as: UTF8.self))
       }.value
     }
+  #else
+    // notarytool and the keychain are the Mac's: elsewhere there is nothing to sign or notarize with.
+    private static let unavailable = "Notarization needs a Mac with Xcode."
+
+    public static func developerIDIdentities() async -> [DeveloperIDIdentity] { [] }
+
+    public static func checkProfile(_ profile: String) async -> NotaryProfileStatus { .failed(unavailable) }
+
+    public static func storeAPIKeyProfile(_ profile: String, path: String, keyID: String, issuerID: String?) async -> (exitCode: Int32, output: String) {
+      (1, unavailable)
+    }
+
+    public static func storeAppleIDProfile(
+      _ profile: String, appleID: String, teamID: String, password: String
+    ) async -> (exitCode: Int32, output: String) {
+      (1, unavailable)
+    }
   #endif
 }

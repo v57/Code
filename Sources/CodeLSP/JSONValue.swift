@@ -64,7 +64,7 @@ public enum JSONValue: Equatable, Sendable, ExpressibleByStringLiteral, Expressi
     switch any {
     case let value as NSNumber:
       // Booleans come back from JSONSerialization as NSNumber too.
-      if CFGetTypeID(value) == CFBooleanGetTypeID() {
+      if Self.isBoolean(value) {
         self = .bool(value.boolValue)
       } else {
         self = .number(value.doubleValue)
@@ -74,6 +74,16 @@ public enum JSONValue: Equatable, Sendable, ExpressibleByStringLiteral, Expressi
     case let value as [String: Any]: self = .object(value.mapValues(JSONValue.init(any:)))
     default: self = .null
     }
+  }
+
+  /// Whether JSONSerialization made the number from `true` or `false`.
+  private static func isBoolean(_ number: NSNumber) -> Bool {
+    #if canImport(ObjectiveC)
+      CFGetTypeID(number) == CFBooleanGetTypeID()
+    #else
+      // swift-corelibs-foundation keeps booleans as char-typed numbers, which JSON never produces otherwise.
+      String(cString: number.objCType) == "c"
+    #endif
   }
 
   public var any: Any {

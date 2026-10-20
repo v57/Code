@@ -31,7 +31,14 @@ public struct RunDestination: Identifiable, Hashable, Codable, Sendable {
     self.isAvailable = isAvailable
   }
 
-  public static let mac = RunDestination(id: "mac", name: "My Mac", kind: .mac)
+  /// This computer (`.mac` is the computer Code runs on): "My Mac", or "This PC" on Windows.
+  public static let mac = RunDestination(id: "mac", name: localName, kind: .mac)
+
+  #if os(Windows)
+    public static let localName = "This PC"
+  #else
+    public static let localName = "My Mac"
+  #endif
 
   public var platform: Platform {
     switch kind {
@@ -43,7 +50,12 @@ public struct RunDestination: Identifiable, Hashable, Codable, Sendable {
 
   public var symbolName: String {
     switch kind {
-    case .mac: return "laptopcomputer"
+    case .mac:
+      #if os(Windows)
+        return "desktopcomputer"
+      #else
+        return "laptopcomputer"
+      #endif
     case .iOSSimulator: return name.contains("iPad") ? "ipad" : "iphone"
     case .iOSDevice: return name.contains("iPad") ? "ipad" : "iphone.gen3"
     case .androidDevice: return "smartphone"
@@ -54,7 +66,7 @@ public struct RunDestination: Identifiable, Hashable, Codable, Sendable {
   /// The menu section this destination is listed under.
   public var section: String {
     switch kind {
-    case .mac: return "My Mac"
+    case .mac: return Self.localName
     case .iOSDevice: return "iOS Devices"
     case .iOSSimulator: return "iOS Simulators"
     case .androidDevice: return "Android Devices"

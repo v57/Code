@@ -240,6 +240,122 @@ import Foundation
       }
     }
   }
+#elseif os(Windows)
+  import SwiftUIPortability
+  import WinSDK
+
+  /// A shell command (`cmd /c`) with its output read from pipes: Windows has pseudo-consoles, but a pipe is
+  /// enough for build output. Stopping it ends everything it started (`taskkill /T`).
+  public final class PTYProcess: @unchecked Sendable {
+    /// One piece of output: a line, or a transient status line that a later
+    /// one replaces (text ending in a carriage return, like a progress bar).
+    public struct Line: Sendable {
+      public var text: String
+      public var isTransient: Bool
+    }
+
+    public let pid: Int32
+    private let child: ChildProcess
+    private let lock = NSLock()
+    private var pending = Data()
+
+    /// Starts `cmd /d /s /c command` in `directory`.
+    public init(command: String, directory: URL, environment: [String: String]) throws {
+      var env = environment
+      env["PYTHONUNBUFFERED"] = "1"
+      env["NSUnbufferedIO"] = "YES"
+      let shell = env["ComSpec"] ?? env["COMSPEC"] ?? "C:\\Windows\\System32\\cmd.exe"
+      do {
+        // cmd takes the rest of its command line as is with /s: the command keeps its own quoting.
+        child = try ChildProcess(
+          executable: URL(fileURLWithPath: shell), arguments: ["/d", "/s", "/c", "\"" + command + "\""],
+          directory: directory, environment: env, verbatimArguments: true)
+      } catch {
+        throw ActionError.launchFailed(error.localizedDescription)
+      }
+      pid = child.processIdentifier
+    }
+
+    /// Reads output until the command exits; returns its exit status.
+    public func run(onLine: @escaping @Sendable (Line) -> Void) async -> Int32 {
+      await withCheckedContinuation { continuation in
+        let group = DispatchGroup()
+        for stream in [ChildProcess.Stream.output, .error] {
+          group.enter()
+          Thread.detachNewThread { [self] in
+            child.read(stream) { chunk in
+              lock.withLock {
+                pending.append(chunk)
+                emitLines(final: false, onLine: onLine)
+              }
+            }
+            group.leave()
+          }
+        }
+        Thread.detachNewThread { [self] in
+          let status = child.waitUntilExit()
+          // Programs it started in the background may hold the pipes open; don't wait for them past a moment.
+          _ = group.wait(timeout: .now() + 0.3)
+          lock.withLock { emitLines(final: true, onLine: onLine) }
+          continuation.resume(returning: status)
+        }
+      }
+    }
+
+    private func emitLines(final: Bool, onLine: (Line) -> Void) {
+      while let newline = pending.firstIndex(of: 0x0A) {
+        let chunk = pending[pending.startIndex..<newline]
+        pending.removeSubrange(pending.startIndex...newline)
+        emit(chunk, onLine: onLine)
+      }
+      if final, !pending.isEmpty {
+        emit(pending[...], onLine: onLine)
+        pending.removeAll()
+      } else if let carriage = pending.lastIndex(of: 0x0D), carriage != pending.index(before: pending.endIndex) {
+        // A status line being redrawn: report its latest state.
+        let chunk = pending[pending.startIndex..<carriage]
+        pending.removeSubrange(pending.startIndex...carriage)
+        if let last = chunk.split(separator: 0x0D).last {
+          let text = ANSI.strip(String(decoding: last, as: UTF8.self))
+          if !text.trimmingCharacters(in: .whitespaces).isEmpty {
+            onLine(Line(text: text, isTransient: true))
+          }
+        }
+      }
+    }
+
+    private func emit(_ chunk: Data.SubSequence, onLine: (Line) -> Void) {
+      var chunk = chunk
+      // "\r\n" ends a line like "\n".
+      if chunk.last == 0x0D { chunk = chunk.dropLast() }
+      let parts = chunk.split(separator: 0x0D, omittingEmptySubsequences: false)
+      for (index, part) in parts.enumerated() where index == parts.count - 1 || !part.isEmpty {
+        let text = ANSI.strip(String(decoding: part, as: UTF8.self))
+        if index == parts.count - 1 {
+          onLine(Line(text: text, isTransient: false))
+        } else if !text.trimmingCharacters(in: .whitespaces).isEmpty {
+          onLine(Line(text: text, isTransient: true))
+        }
+      }
+    }
+
+    /// Ends the command and everything it started (Windows has no signals to pass on).
+    public func signal(_ signal: Int32) { stop() }
+
+    /// Stops the command like Xcode's Stop: the whole process tree.
+    public func stop() {
+      let pid = pid
+      Thread.detachNewThread {
+        let system = ProcessInfo.processInfo.environment["SystemRoot"] ?? "C:\\Windows"
+        if let taskkill = try? ChildProcess(
+          executable: URL(fileURLWithPath: system + "\\System32\\taskkill.exe"), arguments: ["/T", "/F", "/PID", "\(pid)"],
+          directory: nil, environment: ProcessInfo.processInfo.environment)
+        {
+          _ = taskkill.waitUntilExit()
+        }
+      }
+    }
+  }
 #endif
 
 /// Removes terminal escape sequences (colors, cursor movement) from output.

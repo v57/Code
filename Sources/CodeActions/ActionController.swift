@@ -1,4 +1,4 @@
-#if os(macOS)
+#if os(macOS) || os(Windows)
   import CodeProgress
   import Foundation
   import Observation
