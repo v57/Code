@@ -1,7 +1,8 @@
-#if os(macOS)
+#if os(macOS) || os(Windows)
   import CodeActions
   import CodeLSP
   import Foundation
+  import Observation
 
   /// SourceKit-LSP for files of Xcode targets: it reads SwiftPM packages but
   /// not Xcode projects, so the selected Xcode scheme's compiler arguments
@@ -54,6 +55,7 @@
       guard force || key != databaseKey else { return }
       let folder = compilationDatabaseFolder
       let environment = languageServers.environment
+      #if os(macOS)
       databaseTask?.cancel()
       databaseTask = Task {
         // Scanning picks a scheme, then a destination: write once.
@@ -71,6 +73,10 @@
             [folder.appendingPathComponent("compile_commands.json")], forServer: Self.sourceKitID)
         }
       }
+      #else
+        // Xcode projects build only on the Mac.
+        _ = (key, folder, environment, destination)
+      #endif
     }
   }
 #endif

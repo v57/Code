@@ -1,5 +1,10 @@
-#if os(macOS)
-  import AppKit
+#if os(macOS) || os(Windows)
+  #if os(macOS)
+    import AppKit
+  #elseif os(Windows)
+    import WinSDK
+  #endif
+  import Foundation
   import CodeActions
   import CodeEditor
   import CodeFormatting
@@ -173,13 +178,13 @@
     // MARK: - Documents
 
     /// An editor started showing a document: its language server opens it.
-    func documentShown(_ document: TextDocument, textView: CodeTextView) {
+    func documentShown(_ document: TextDocument, textView: any CodeTextEditing) {
       shown[document.url.standardizedFileURL] = WeakTextView(textView: textView)
       guard isReady else { return }
       languageServers.didOpen(document.url, text: textView.string)
     }
 
-    func documentEdited(_ document: TextDocument, edit: TextEdit, textView: CodeTextView) {
+    func documentEdited(_ document: TextDocument, edit: TextEdit, textView: any CodeTextEditing) {
       let url = document.url
       guard languageServers.isOpen(url) else { return }
       let change = LSPTextChange(
@@ -213,7 +218,7 @@
     // MARK: - Formatting
 
     /// Formats a document's text in its editor before an explicit save.
-    func formatBeforeSave(_ document: TextDocument, textView: CodeTextView) async {
+    func formatBeforeSave(_ document: TextDocument, textView: any CodeTextEditing) async {
       guard settings.formatOnSave else { return }
       let text = textView.string
       do {
@@ -370,7 +375,7 @@
         let locations = await languageServers.locations(
           url: document.url, position: LSPPosition(line: position.line, character: position.column))
         guard let target = locations.first else {
-          NSSound.beep()
+          beep()
           showStatus("No definition found")
           return
         }
@@ -412,8 +417,7 @@
           showStatus("No Quick Help")
           return
         }
-        QuickHelpPopover.show(text, in: textView, at: textView.identifierRange(at: location)
-          ?? NSRange(location: location, length: 0))
+        textView.showQuickHelp(text, at: textView.identifierRange(at: location) ?? NSRange(location: location, length: 0))
       }
     }
 
@@ -467,13 +471,13 @@
     /// Back to where the editor was before the last jump or file switch
     /// (⌃⌘←).
     public func goBack() {
-      guard let target = back.popLast() else { return NSSound.beep() }
+      guard let target = back.popLast() else { return beep() }
       if let current = position(of: workspace.selectedDocument) { forward.append(current) }
       go(to: target)
     }
 
     public func goForward() {
-      guard let target = forward.popLast() else { return NSSound.beep() }
+      guard let target = forward.popLast() else { return beep() }
       if let current = position(of: workspace.selectedDocument) { back.append(current) }
       go(to: target)
     }
@@ -521,7 +525,16 @@
   }
 
   private struct WeakTextView {
-    weak var textView: CodeTextView?
+    weak var textView: (any CodeTextEditing)?
+  }
+
+  /// The system's alert sound (nothing to go back to, no definition).
+  @MainActor func beep() {
+    #if os(macOS)
+      NSSound.beep()
+    #elseif os(Windows)
+      MessageBeep(UINT(MB_OK))
+    #endif
   }
 
   /// Runs install commands (brew install …) and keeps their output.

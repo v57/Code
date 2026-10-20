@@ -2,40 +2,6 @@
   import AppKit
   import CodeHighlighting
 
-  /// An issue shown on a line: an error, warning or note from a build or a
-  /// language server.
-  public struct LineAnnotation: Equatable, Sendable {
-    public enum Severity: Int, Comparable, Sendable {
-      case error, warning, note
-
-      public static func < (lhs: Severity, rhs: Severity) -> Bool { lhs.rawValue < rhs.rawValue }
-    }
-
-    /// From 0.
-    public var line: Int
-    /// UTF-16 column from 0, when known.
-    public var column: Int?
-    public var severity: Severity
-    public var message: String
-
-    public init(line: Int, column: Int? = nil, severity: Severity, message: String) {
-      self.line = line
-      self.column = column
-      self.severity = severity
-      self.message = message
-    }
-  }
-
-  /// An edit as language servers take it: the replaced range in the text
-  /// before the edit (lines and UTF-16 columns from 0) and the new text.
-  public struct TextEdit: Equatable, Sendable {
-    public var startLine: Int
-    public var startColumn: Int
-    public var endLine: Int
-    public var endColumn: Int
-    public var text: String
-  }
-
   extension CodeTextView {
     // MARK: - Formatting
 

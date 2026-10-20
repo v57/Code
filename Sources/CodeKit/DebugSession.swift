@@ -1,7 +1,12 @@
-#if os(macOS)
-  import AppKit
+#if os(macOS) || os(Windows)
+  #if os(macOS)
+    import AppKit
+    import Darwin
+  #else
+    import SwiftUIPortability
+  #endif
   import CodeActions
-  import Darwin
+  import Foundation
   import Observation
 
   /// Runs a program under LLDB with the project's breakpoints, as Xcode does
@@ -23,14 +28,20 @@
     @ObservationIgnored private weak var services: ProjectServices?
     @ObservationIgnored private let executable: String
     @ObservationIgnored private let directory: URL
-    @ObservationIgnored private let process = Process()
-    @ObservationIgnored private let input = Pipe()
-    @ObservationIgnored private let output = Pipe()
-    @ObservationIgnored private var inferiorPID: pid_t?
+    #if os(macOS)
+      @ObservationIgnored private let process = Process()
+      @ObservationIgnored private let input = Pipe()
+      @ObservationIgnored private let output = Pipe()
+      @ObservationIgnored private var terminal: (master: Int32, slave: Int32, path: String)?
+      @ObservationIgnored private var terminalSource: DispatchSourceRead?
+    #else
+      /// LLDB, its input a pipe; the program's output comes through LLDB's (Windows has no pseudo-terminal to
+      /// give it).
+      @ObservationIgnored private var lldb: ChildProcess?
+    #endif
+    @ObservationIgnored private var inferiorPID: Int32?
     @ObservationIgnored private var log: (@Sendable (String) -> Void)?
     @ObservationIgnored private var pending = ""
-    @ObservationIgnored private var terminal: (master: Int32, slave: Int32, path: String)?
-    @ObservationIgnored private var terminalSource: DispatchSourceRead?
     @ObservationIgnored private var finished: CheckedContinuation<Void, Never>?
     @ObservationIgnored private var stopLocation: (path: String, line: Int)?
 
@@ -46,24 +57,28 @@
       guard FileManager.default.isExecutableFile(atPath: executable) else {
         throw ActionError.missing("The built program wasn’t found at \(executable).")
       }
-      openTerminal()
-      process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
-      process.arguments = ["lldb", "--no-use-colors"]
-      process.currentDirectoryURL = directory
-      process.environment = context.environment
-      process.standardInput = input
-      process.standardOutput = output
-      process.standardError = output
-      output.fileHandleForReading.readabilityHandler = { [weak self] handle in
-        let data = handle.availableData
-        guard !data.isEmpty else { return }
-        let text = String(decoding: data, as: UTF8.self)
-        Task { @MainActor in self?.receive(text) }
-      }
-      process.terminationHandler = { [weak self] _ in
-        Task { @MainActor in self?.end() }
-      }
-      try process.run()
+      #if os(macOS)
+        openTerminal()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
+        process.arguments = ["lldb", "--no-use-colors"]
+        process.currentDirectoryURL = directory
+        process.environment = context.environment
+        process.standardInput = input
+        process.standardOutput = output
+        process.standardError = output
+        output.fileHandleForReading.readabilityHandler = { [weak self] handle in
+          let data = handle.availableData
+          guard !data.isEmpty else { return }
+          let text = String(decoding: data, as: UTF8.self)
+          Task { @MainActor in self?.receive(text) }
+        }
+        process.terminationHandler = { [weak self] _ in
+          Task { @MainActor in self?.end() }
+        }
+        try process.run()
+      #else
+        try startLLDB(environment: context.environment)
+      #endif
       context.onStop { [weak self] in Task { @MainActor in self?.stop() } }
 
       send("settings set auto-confirm true")
@@ -73,8 +88,12 @@
       for (url, lines) in services?.breakpoints ?? [:] where services?.breakpointsActive == true {
         for line in lines.sorted() { send("breakpoint set --file \(quote(FileTree.realPath(of: url))) --line \(line + 1)") }
       }
-      let tty = terminal?.path ?? "/dev/null"
-      send("process launch --working-dir \(quote(directory.path)) -i /dev/null -o \(tty) -e \(tty)")
+      #if os(macOS)
+        let tty = terminal?.path ?? "/dev/null"
+        send("process launch --working-dir \(quote(directory.path)) -i /dev/null -o \(tty) -e \(tty)")
+      #else
+        send("process launch --working-dir \(quote(directory.path)) -i NUL")
+      #endif
       state = .running
       await withCheckedContinuation { continuation in finished = continuation }
     }
@@ -89,17 +108,28 @@
     /// Pauses the running program (an interrupt LLDB catches).
     public func pause() {
       guard state == .running, let pid = inferiorPID else { return }
-      kill(pid, SIGINT)
+      #if os(macOS)
+        kill(pid, SIGINT)
+      #else
+        _ = pid
+        send("process interrupt")
+      #endif
     }
 
     public func stop() {
       guard state != .ended else { return }
-      if let pid = inferiorPID { kill(pid, SIGKILL) }
+      #if os(macOS)
+        if let pid = inferiorPID { kill(pid, SIGKILL) }
+      #endif
       send("process kill")
       send("quit")
-      DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [process] in
-        if process.isRunning { process.terminate() }
-      }
+      #if os(macOS)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [process] in
+          if process.isRunning { process.terminate() }
+        }
+      #else
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [lldb] in lldb?.terminate() }
+      #endif
     }
 
     /// Sends a command typed in the console.
@@ -127,7 +157,11 @@
     }
 
     private func send(_ command: String) {
-      try? input.fileHandleForWriting.write(contentsOf: Data((command + "\n").utf8))
+      #if os(macOS)
+        try? input.fileHandleForWriting.write(contentsOf: Data((command + "\n").utf8))
+      #else
+        lldb?.write(Data((command + "\n").utf8))
+      #endif
     }
 
     private func quote(_ text: String) -> String {
@@ -150,14 +184,15 @@
     private static let stopped = try! NSRegularExpression(pattern: #"^Process (\d+) stopped"#)
     private static let exited = try! NSRegularExpression(pattern: #"^Process (\d+) exited with status = (-?\d+)"#)
     private static let reason = try! NSRegularExpression(pattern: #"stop reason = (.*)$"#)
+    /// The path is absolute (`/…`, or `C:\…` on Windows) or relative.
     private static let frameLine = try! NSRegularExpression(
-      pattern: #"frame #0: .*?`(.*?) at (/[^:]+|[^/:][^:]*):(\d+)(?::\d+)?"#)
+      pattern: #"frame #0: .*?`(.*?) at ((?:[A-Za-z]:)?[/\\][^:]+|[^/\\:][^:]*):(\d+)(?::\d+)?"#)
 
     private func handle(_ line: String) {
       log?(line)
       let range = NSRange(line.startIndex..<line.endIndex, in: line)
       if let match = Self.launched.firstMatch(in: line, range: range),
-        let pid = Range(match.range(at: 1), in: line).flatMap({ pid_t(line[$0]) })
+        let pid = Range(match.range(at: 1), in: line).flatMap({ Int32(line[$0]) })
       {
         inferiorPID = pid
       } else if let match = Self.reason.firstMatch(in: line, range: range),
@@ -184,11 +219,14 @@
     private func showStop(path: String, line: Int) {
       guard let services else { return }
       var url = URL(fileURLWithPath: path)
-      if !path.hasPrefix("/") { url = services.resolve(URL(fileURLWithPath: path, relativeTo: directory)) ?? url }
+      let isAbsolute = path.hasPrefix("/") || path.dropFirst().hasPrefix(":")
+      if !isAbsolute { url = services.resolve(URL(fileURLWithPath: path, relativeTo: directory)) ?? url }
       url = url.standardizedFileURL
       services.executionLocation = (url, line - 1)
       services.open(url, line: line, remember: false)
-      NSApp.activate(ignoringOtherApps: true)
+      #if os(macOS)
+        NSApp.activate(ignoringOtherApps: true)
+      #endif
       // Variables of the stopped frame, in the console.
       send("frame variable")
     }
@@ -198,13 +236,47 @@
       state = .ended
       frame = nil
       services?.executionLocation = nil
-      output.fileHandleForReading.readabilityHandler = nil
-      closeTerminal()
+      #if os(macOS)
+        output.fileHandleForReading.readabilityHandler = nil
+        closeTerminal()
+      #else
+        lldb = nil
+      #endif
       if services?.debugger === self { services?.debugger = nil }
       finished?.resume()
       finished = nil
     }
 
+    #if os(Windows)
+      /// The toolchain's LLDB from the PATH, its output read on threads.
+      private func startLLDB(environment: [String: String]) throws {
+        let path = (environment["Path"] ?? environment["PATH"] ?? "").split(separator: ";")
+          .map { URL(fileURLWithPath: String($0)).appendingPathComponent("lldb.exe") }
+          .first { FileManager.default.fileExists(atPath: $0.path) }
+        guard let path else { throw ActionError.missing("LLDB wasn’t found on the PATH (it comes with the Swift toolchain).") }
+        let lldb = try ChildProcess(
+          executable: path, arguments: ["--no-use-colors"], directory: directory, environment: environment, input: true)
+        self.lldb = lldb
+        let group = DispatchGroup()
+        for stream in [ChildProcess.Stream.output, .error] {
+          group.enter()
+          Thread.detachNewThread { [weak self] in
+            lldb.read(stream) { data in
+              let text = String(decoding: data, as: UTF8.self).replacingOccurrences(of: "\r\n", with: "\n")
+              Task { @MainActor in self?.receive(text) }
+            }
+            group.leave()
+          }
+        }
+        Thread.detachNewThread { [weak self] in
+          _ = lldb.waitUntilExit()
+          group.wait()
+          Task { @MainActor in self?.end() }
+        }
+      }
+    #endif
+
+    #if os(macOS)
     // MARK: - The program's terminal
 
     private func openTerminal() {
@@ -255,6 +327,7 @@
       terminalSource = nil
       terminal = nil
     }
+    #endif
   }
 
   extension ProjectServices {

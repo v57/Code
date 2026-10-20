@@ -4,26 +4,6 @@
   import CodeMinimap
   import SwiftUI
 
-  /// What an editor shows besides the text, from the app's settings.
-  public struct EditorFeatures: Equatable, Sendable {
-    public var showsMinimap = true
-    public var showsIssueMessages = true
-    public var breakpointsEnabled = true
-    /// The completion list opens while typing (else only with Esc and
-    /// ⌃Space).
-    public var suggestsCompletions = true
-
-    public init(
-      showsMinimap: Bool = true, showsIssueMessages: Bool = true, breakpointsEnabled: Bool = true,
-      suggestsCompletions: Bool = true
-    ) {
-      self.showsMinimap = showsMinimap
-      self.showsIssueMessages = showsIssueMessages
-      self.breakpointsEnabled = breakpointsEnabled
-      self.suggestsCompletions = suggestsCompletions
-    }
-  }
-
   /// The editor of one workspace document: CodeEditor's view, fed from a
   /// `TextDocument` and saving through it, with the minimap beside it. Kept
   /// in `TextDocument.editorState` so a tab brought back shows the same undo
@@ -424,6 +404,17 @@
       editor.applyPendingSelection(of: document)
       let selection = textView.currentSelection
       Task { @MainActor in onSelectionChange(selection) }
+    }
+  }
+
+  extension CodeTextView: CodeTextEditing {
+    public var lineCount: Int { lineIndex.count }
+    public var caretLocation: Int { selectedRange().location }
+    public var selectionRange: NSRange { selectedRange() }
+    public var isFocused: Bool { window?.firstResponder === self }
+
+    public func showQuickHelp(_ text: String, at range: NSRange) {
+      QuickHelpPopover.show(text, in: self, at: range)
     }
   }
 
