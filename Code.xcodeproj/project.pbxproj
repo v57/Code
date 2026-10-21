@@ -12,16 +12,27 @@
 		0F5A700F1095C24391180843 /* VaultKit in Frameworks */ = {isa = PBXBuildFile; productRef = 2C754DD20831A96E0D5C5AE0 /* VaultKit */; };
 		DE5C0DE0000000000000DE03 /* DevScreenshots in Frameworks */ = {isa = PBXBuildFile; productRef = DE5C0DE0000000000000DE02 /* DevScreenshots */; };
 		C0C0DE000000000000000C03 /* ComponentKit in Frameworks */ = {isa = PBXBuildFile; productRef = C0C0DE000000000000000C02 /* ComponentKit */; };
+		C0DE105000000000000000F1 /* CodeActions in Frameworks */ = {isa = PBXBuildFile; productRef = C0DE105000000000000000E1 /* CodeActions */; };
+		C0DE105000000000000000F2 /* CodeHighlighting in Frameworks */ = {isa = PBXBuildFile; productRef = C0DE105000000000000000E2 /* CodeHighlighting */; };
+		C0DE105000000000000000F3 /* VaultKit in Frameworks */ = {isa = PBXBuildFile; productRef = C0DE105000000000000000E3 /* VaultKit */; };
+		C0DE105000000000000000F4 /* ComponentKit in Frameworks */ = {isa = PBXBuildFile; productRef = C0DE105000000000000000E4 /* ComponentKit */; };
+		C0DE105000000000000000F5 /* SSHKit in Frameworks */ = {isa = PBXBuildFile; productRef = C0DE105000000000000000E5 /* SSHKit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		000000000000000000000120 /* Code.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Code.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C0DE10500000000000000120 /* Code.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Code.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		000000000000000000000010 /* Code */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Code;
+			sourceTree = "<group>";
+		};
+		C0DE10500000000000000010 /* Code-iOS */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "Code-iOS";
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -37,6 +48,16 @@
 				C0C0DE000000000000000C03 /* ComponentKit in Frameworks */,
 			);
 		};
+		C0DE10500000000130000000 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			files = (
+				C0DE105000000000000000F1 /* CodeActions in Frameworks */,
+				C0DE105000000000000000F2 /* CodeHighlighting in Frameworks */,
+				C0DE105000000000000000F3 /* VaultKit in Frameworks */,
+				C0DE105000000000000000F4 /* ComponentKit in Frameworks */,
+				C0DE105000000000000000F5 /* SSHKit in Frameworks */,
+			);
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -44,6 +65,7 @@
 			isa = PBXGroup;
 			children = (
 				000000000000000000000010 /* Code */,
+				C0DE10500000000000000010 /* Code-iOS */,
 				000000000000000000000020 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -52,6 +74,7 @@
 			isa = PBXGroup;
 			children = (
 				000000000000000000000120 /* Code.app */,
+				C0DE10500000000000000120 /* Code.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -84,6 +107,31 @@
 			productReference = 000000000000000000000120 /* Code.app */;
 			productType = "com.apple.product-type.application";
 		};
+		C0DE10500000000100000000 /* Code iOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C0DE10500000000110000000 /* Build configuration list for PBXNativeTarget "Code iOS" */;
+			buildPhases = (
+				C0DE10500000000120000000 /* Sources */,
+				C0DE10500000000130000000 /* Frameworks */,
+				C0DE10500000000140000000 /* Resources */,
+			);
+			buildRules = (
+			);
+			fileSystemSynchronizedGroups = (
+				C0DE10500000000000000010 /* Code-iOS */,
+			);
+			name = "Code iOS";
+			packageProductDependencies = (
+				C0DE105000000000000000E1 /* CodeActions */,
+				C0DE105000000000000000E2 /* CodeHighlighting */,
+				C0DE105000000000000000E3 /* VaultKit */,
+				C0DE105000000000000000E4 /* ComponentKit */,
+				C0DE105000000000000000E5 /* SSHKit */,
+			);
+			productName = Code;
+			productReference = C0DE10500000000000000120 /* Code.app */;
+			productType = "com.apple.product-type.application";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -96,6 +144,9 @@
 				TargetAttributes = {
 					000000000000000100000000 = {
 						CreatedOnToolsVersion = 26.3;
+					};
+					C0DE10500000000100000000 = {
+						CreatedOnToolsVersion = 27.0;
 					};
 				};
 			};
@@ -114,6 +165,7 @@
 				2B6E154177CEBEF3833B42A4 /* XCRemoteSwiftPackageReference "Vault" */,
 				DE5C0DE0000000000000DE01 /* XCRemoteSwiftPackageReference "Dev" */,
 				C0C0DE000000000000000C01 /* XCRemoteSwiftPackageReference "Component" */,
+				C0DE105000000000000000D1 /* XCRemoteSwiftPackageReference "SSH" */,
 			);
 			preferredProjectObjectVersion = 90;
 			productRefGroup = 000000000000000000000020 /* Products */;
@@ -121,12 +173,18 @@
 			projectRoot = "";
 			targets = (
 				000000000000000100000000 /* Code */,
+				C0DE10500000000100000000 /* Code iOS */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		000000000000000140000000 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			files = (
+			);
+		};
+		C0DE10500000000140000000 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			files = (
 			);
@@ -139,9 +197,86 @@
 			files = (
 			);
 		};
+		C0DE10500000000120000000 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			files = (
+			);
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
+		C0DE10500000000111000000 /* Debug configuration for PBXNativeTarget "Code iOS" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "Code-iOS/Code-iOS.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = AUCR797TMH;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Code;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Dmitry Kozlov. MIT License.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Code signs in to your Macs over SSH to build and test your projects there.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.v57.code;
+				PRODUCT_NAME = Code;
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		C0DE10500000000112000000 /* Release configuration for PBXNativeTarget "Code iOS" */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = "Code-iOS/Code-iOS.entitlements";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = AUCR797TMH;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Code;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Dmitry Kozlov. MIT License.";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Code signs in to your Macs over SSH to build and test your projects there.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.v57.code;
+				PRODUCT_NAME = Code;
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		000000000000000011000000 /* Debug configuration for PBXProject "Code" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -363,6 +498,14 @@
 			);
 			defaultConfigurationName = Release;
 		};
+		C0DE10500000000110000000 /* Build configuration list for PBXNativeTarget "Code iOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C0DE10500000000111000000 /* Debug configuration for PBXNativeTarget "Code iOS" */,
+				C0DE10500000000112000000 /* Release configuration for PBXNativeTarget "Code iOS" */,
+			);
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
@@ -373,6 +516,14 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		C0DE105000000000000000D1 /* XCRemoteSwiftPackageReference "SSH" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/v57/SSH.git";
+			requirement = {
+				branch = main;
+				kind = branch;
+			};
+		};
 		DE5C0DE0000000000000DE01 /* XCRemoteSwiftPackageReference "Dev" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/v57/Dev.git";
@@ -408,6 +559,29 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		C0DE105000000000000000E1 /* CodeActions */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CodeActions;
+		};
+		C0DE105000000000000000E2 /* CodeHighlighting */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CodeHighlighting;
+		};
+		C0DE105000000000000000E3 /* VaultKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 2B6E154177CEBEF3833B42A4 /* XCRemoteSwiftPackageReference "Vault" */;
+			productName = VaultKit;
+		};
+		C0DE105000000000000000E4 /* ComponentKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C0C0DE000000000000000C01 /* XCRemoteSwiftPackageReference "Component" */;
+			productName = ComponentKit;
+		};
+		C0DE105000000000000000E5 /* SSHKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = C0DE105000000000000000D1 /* XCRemoteSwiftPackageReference "SSH" */;
+			productName = SSHKit;
+		};
 		C0DE00000000000000000A04 /* CodeKit */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = CodeKit;

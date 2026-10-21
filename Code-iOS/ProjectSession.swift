@@ -1,0 +1,91 @@
+import CodeActions
+import Foundation
+import Observation
+import SSHKit
+
+/// One open project: a copy of its manifests from one of the devices that have it (`ProjectMirror`), and the
+/// toolbar's model over that copy (`ActionController`), whose destinations are those devices. Build, Test and Clean
+/// run on the destination picked, in the project's folder there.
+@MainActor @Observable final class ProjectSession {
+  enum Phase: Equatable {
+    case loading(String)
+    case ready
+    case failed(String)
+  }
+
+  let project: RemoteProject
+  private(set) var phase: Phase = .loading("Connecting")
+  private(set) var controller: ActionController?
+  /// The device the copy came from, and the folder there.
+  private(set) var source: SSHExecutor.Target?
+  @ObservationIgnored private var files: SFTPClient?
+
+  init(project: RemoteProject) {
+    self.project = project
+  }
+
+  /// Copies the project's manifests from the first device that answers, then finds its schemes.
+  func open() async {
+    var failures: [String] = []
+    for target in project.targets {
+      phase = .loading("Connecting to \(target.name)")
+      do {
+        let client = try await SFTPClient.connect(server: try login(for: target), timeout: 15)
+        remember(client.hostKeyFingerprint, for: target)
+        phase = .loading("Reading the project on \(target.name)")
+        let root = try await ProjectMirror.fetch(target.directory, projectID: project.id, client: client)
+        files = client
+        source = target
+        start(root: root, preferring: target)
+        return
+      } catch {
+        failures.append("\(target.name): \(Self.describe(error))")
+      }
+    }
+    phase = .failed(failures.joined(separator: "\n"))
+  }
+
+  /// The SFTP connection the copy was made over, for browsing the folder there; reconnects when it closed.
+  func fileClient() async throws -> SFTPClient {
+    if let files, files.isAlive { return files }
+    guard let source else { throw SSHTunnelError.closed }
+    let client = try await SFTPClient.connect(server: try login(for: source), timeout: 15)
+    files = client
+    return client
+  }
+
+  func close() {
+    controller?.stop()
+    files?.close()
+    files = nil
+  }
+
+  private func start(root: URL, preferring target: SSHExecutor.Target) {
+    let controller = ActionController(root: root)
+    controller.remoteLogin = { target in try RemoteProjects.login(for: target) }
+    controller.didMeetHostKey = { target, fingerprint in RemoteProjects.trust(fingerprint, for: target) }
+    controller.remoteTargets = project.targets
+    if controller.selectedDestinationID == nil { controller.selectedDestinationID = "ssh:" + target.id }
+    controller.scan()
+    self.controller = controller
+    phase = .ready
+    #if DEBUG
+      DebugLaunch.attach(to: controller)
+    #endif
+  }
+
+  /// The login for a target, as the executor makes it (its address, its signed host key pinned).
+  private func login(for target: SSHExecutor.Target) throws -> SSHServer {
+    let login = try RemoteProjects.login(for: target)
+    return SSHExecutor(target: target, localRoot: URL(fileURLWithPath: "/"), login: login).server(from: login)
+  }
+
+  private func remember(_ fingerprint: String, for target: SSHExecutor.Target) {
+    guard target.hostKey == nil, (try? RemoteProjects.login(for: target).knownFingerprint) == nil else { return }
+    RemoteProjects.trust(fingerprint, for: target)
+  }
+
+  static func describe(_ error: Error) -> String {
+    (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+  }
+}

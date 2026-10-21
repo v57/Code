@@ -3,10 +3,13 @@
 A folder-based code editor for macOS, in the style of VS Code and Zed: open a
 folder, browse it in the sidebar, edit files in tabs with syntax highlighting,
 and build, run, test and debug it from an Xcode-style toolbar, with language
-servers for definitions and issues.
+servers for definitions and issues. On iPhone and iPad, Code runs Build, Test
+and Clean on the user's Macs over SSH (the devices on their Hub that have the
+project), with the log and issues streamed back, and reads the files there.
 
-Two parts, like `../Markdown`: the libraries (this package) and a thin
-SwiftUI app (`Code.xcodeproj`, sources in `Code/`).
+Two parts, like `../Markdown`: the libraries (this package) and thin SwiftUI
+apps (`Code.xcodeproj`: the Mac app in `Code/`, the iPhone and iPad app in
+`Code-iOS/`).
 
 Libraries
 
@@ -28,8 +31,10 @@ Libraries
                        (notarized) and Upload; run destinations (Mac,
                        simulators, iOS devices, Android devices and
                        emulators), running them on a pseudo-terminal,
-                       build-log issues and progress (macOS). Shell's smart
-                       actions are these schemes.
+                       build-log issues and progress (macOS), or on another
+                       machine over SSH (the system's ssh, or SSHKit's
+                       in-process client from ../SSH, as on iPhone and
+                       iPad). Shell's smart actions are these schemes.
     CodeLSP            language server client (JSON-RPC over stdio), the
                        catalog of servers and how to install each from its
                        official source, a manager per workspace (macOS)
@@ -72,7 +77,8 @@ Layout
     Sources/CodeActions/        ActionScheme, ProjectScanner, Detectors/,
                                 RunDestination, ShellEnvironment, PTYProcess,
                                 ActionExecutor (here, or SSHExecutor: another
-                                machine, e.g. a device on the user's Hub),
+                                machine, e.g. a device on the user's Hub, over
+                                ssh or SSHKit's SSHCommand),
                                 BuildLog, ActionPlanner, ActionController,
                                 Notarization
     Sources/CodeLSP/            JSONValue, LSPConnection, LanguageServerCatalog,
@@ -94,6 +100,11 @@ Layout
       CodeApp.swift, CodeCommands.swift, AppState.swift, AppDelegate.swift
       Welcome/, Workspace/ (+ ProjectToolbar, ConsoleView), Settings/
       (+ ToolsSettingsView: Languages, Formatting, Run), DebugAutomation
+    Code-iOS/                   the iPhone and iPad app: RemoteProjects (vault
+                                projects on Hub devices, sign-in), ProjectMirror
+                                (the manifests over SFTP, for the detectors),
+                                ProjectSession, ProjectScreen, RemoteFiles,
+                                DebugLaunch
 
 Architecture
 
