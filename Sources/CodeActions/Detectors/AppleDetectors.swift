@@ -13,9 +13,7 @@ public struct XcodeDetector: ProjectDetector {
         ?? folder.first(withSuffix: ".xcodeproj")
     else { return [] }
     let url = folder.url.appendingPathComponent(container)
-    guard let json = Self.list(url), let names = Self.parseSchemes(json), !names.isEmpty else {
-      return []
-    }
+    guard let names = Self.schemeNames(url, in: folder), !names.isEmpty else { return [] }
     let platforms = Self.platforms(of: folder)
     let flag = container.hasSuffix(".xcworkspace") ? "-workspace" : "-project"
     return Self.ranked(names, in: folder).map { name in
@@ -157,6 +155,23 @@ public struct XcodeDetector: ProjectDetector {
     if let schemes = payload.workspace?.schemes, !schemes.isEmpty { return schemes }
     if let schemes = payload.project?.schemes, !schemes.isEmpty { return schemes }
     return payload.project?.targets
+  }
+
+  /// The container's schemes from `xcodebuild -list`; where there's no xcodebuild (iPhone and iPad, looking at a
+  /// copy of a project on a Mac) from its scheme files, then the targets Xcode makes schemes for.
+  static func schemeNames(_ container: URL, in folder: ProjectFolder) -> [String]? {
+    #if os(iOS)
+      var names: [String] = []
+      for entry in folder.entries
+      where entry.name.hasSuffix(".xcodeproj") || entry.name.hasSuffix(".xcworkspace") {
+        let schemes = schemeFiles(in: folder.url.appendingPathComponent(entry.name)).map(\.0)
+        let targets = targets(in: folder.read(entry.name + "/project.pbxproj") ?? "").map(\.0)
+        for name in schemes + targets where !names.contains(name) { names.append(name) }
+      }
+      return names
+    #else
+      return Self.list(container).flatMap(Self.parseSchemes)
+    #endif
   }
 
   static func list(_ container: URL) -> String? {

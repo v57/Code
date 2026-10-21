@@ -1,7 +1,7 @@
-#if os(macOS) || os(Windows)
   import CodeProgress
   import Foundation
   import Observation
+  import SSHKit
 
   /// The output of the last action, for the console. Lines arrive in
   /// batches; `revision` changes after each batch.
@@ -80,6 +80,11 @@
         destinations = destinations.filter { $0.kind != .remote } + remoteDestinations
       }
     }
+    /// How the in-process SSH client signs in to a remote target (this device's key, the host key known for it).
+    /// Nil, or a nil result, runs the system's `ssh` client (macOS, Windows); iPhone and iPad need it.
+    @ObservationIgnored public var remoteLogin: (@MainActor (SSHExecutor.Target) throws -> SSHServer?)?
+    /// Called on the main actor with a remote target's host key after a first in-process login to it, to remember.
+    @ObservationIgnored public var didMeetHostKey: (@MainActor (SSHExecutor.Target, String) -> Void)?
     public var selectedDestinationID: String? {
       didSet { defaults.set(selectedDestinationID, forKey: key("destination")) }
     }
@@ -180,7 +185,13 @@
       destinationsTask?.cancel()
       isLoadingDestinations = true
       destinationsTask = Task {
-        let destinations = await DestinationProvider.load(platforms: platforms)
+        #if os(iOS)
+          // Nothing builds or runs here: only other machines.
+          let destinations: [RunDestination] = []
+          _ = platforms
+        #else
+          let destinations = await DestinationProvider.load(platforms: platforms)
+        #endif
         guard !Task.isCancelled else { return }
         self.destinations = destinations + self.remoteDestinations
         self.isLoadingDestinations = false
@@ -202,7 +213,17 @@
       guard let destination, destination.kind == .remote,
         let target = remoteTargets.first(where: { Self.remotePrefix + $0.id == destination.id })
       else { return LocalExecutor() }
-      return SSHExecutor(target: target, localRoot: root)
+      let login: SSHServer?
+      do {
+        login = try remoteLogin?(target)
+      } catch {
+        let reason = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        return UnavailableExecutor(reason: "couldn't sign in to \(target.name): \(reason)")
+      }
+      let didMeetHostKey = didMeetHostKey
+      return SSHExecutor(target: target, localRoot: root, login: login) { fingerprint in
+        Task { @MainActor in didMeetHostKey?(target, fingerprint) }
+      }
     }
 
     // MARK: - Running
@@ -416,7 +437,7 @@
       self.deliver = deliver
     }
 
-    func add(_ line: PTYProcess.Line) {
+    func add(_ line: ActionLine) {
       lock.withLock {
         events += parser.consume(line.text)
         if !line.isTransient {
@@ -442,4 +463,3 @@
       MainActor.assumeIsolated { deliver(entries, events) }
     }
   }
-#endif

@@ -1,4 +1,5 @@
 import Foundation
+import SSHKit
 import Testing
 
 @testable import CodeActions
@@ -91,10 +92,93 @@ import Testing
     }
   }
 
-  final class LineBox: @unchecked Sendable {
-    private let lock = NSLock()
-    private var lines: [String] = []
-    func append(_ line: String) { lock.withLock { lines.append(line) } }
-    var all: [String] { lock.withLock { lines } }
-  }
 #endif
+
+@Suite struct InProcessSSHTests {
+  @Test func outputSplitsIntoLinesAsOnATerminal() {
+    var splitter = ActionLineSplitter()
+    var lines: [ActionLine] = []
+    splitter.add(Data("one\r\ntw".utf8)) { lines.append($0) }
+    splitter.add(Data("o\n\u{1B}[1mbold\u{1B}[0m\n10%\r20%\r".utf8)) { lines.append($0) }
+    splitter.add(Data("30%\rdone".utf8)) { lines.append($0) }
+    splitter.finish { lines.append($0) }
+    #expect(lines.map(\.text) == ["one", "two", "bold", "30%", "done"])
+    #expect(lines.map(\.isTransient) == [false, false, false, true, false])
+  }
+
+  @Test func theLoginGoesToTheTargetWithItsSignedKeyPinned() throws {
+    let target = SSHExecutor.Target(
+      id: "studio", name: "Mac Studio", host: "100.96.0.4", port: 2222, user: "me",
+      hostKey: "ecdsa-sha2-nistp256 AAAAE2VjZHNh comment", directory: "/Users/me/Code/Atlas")
+    let executor = SSHExecutor(
+      target: target, localRoot: URL(fileURLWithPath: "/tmp/Atlas"),
+      login: SSHServer(host: "", user: "fallback", password: "x", knownFingerprint: "SHA256:old"))
+    let server = executor.server(from: try #require(executor.login))
+    #expect(server.host == "100.96.0.4" && server.port == 2222 && server.user == "me")
+    // SHA-256 of the key blob ("AAAAE2VjZHNh" decodes to it), unpadded base64, as libssh2 reports it.
+    #expect(server.knownFingerprint == SSHExecutor.fingerprint(ofHostKey: "ecdsa-sha2-nistp256 AAAAE2VjZHNh"))
+    #expect(server.knownFingerprint?.hasPrefix("SHA256:") == true && server.knownFingerprint != "SHA256:old")
+    var unsigned = target
+    unsigned.hostKey = nil
+    unsigned.user = ""
+    let other = SSHExecutor(target: unsigned, localRoot: executor.localRoot, login: executor.login).server(from: executor.login!)
+    #expect(other.knownFingerprint == "SHA256:old" && other.user == "fallback")
+  }
+
+  /// A real run over SSHKit's client, when a server is given: `CODE_SSH_TEST_HOST`, `CODE_SSH_TEST_PORT`,
+  /// `CODE_SSH_TEST_USER` and `CODE_SSH_TEST_KEY` (a private key file it accepts).
+  @Test(.enabled(if: ProcessInfo.processInfo.environment["CODE_SSH_TEST_KEY"] != nil))
+  func runsInProcess() async throws {
+    let environment = ProcessInfo.processInfo.environment
+    let key = try SSHKey(importing: String(contentsOfFile: environment["CODE_SSH_TEST_KEY"]!, encoding: .utf8))
+    let remote = FileManager.default.temporaryDirectory.appendingPathComponent("remote-\(UUID().uuidString)")
+    try FileManager.default.createDirectory(at: remote.appendingPathComponent("Sub"), withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: remote) }
+    let met = LineBox()
+    let executor = SSHExecutor(
+      target: .init(
+        id: "test", name: "test", host: environment["CODE_SSH_TEST_HOST"] ?? "127.0.0.1",
+        port: Int(environment["CODE_SSH_TEST_PORT"] ?? "22") ?? 22, directory: remote.path),
+      localRoot: URL(fileURLWithPath: "/nonexistent/project"),
+      login: SSHServer(host: "", user: environment["CODE_SSH_TEST_USER"] ?? NSUserName(), key: key)
+    ) { met.append($0) }
+    let lines = LineBox()
+    let context = ActionContext(
+      directory: URL(fileURLWithPath: "/nonexistent/project/Sub"), environment: [:], executor: executor
+    ) { lines.append($0.text) }
+    try await context.run("pwd; printf 'a\\rb\\n'; echo out-$((40 + 2))", title: "Echo")
+    #expect(lines.all.contains { $0.hasSuffix("/Sub") && $0.contains("remote-") })
+    #expect(lines.all.contains("b"))
+    #expect(lines.all.contains("out-42"))
+    #expect(met.all.first?.hasPrefix("SHA256:") == true)
+    await #expect(throws: ActionError.failed(status: 3, step: "Fail")) { try await context.run("exit 3", title: "Fail") }
+
+    // Stop hangs the command up there.
+    let stopping = ActionContext(
+      directory: URL(fileURLWithPath: "/nonexistent/project"), environment: [:], executor: executor
+    ) { lines.append($0.text) }
+    let started = Date()
+    async let finished: Void = { _ = try? await stopping.run("echo started; sleep 30", title: "Sleep") }()
+    try await Task.sleep(for: .seconds(2))
+    stopping.cancel()
+    await finished
+    #expect(Date().timeIntervalSince(started) < 10)
+
+    // A wrong host key is refused, with the reason in the log.
+    var pinned = executor
+    pinned.target.hostKey = "ecdsa-sha2-nistp256 AAAAE2VjZHNh"
+    let refused = LineBox()
+    let refusing = ActionContext(
+      directory: URL(fileURLWithPath: "/nonexistent/project"), environment: [:], executor: pinned
+    ) { refused.append($0.text) }
+    await #expect(throws: ActionError.failed(status: 255, step: "Echo")) { try await refusing.run("true", title: "Echo") }
+    #expect(refused.all.contains { $0.contains("identity changed") })
+  }
+}
+
+final class LineBox: @unchecked Sendable {
+  private let lock = NSLock()
+  private var lines: [String] = []
+  func append(_ line: String) { lock.withLock { lines.append(line) } }
+  var all: [String] { lock.withLock { lines } }
+}

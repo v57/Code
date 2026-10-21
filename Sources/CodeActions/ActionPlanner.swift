@@ -1,7 +1,6 @@
 import CodeProgress
 import Foundation
 
-#if os(macOS) || os(Windows)
 /// One step of an action ("Build", "Install", "Launch"), run in order.
 public struct ActionStep: Sendable {
   public var title: String
@@ -39,7 +38,7 @@ public struct ActionStep: Sendable {
     public let environment: [String: String]
     /// Where `run` runs commands: this computer, or another machine (`SSHExecutor`).
     public let executor: any ActionExecutor
-    private let output: @Sendable (PTYProcess.Line) -> Void
+    private let output: @Sendable (ActionLine) -> Void
     private let lock = NSLock()
     private var current: (any ActionCommand)?
     private var stopHandlers: [@Sendable () -> Void] = []
@@ -47,7 +46,7 @@ public struct ActionStep: Sendable {
 
     public init(
       directory: URL, environment: [String: String], executor: any ActionExecutor = LocalExecutor(),
-      output: @escaping @Sendable (PTYProcess.Line) -> Void
+      output: @escaping @Sendable (ActionLine) -> Void
     ) {
       self.directory = directory
       self.environment = environment
@@ -59,7 +58,7 @@ public struct ActionStep: Sendable {
 
     /// Writes a line to the log.
     public func log(_ text: String) {
-      output(PTYProcess.Line(text: text, isTransient: false))
+      output(ActionLine(text: text, isTransient: false))
     }
 
     /// Runs a shell command on a terminal, streaming its output; throws when
@@ -341,7 +340,6 @@ public struct ActionStep: Sendable {
       throw ActionError.missing("The emulator “\(name)” didn’t finish starting.")
     }
   }
-#endif
 
 /// The built product of an Xcode scheme, from `-showBuildSettings -json`.
 public struct XcodeProduct: Equatable, Sendable {

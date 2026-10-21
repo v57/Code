@@ -11,10 +11,7 @@ import Foundation
   public final class PTYProcess: @unchecked Sendable {
     /// One piece of output: a line, or a transient status line that a later
     /// one replaces (text ending in a carriage return, like a progress bar).
-    public struct Line: Sendable {
-      public var text: String
-      public var isTransient: Bool
-    }
+    public typealias Line = ActionLine
 
     public let pid: pid_t
     private let master: Int32
@@ -249,10 +246,7 @@ import Foundation
   public final class PTYProcess: @unchecked Sendable {
     /// One piece of output: a line, or a transient status line that a later
     /// one replaces (text ending in a carriage return, like a progress bar).
-    public struct Line: Sendable {
-      public var text: String
-      public var isTransient: Bool
-    }
+    public typealias Line = ActionLine
 
     public let pid: Int32
     private let child: ChildProcess

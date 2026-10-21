@@ -4,6 +4,12 @@ import PackageDescription
 
 let swiftSettings: [SwiftSetting] = [.enableUpcomingFeature("ApproachableConcurrency")]
 
+/// Another v57 repository: GitHub's main branch, or the checkout next to this one with `V57_LOCAL=1`.
+func v57(_ name: String) -> Package.Dependency {
+  Context.environment["V57_LOCAL"] == nil
+    ? .package(url: "https://github.com/v57/\(name).git", branch: "main") : .package(path: "../\(name)")
+}
+
 /// CodeKit is split into libraries a project can take one at a time:
 ///
 /// - CodeHighlighting: languages, the incremental syntax highlighter, themes
@@ -14,7 +20,8 @@ let swiftSettings: [SwiftSetting] = [.enableUpcomingFeature("ApproachableConcurr
 /// - CodeActions: Xcode-style schemes found in a project folder (Xcode,
 ///   SwiftPM, Cargo, Go, Gradle/Android, Node, Python, …), run destinations
 ///   (Mac, simulators, devices, Android), and running build/run/test with
-///   progress and the build log's issues (macOS).
+///   progress and the build log's issues (macOS), or on another machine
+///   over SSH (SSHKit's in-process client on iPhone and iPad).
 /// - CodeProgress: progress of operations made of stages (builds, downloads
 ///   and installs, batches), estimated from how long each stage took before,
 ///   by the resource it waits on and the size of its work (platform-neutral).
@@ -50,12 +57,16 @@ let package = Package(
     .library(name: "CodeIcons", targets: ["CodeIcons"]),
     .library(name: "CodeProgress", targets: ["CodeProgress"]),
   ],
+  // SSHKit: remote actions over SSH, in-process (../SSH).
+  dependencies: [v57("SSH")],
   targets: [
     .target(name: "CodeHighlighting", swiftSettings: swiftSettings),
     .target(name: "CodeWorkspace", dependencies: ["CodeHighlighting"], swiftSettings: swiftSettings),
     .target(name: "CodeEditor", dependencies: ["CodeHighlighting"], swiftSettings: swiftSettings),
     .target(name: "CodeProgress", swiftSettings: swiftSettings),
-    .target(name: "CodeActions", dependencies: ["CodeProgress"], swiftSettings: swiftSettings),
+    .target(
+      name: "CodeActions", dependencies: ["CodeProgress", .product(name: "SSHKit", package: "SSH")],
+      swiftSettings: swiftSettings),
     .target(name: "CodeLSP", swiftSettings: swiftSettings),
     .target(name: "CodeMinimap", dependencies: ["CodeHighlighting"], swiftSettings: swiftSettings),
     .target(name: "CodeFormatting", swiftSettings: swiftSettings),
@@ -92,11 +103,6 @@ let package = Package(
   ])
 
 #if os(Windows) || os(Linux)
-/// Another v57 repository: GitHub's main branch, or the checkout next to this one with `V57_LOCAL=1`.
-func v57(_ name: String) -> Package.Dependency {
-  Context.environment["V57_LOCAL"] == nil
-    ? .package(url: "https://github.com/v57/\(name).git", branch: "main") : .package(path: "../\(name)")
-}
 // Off Apple platforms SwiftUI, CryptoKit and os are v57/SwiftUI's, and SwiftUIPortability adds the Foundation APIs
 // swift-corelibs-foundation lacks.
 package.dependencies += [v57("SwiftUI")]
