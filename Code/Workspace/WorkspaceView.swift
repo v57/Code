@@ -55,12 +55,10 @@ struct WorkspaceView: View {
       }
     #endif
     .focusedSceneValue(\.windowModel, model)
-    .sheet(item: $model.prompt) { prompt in
+    .kitSheet(item: $model.prompt) { prompt in
       PromptSheet(prompt: prompt)
-        .environment(model)
-        .environment(workspace)
     }
-    .sheet(item: $model.notarizationSetup) { request in
+    .kitSheet(item: $model.notarizationSetup) { request in
       NotarizationSetupView(request: request)
     }
     .kitConfirmation(

@@ -29,7 +29,7 @@ enum NotarySettings {
 struct NotarizationSetupView: View {
   let request: NotarizationSetupRequest
   @Environment(WindowModel.self) private var model
-  @Environment(\.dismiss) private var dismiss
+  @Environment(\.kitDismiss) private var dismiss
 
   private enum Mode: Hashable { case existing, new }
   private enum Method: Hashable { case appleID, apiKey }
