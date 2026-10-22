@@ -28,6 +28,15 @@ struct ProjectsView: View {
   private var projects: [RemoteProject] { RemoteProjects.all(vault: vault) }
 
   var body: some View {
+    // iPhone with nothing to list: the welcome is the first screen.
+    if idiom == .phone, projects.isEmpty {
+      ProjectsWelcome(projects: [], selection: $selection)
+    } else {
+      split
+    }
+  }
+
+  private var split: some View {
     NavigationSplitView(columnVisibility: $columnVisibility, preferredCompactColumn: $compactColumn) {
       ProjectsSidebar(projects: projects, selection: $selection, columnVisibility: $columnVisibility)
         .toolbar(removing: .sidebarToggle)
@@ -37,10 +46,7 @@ struct ProjectsView: View {
         if let project = projects.first(where: { $0.id == selection }) {
           ProjectScreen(project: project).id(project.id)
         } else {
-          EmptyState(
-            systemImage: "folder", title: "Choose a Project",
-            message: "Build, Test and Clean run on the device that has it.")
-            .background(.kitWindow)
+          ProjectsWelcome(projects: projects, selection: $selection)
         }
       }
       .kitSidebarToggle(columnVisibility: $columnVisibility)
@@ -57,6 +63,32 @@ struct ProjectsView: View {
         if let id = DebugLaunch.selected { selection = id }
       #endif
     }
+  }
+}
+
+/// The main screen while no project is open: the kit's welcome, its list the projects on the user's devices (a tap
+/// opens one), or how to get some while there are none.
+struct ProjectsWelcome: View {
+  let projects: [RemoteProject]
+  @Binding var selection: RemoteProject.ID?
+
+  var body: some View {
+    KitWelcome(
+      emptyTitle: "No Projects on Your Devices",
+      emptyMessage:
+        "Code runs Build, Test and Clean on your Macs. Connect them to a Hub in the Vault app, and open a project in Code on a Mac: it shows up here."
+    ) {
+      EmptyView()
+    } recents: {
+      ForEach(projects) { project in
+        RecentItem(
+          project.name, subtitle: project.targets.map(\.name).joined(separator: ", "),
+          image: project.icon.flatMap(Image.init(data:))
+        ) { selection = project.id }
+      }
+    }
+    .listTitle("On Your Devices")
+    .kitPane(.content)
   }
 }
 
@@ -82,12 +114,11 @@ struct ProjectsSidebar: View {
       selection: $selection, searchText: $search, searchPrompt: "Search Projects", columnVisibility: $columnVisibility
     ) {
       if projects.isEmpty {
-        EmptyState(
-          systemImage: "point.3.connected.trianglepath.dotted", title: "No Projects on Your Devices",
-          message:
-            "Code runs Build, Test and Clean on your Macs. Connect them to a Hub in the Vault app, and open a project in Code on a Mac: it shows up here."
-        )
-        .containerRelativeFrame(.vertical) { height, _ in height * 0.8 }
+        // iPad: the welcome beside it says how to get some.
+        KitSection("Projects", meta: ["None yet"], systemImage: "folder", hue: .orange) {
+          Text("Projects on your other devices appear here.")
+            .kitFont(.caption).foregroundStyle(.kitSecondary).padding(10)
+        }
       } else {
         KitSection(
           "Projects",
