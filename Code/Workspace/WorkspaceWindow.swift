@@ -26,11 +26,11 @@ struct WorkspaceWindow: View {
           .environment(model.workspace)
           // Another project is a new view: the old one's disappearing saves and closes its project.
           .id(model.workspace.root)
-          .frame(minWidth: 640, minHeight: 400)
       } else {
-        WelcomeView { open($0) }
+        WelcomeScreen { open($0) }
       }
     }
+    .frame(minWidth: 640, minHeight: 400)
     .background(WindowReader(reference: window, isWelcome: model == nil))
     .onAppear {
       AppState.shared.openWindow = openWindow
@@ -159,10 +159,10 @@ struct WorkspaceWindow: View {
 #else
 
 /// Records its window in a `WindowReference`, keeps the window out of
-/// state restoration (Code launches to the Welcome window, never reopening
+/// state restoration (Code launches to the Welcome screen, never reopening
 /// the projects of the last session), and styles it for what it shows:
-/// Welcome is a fixed-size window without a title bar, as in Xcode; a
-/// project gets the title bar back and a full size.
+/// Welcome runs its ground under a clear title bar (it has no toolbar); a
+/// project gets the title bar back.
 private struct WindowReader: NSViewRepresentable {
   let reference: WindowReference
   let isWelcome: Bool
@@ -200,29 +200,18 @@ private struct WindowReader: NSViewRepresentable {
 
     func applyStyle() {
       guard let window, appliedWelcome != isWelcome else { return }
-      let wasWelcome = appliedWelcome
       appliedWelcome = isWelcome
       let projectStyle = projectStyle ?? (window.styleMask, window.titlebarAppearsTransparent)
       self.projectStyle = projectStyle
       window.titlebarAppearsTransparent = isWelcome || projectStyle.transparentTitlebar
       // The toolbar's rich title names the project; Welcome has none.
       window.titleVisibility = .hidden
-      window.isMovableByWindowBackground = isWelcome
       window.titlebarSeparatorStyle = isWelcome ? .none : .automatic
       window.toolbar?.isVisible = !isWelcome
-      // The kit's welcome window hides the window's buttons itself (its round close button replaces them).
       if isWelcome {
         window.styleMask.insert(.fullSizeContentView)
-        window.styleMask.remove(.resizable)
-        window.setContentSize(WelcomeView.size)
-        window.center()
       } else {
         window.styleMask = projectStyle.mask
-        // A Welcome window becoming a project's grows to the usual size.
-        if wasWelcome == true {
-          window.setContentSize(NSSize(width: 1200, height: 800))
-          window.center()
-        }
       }
     }
   }

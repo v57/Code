@@ -2,18 +2,15 @@ import ComponentKit
 import SwiftUI
 import VaultKit
 
-/// Shown in a window without a project: the kit's welcome window. A close button instead of the title bar, the
-/// app's icon, name and version, Open…, and the recent projects (click selects, double-click or Return opens) or the
-/// projects the v57 apps share (added in Git and the others, through the vault) in the vault's groups, live as they
-/// change. A group opens and closes from its chevron, a double click or Return; which are closed is Code's own. A
-/// folder can also be dropped on the window.
-struct WelcomeView: View {
-  static let size = CGSize(width: 480, height: 660)
-
+/// What a window without a project shows: the kit's welcome as the window's content. The app's icon, name and
+/// version, Open…, and the recent projects (click selects, double-click or Return opens) or the projects the v57 apps
+/// share (added in Git and the others, through the vault) in the vault's groups, live as they change. A group opens
+/// and closes from its chevron, a double click or Return; which are closed is Code's own. A folder can also be
+/// dropped on the window.
+struct WelcomeScreen: View {
   let open: (URL) -> Void
   /// Recent or Projects, kept for the next time Welcome shows.
   @AppStorage("welcome.source") private var source = WelcomeSource.recent
-  @Environment(\.dismissWindow) private var dismissWindow
   private var recents: RecentProjects { AppState.shared.recents }
   private var vault: Vault { Vault.shared }
 
@@ -48,7 +45,6 @@ struct WelcomeView: View {
   var body: some View {
     KitWelcome(
       emptyTitle: "No Recent Projects", emptyMessage: "Projects you open appear here.", source: $source,
-      close: { dismissWindow() },
       onDrop: { urls in
         guard let url = urls.first else { return false }
         open(url)
@@ -74,10 +70,8 @@ struct WelcomeView: View {
         .padding(.leading, CGFloat(row.depth) * 20)
       }
     }
-    .frame(maxHeight: .infinity)
-    .ignoresSafeArea()
-    .navigationTitle("Welcome to Code")
-    .modifier(HiddenTitleBar())
+    .kitPane(.content)
+    .navigationTitle("Code")
   }
 
   private func item(_ folder: URL, isRecent: Bool) -> some View {
@@ -137,18 +131,4 @@ struct CollapsedGroups: RawRepresentable {
   }
 
   var rawValue: String { ids.sorted().joined(separator: "\n") }
-}
-
-/// No title or title bar background: the content runs to the window's top edge (the window hides its buttons, see
-/// `KitWelcome`).
-private struct HiddenTitleBar: ViewModifier {
-  func body(content: Content) -> some View {
-    if #available(macOS 15.0, *) {
-      content
-        .toolbar(removing: .title)
-        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
-    } else {
-      content
-    }
-  }
 }
