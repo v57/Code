@@ -27,7 +27,7 @@ struct QuickOpenView: View {
     ) {
       PaletteGroup(
         "Files in \(workspace.name)", meta: meta(results, hiddenMatches: hiddenMatches),
-        systemImage: "doc.text.magnifyingglass", hue: .teal
+        systemImage: "folder", hue: .teal
       ) {
         Button {
           model.quickOpenIncludesHiddenFiles.toggle()
