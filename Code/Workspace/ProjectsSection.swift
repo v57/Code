@@ -56,6 +56,8 @@ struct ProjectsSection: View {
           .kitRowIndent(row.depth)
         }
       }
+      // Opened with many projects, its title stays in view while they scroll past.
+      .kitSticky()
     }
   }
 

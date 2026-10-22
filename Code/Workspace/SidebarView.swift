@@ -106,6 +106,8 @@ struct SidebarView: View {
         .kitMenu(isPresented: model.isPresented(.project)) { FileMenu(url: nil) }
         .help("Project")
     }
+    // A long tree keeps the project's title in view while its rows scroll past.
+    .kitSticky()
     if !model.isChoosingVisibleFiles { PackageDependenciesSection() }
   }
 

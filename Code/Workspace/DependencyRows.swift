@@ -26,6 +26,8 @@ struct PackageDependenciesSection: View {
           }
         }
       }
+      // Below a long tree, its title waits at the bottom; a click scrolls to it.
+      .kitSticky(top: .none, bottom: .title)
       .task(id: model.expandedDependencyFolders) { await readOpenFolders() }
       .onChange(of: workspace.dependencies) { _, _ in entries = [:] }
     }
