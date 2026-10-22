@@ -1,17 +1,24 @@
 import CodeActions
+import CodeIcons
+import ComponentKit
+import SSHKit
 import SwiftUI
 
-/// A project's toolbar and console: where it runs (the devices that have it), its scheme, Build, Test, Clean and
-/// Stop, the progress, then the log or the issues; the files there are a push away.
+/// A project under the kit's bar: its live title says what it is doing; Build, Test, Clean and Stop, its scheme and
+/// the device it runs on (one of those that have it), and its files there a push away. Under it, the log as run
+/// blocks or the issues. On iPad the actions lead the bar as on the Mac; on iPhone they sit in the bottom bar and the
+/// scheme › device under the title.
 struct ProjectScreen: View {
   let project: RemoteProject
   @State private var session: ProjectSession
   @State private var pane = Pane.log
+  @State private var showsFiles = false
+  /// A file pushed straight from here (Debug: `CODE_DEBUG_SHOW=file:<path>`).
+  @State private var shownFile: SFTPFileInfo?
+  @Environment(\.kitIdiom) private var idiom
 
-  enum Pane: String, CaseIterable, Identifiable {
-    case log = "Log"
-    case issues = "Issues"
-    var id: Self { self }
+  enum Pane: Hashable {
+    case log, issues
   }
 
   init(project: RemoteProject) {
@@ -23,196 +30,357 @@ struct ProjectScreen: View {
     Group {
       switch session.phase {
       case .loading(let message):
-        ProgressView(message).frame(maxWidth: .infinity, maxHeight: .infinity)
+        EmptyState(systemImage: "chevron.left.forwardslash.chevron.right", title: message, status: .working)
       case .failed(let message):
-        ContentUnavailableView {
-          Label("Couldn’t Open \(project.name)", systemImage: "exclamationmark.triangle")
-        } description: {
-          Text(message)
-        } actions: {
-          Button("Try Again") { Task { await session.open() } }
+        EmptyState(
+          systemImage: "exclamationmark.triangle", title: "Couldn’t Open \(project.name)", message: message,
+          status: .failed(nil)
+        ) {
+          Button("Try Again", systemImage: "arrow.clockwise") { Task { await session.open() } }
+            .buttonStyle(.kit)
         }
       case .ready:
         if let controller = session.controller { content(controller) }
       }
     }
-    .navigationTitle(project.name)
-    .navigationBarTitleDisplayMode(.inline)
-    .toolbar {
+    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    .background(.kitWindow)
+    .kitPane(.content)
+    .kitToolbar(project.name, title: {
+      HStack(spacing: KitMetrics.gutter) {
+        if idiom != .phone, let controller = session.controller { ActionTools(controller: controller) }
+        ProjectTitle(project: project, session: session, showsDevice: idiom != .phone)
+      }
+    }) {
+      if idiom != .phone, let controller = session.controller { SchemeTools(controller: controller) }
       if let source = session.source {
-        NavigationLink {
-          RemoteFolderView(session: session, path: source.directory, title: project.name)
-        } label: {
-          Label("Files on \(source.name)", systemImage: "folder")
+        ToolGroup(iconOnly: true) {
+          Button("Files on \(source.name)", systemImage: "folder") { showsFiles = true }
         }
       }
     }
-    .task { await session.open() }
+    .modifier(PhoneActionBar(controller: idiom == .phone ? session.controller : nil))
+    .navigationBarBackButtonHidden(true)
+    .navigationDestination(isPresented: $showsFiles) {
+      if let source = session.source {
+        RemoteFolderView(session: session, path: source.directory, title: project.name, isRoot: true)
+      }
+    }
+    .navigationDestination(item: $shownFile) { entry in RemoteFileView(session: session, entry: entry) }
+    .task {
+      await session.open()
+      #if DEBUG
+        await debugShow()
+      #endif
+    }
     .onDisappear { session.close() }
   }
 
+  #if DEBUG
+    /// `CODE_DEBUG_SHOW`: `issues`, `files`, or `file:<path in the project>`.
+    private func debugShow() async {
+      guard let show = DebugLaunch.show, let source = session.source else { return }
+      if show == "issues" { pane = .issues }
+      if show == "files" { showsFiles = true }
+      if show.hasPrefix("file:") {
+        let path = source.directory + "/" + show.dropFirst(5)
+        shownFile = try? await session.fileClient().stat(path)
+      }
+    }
+  #endif
+
   @ViewBuilder private func content(_ controller: ActionController) -> some View {
-    VStack(spacing: 0) {
-      ActionBar(controller: controller)
-      Picker("Show", selection: $pane) {
-        ForEach(Pane.allCases) { pane in
-          if pane == .issues, !controller.issues.isEmpty {
-            Text("Issues (\(controller.issues.count))").tag(pane)
-          } else {
-            Text(pane.rawValue).tag(pane)
-          }
-        }
-      }
-      .pickerStyle(.segmented)
-      .padding(.horizontal)
-      .padding(.bottom, 8)
-      Divider()
+    VStack(alignment: .leading, spacing: 12) {
+      if idiom == .phone { SchemeTools(controller: controller) }
+      KitSegmented(
+        selection: $pane,
+        segments: [
+          KitSegment("Log", value: .log),
+          KitSegment("Issues", value: .issues, count: controller.issues.isEmpty ? nil : controller.issues.count),
+        ]
+      )
+      .kitSegmentedStyle(idiom == .phone ? .wide : .automatic)
       switch pane {
-      case .log: LogView(log: controller.log)
-      case .issues: IssuesView(issues: controller.issues)
+      case .log: LogView(controller: controller)
+      case .issues: IssuesView(controller: controller, device: session.source?.name)
       }
     }
+    .padding(.horizontal, KitMetrics.gutter + 4)
+    .padding(.top, 8)
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
   }
 }
 
-/// Destination, scheme, the actions and their progress.
-struct ActionBar: View {
-  let controller: ActionController
+/// The project's name over what it is doing ("Testing: Compiling AtlasTests…", "Test failed: 2 errors"), the
+/// action's state in the live icon, and the kit's success or failure effect as it ends.
+struct ProjectTitle: View {
+  let project: RemoteProject
+  let session: ProjectSession
+  /// iPad adds the device to a finished action's line ("on studio-mac").
+  var showsDevice: Bool
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      HStack {
-        Menu {
-          Picker("Scheme", selection: schemeBinding) {
-            ForEach(controller.schemes) { Text($0.name).tag(Optional($0.id)) }
-          }
-        } label: {
-          Label(controller.selectedScheme?.name ?? (controller.isScanning ? "Finding schemes…" : "No schemes"),
-            systemImage: "hammer")
-        }
-        .disabled(controller.schemes.isEmpty)
-        Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
-        Menu {
-          Picker("Run On", selection: destinationBinding) {
-            ForEach(controller.destinations) { destination in
-              Text(destination.name + (destination.detail.map { " (\($0))" } ?? "")).tag(Optional(destination.id))
-            }
-          }
-        } label: {
-          Label(controller.selectedDestination?.name ?? "No device", systemImage: "desktopcomputer")
-        }
-        .disabled(controller.destinations.isEmpty)
-        Spacer()
-      }
-      .lineLimit(1)
-      HStack(spacing: 10) {
-        ForEach([ActionKind.build, .test, .clean], id: \.self) { kind in
-          Button(kind.title) { controller.perform(kind) }
-            .buttonStyle(.bordered)
-            .disabled(!controller.canPerform(kind) || controller.selectedDestination == nil)
-        }
-        Spacer()
-        if controller.isRunning {
-          Button(role: .destructive) { controller.stop() } label: { Label("Stop", systemImage: "stop.fill") }
-            .buttonStyle(.borderedProminent)
-        }
-      }
-      StatusLine(controller: controller)
+    KitTitle(
+      project.name, meta: meta, systemImage: "chevron.left.forwardslash.chevron.right", hue: .orange, status: status)
+      .status(status)
+  }
+
+  private var status: WorkStatus {
+    switch session.phase {
+    case .loading: return .working
+    case .failed: return .failed(nil)
+    case .ready: break
     }
-    .padding()
+    guard let controller = session.controller else { return .idle }
+    switch controller.state {
+    case .idle: return controller.isScanning ? .working : .idle
+    case .running: return .working(progress: controller.progress?.fraction)
+    case .succeeded: return .done
+    case .failed(_, _, let message): return .failed(message)
+    case .stopped: return .paused()
+    }
   }
 
-  private var schemeBinding: Binding<String?> {
-    Binding { controller.selectedScheme?.id } set: { controller.selectedSchemeID = $0 }
-  }
-
-  private var destinationBinding: Binding<String?> {
-    Binding { controller.selectedDestination?.id } set: { controller.selectedDestinationID = $0 }
-  }
-}
-
-struct StatusLine: View {
-  let controller: ActionController
-
-  var body: some View {
+  private var meta: [String] {
+    switch session.phase {
+    case .loading(let message): return [message]
+    case .failed: return ["Couldn’t open"]
+    case .ready: break
+    }
+    guard let controller = session.controller else { return [] }
+    let device = showsDevice ? controller.selectedDestination.map { "on \($0.name)" } : nil
     switch controller.state {
     case .idle:
-      Text(controller.isScanning ? "Reading the project…" : "Ready").foregroundStyle(.secondary).font(.callout)
+      if controller.isScanning { return ["Reading the project…"] }
+      return [controller.schemes.isEmpty ? "No schemes" : "Ready"]
     case .running(let kind):
-      VStack(alignment: .leading, spacing: 4) {
-        if let fraction = controller.progress?.fraction {
-          ProgressView(value: fraction)
-        } else {
-          ProgressView().progressViewStyle(.linear)
-        }
-        Text("\(kind.progressTitle) — \(controller.progress?.message ?? controller.stepTitle ?? "")")
-          .font(.callout).foregroundStyle(.secondary).lineLimit(1)
-      }
+      let detail = controller.progress?.message ?? controller.stepTitle
+      return [detail.map { $0.isEmpty ? kind.progressTitle : "\(kind.progressTitle): \($0)" } ?? kind.progressTitle]
     case .succeeded(let kind, _):
-      Label("\(kind.title) succeeded", systemImage: "checkmark.circle.fill").foregroundStyle(.green).font(.callout)
+      return ["\(kind.title) succeeded"] + [device].compactMap { $0 }
     case .failed(let kind, _, let summary):
-      Label("\(kind.title) failed: \(summary)", systemImage: "xmark.octagon.fill").foregroundStyle(.red).font(.callout)
+      return ["\(kind.title) failed: \(summary)"] + [device].compactMap { $0 }
     case .stopped(let kind, _):
-      Label("\(kind.title) stopped", systemImage: "stop.circle").foregroundStyle(.secondary).font(.callout)
+      return ["\(kind.title) stopped"]
     }
   }
 }
 
-/// The action's output as it arrives, following the end.
-struct LogView: View {
-  let log: ActionLog
+/// Build, Test and Clean, then Stop (red) while one runs: icons in one tool group, as the Mac's ▶ ■.
+struct ActionTools: View {
+  let controller: ActionController
 
   var body: some View {
-    ScrollViewReader { proxy in
-      ScrollView([.vertical, .horizontal]) {
-        LazyVStack(alignment: .leading, spacing: 1) {
-          let entries = log.entries
-          ForEach(entries.indices, id: \.self) { index in
-            let entry = entries[index]
-            Text(entry.text.isEmpty ? " " : entry.text)
-              .foregroundStyle(color(entry.kind))
-              .fontWeight(entry.kind == .command ? .semibold : .regular)
-              .id(index)
-          }
-        }
-        .font(.system(.caption, design: .monospaced))
-        .textSelection(.enabled)
-        .padding()
+    ToolGroup(iconOnly: true) {
+      ForEach([ActionKind.build, .test, .clean], id: \.self) { kind in
+        Button(kind.title, systemImage: ActionTools.symbol(kind)) { controller.perform(kind) }
+          .disabled(!controller.canPerform(kind) || controller.selectedDestination == nil || controller.isRunning)
       }
-      .onChange(of: log.revision) { _, _ in
-        if let last = log.entries.indices.last { proxy.scrollTo(last, anchor: .bottomLeading) }
-      }
+      if controller.isRunning { StopButton(controller: controller) }
     }
   }
 
-  private func color(_ kind: ActionLog.Entry.Kind) -> Color {
+  static func symbol(_ kind: ActionKind) -> String {
     switch kind {
-    case .output: .primary
-    case .command: .accentColor
-    case .status: .secondary
-    case .failure: .red
+    case .build: "hammer"
+    case .test: "testtube.2"
+    case .clean: "trash"
+    default: "terminal"
     }
   }
 }
 
-struct IssuesView: View {
-  let issues: [BuildIssue]
+/// Stop, its square in red.
+struct StopButton: View {
+  let controller: ActionController
 
   var body: some View {
-    if issues.isEmpty {
-      ContentUnavailableView("No Issues", systemImage: "checkmark.circle")
+    Button {
+      controller.stop()
+    } label: {
+      Label {
+        Text("Stop")
+      } icon: {
+        Image(systemName: "stop.fill").foregroundStyle(Hue.red.fill)
+      }
+    }
+  }
+}
+
+/// iPhone: Build, Test and Clean in the bottom bar, and Stop while one runs.
+private struct PhoneActionBar: ViewModifier {
+  let controller: ActionController?
+
+  func body(content: Content) -> some View {
+    if let controller {
+      content.kitBottomBar(searchText: nil) {
+        ForEach([ActionKind.build, .test, .clean], id: \.self) { kind in
+          Button(kind.title, systemImage: ActionTools.symbol(kind)) { controller.perform(kind) }
+            .disabled(!controller.canPerform(kind) || controller.selectedDestination == nil || controller.isRunning)
+        }
+        if controller.isRunning { StopButton(controller: controller).labelStyle(.iconOnly) }
+      }
     } else {
-      List(issues) { issue in
-        VStack(alignment: .leading, spacing: 4) {
-          Label(issue.message, systemImage: issue.severity == .error ? "xmark.octagon.fill" : "exclamationmark.triangle.fill")
-            .foregroundStyle(issue.severity == .error ? .red : .orange)
-          if let url = issue.url {
-            Text(url.lastPathComponent + (issue.line.map { ":\($0)" } ?? ""))
-              .font(.caption.monospaced()).foregroundStyle(.secondary)
+      content
+    }
+  }
+}
+
+/// "Scheme › Device": two of the kit's menus in one tool group. The devices are the user's others that have the
+/// project.
+struct SchemeTools: View {
+  let controller: ActionController
+  @State private var showsSchemes = false
+  @State private var showsDevices = false
+
+  var body: some View {
+    ToolGroup {
+      Button {
+        showsSchemes = true
+      } label: {
+        Label(
+          controller.selectedScheme?.name ?? (controller.isScanning ? "Finding Schemes…" : "No Scheme"),
+          systemImage: controller.selectedScheme?.toolchain.symbolName ?? "square.dashed")
+      }
+      .disabled(controller.schemes.isEmpty)
+      .kitMenu(isPresented: $showsSchemes) {
+        ForEach(controller.schemes) { scheme in
+          Button {
+            controller.selectedSchemeID = scheme.id
+          } label: {
+            Label(
+              scheme.name,
+              systemImage: controller.selectedScheme?.id == scheme.id ? "checkmark" : scheme.toolchain.symbolName)
           }
         }
       }
-      .listStyle(.plain)
+      Image(systemName: "chevron.right")
+        .font(.system(size: 9, weight: .semibold))
+        .foregroundStyle(.kitTertiary)
+      Button {
+        showsDevices = true
+      } label: {
+        Label(
+          controller.selectedDestination?.name ?? "No Device",
+          systemImage: controller.selectedDestination?.symbolName ?? "questionmark.app.dashed")
+      }
+      .disabled(controller.destinations.isEmpty)
+      .kitMenu(isPresented: $showsDevices) {
+        KitMenuSection("Other Machines") {
+          ForEach(controller.destinations) { destination in
+            Button {
+              controller.selectedDestinationID = destination.id
+            } label: {
+              Label(
+                destination.detail.map { "\(destination.name) (\($0))" } ?? destination.name,
+                systemImage: controller.selectedDestination?.id == destination.id ? "checkmark" : destination.symbolName)
+            }
+            .disabled(!destination.isAvailable)
+          }
+        }
+      }
     }
+    .lineLimit(1)
+  }
+}
+
+/// The action's output as the kit's run blocks, one per command it ran, following the end.
+struct LogView: View {
+  let controller: ActionController
+
+  var body: some View {
+    let runs = RunLog.runs(from: controller)
+    if runs.isEmpty {
+      EmptyState(
+        systemImage: "terminal", title: "No Output",
+        message: "Build, test or clean the project to see what it prints here.")
+    } else {
+      ScrollView {
+        RunBlocks {
+          ForEach(runs) { run in
+            RunBlock(
+              run.name, command: run.command, id: run.id, systemImage: run.systemImage, status: run.status,
+              progress: run.progress, warnings: run.warnings, output: run.output,
+              stop: run.status.isWorking ? { controller.stop() } : nil)
+          }
+        }
+        .padding(.bottom, KitMetrics.gutter)
+      }
+      .modifier(FollowsEnd())
+    }
+  }
+}
+
+/// A short log starts at the top; a long one shows its end, and keeps to it as lines arrive.
+private struct FollowsEnd: ViewModifier {
+  func body(content: Content) -> some View {
+    if #available(iOS 18, *) {
+      content
+        .defaultScrollAnchor(.top, for: .alignment)
+        .defaultScrollAnchor(.bottom, for: .initialOffset)
+        .defaultScrollAnchor(.bottom, for: .sizeChanges)
+    } else {
+      content.defaultScrollAnchor(.bottom)
+    }
+  }
+}
+
+/// The issues the last action found, in one card: the counts and the device in its header, each issue its
+/// severity, message and file:line.
+struct IssuesView: View {
+  let controller: ActionController
+  let device: String?
+
+  var body: some View {
+    let issues = controller.issues
+    if issues.isEmpty {
+      EmptyState(systemImage: "checkmark.circle", title: "No Issues")
+    } else {
+      let errors = issues.filter { $0.severity == .error }.count
+      let warnings = issues.filter { $0.severity == .warning }.count
+      ScrollView {
+        KitSection(
+          "Issues",
+          meta: [
+            errors == 0 ? "" : errors == 1 ? "1 error" : "\(errors) errors",
+            warnings == 0 ? "" : warnings == 1 ? "1 warning" : "\(warnings) warnings",
+            device.map { "from \($0)" } ?? "",
+          ],
+          systemImage: errors > 0 ? "xmark.octagon" : "exclamationmark.triangle", hue: errors > 0 ? .red : .orange
+        ) {
+          ForEach(issues) { issue in IssueRow(issue: issue) }
+        }
+        .padding(.bottom, KitMetrics.gutter)
+      }
+    }
+  }
+}
+
+struct IssueRow: View {
+  let issue: BuildIssue
+  @Environment(\.kitIdiom) private var idiom
+
+  var body: some View {
+    HStack(alignment: .firstTextBaseline, spacing: 10) {
+      Image(systemName: issue.severity == .error ? "xmark.octagon" : "exclamationmark.triangle")
+        .font(.system(size: idiom.isTouch ? 15 : 13, weight: .medium))
+        .foregroundStyle(issue.severity == .error ? Hue.red.fill : Hue.orange.fill)
+        .frame(width: 20)
+      VStack(alignment: .leading, spacing: 2) {
+        Text(issue.message)
+          .kitFont(.body)
+          .fixedSize(horizontal: false, vertical: true)
+        if let url = issue.url {
+          Text(url.lastPathComponent + (issue.line.map { ":\($0)" } ?? ""))
+            .kitFont(.monoSmall)
+            .foregroundStyle(.kitSecondary)
+        }
+      }
+      Spacer(minLength: 0)
+    }
+    .padding(.horizontal, 10)
+    .padding(.vertical, 8)
+    .textSelection(.enabled)
+    .accessibilityElement(children: .combine)
   }
 }

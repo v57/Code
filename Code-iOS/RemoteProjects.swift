@@ -22,7 +22,7 @@ struct RemoteProject: Identifiable, Hashable {
       return RemoteProject(id: project.id, name: project.name, icon: project.icon, targets: targets)
     }
     #if DEBUG
-      if let debug = DebugLaunch.project { projects.insert(debug, at: 0) }
+      projects += DebugLaunch.projects
     #endif
     return projects.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
   }

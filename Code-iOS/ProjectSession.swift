@@ -85,6 +85,14 @@ import SSHKit
     RemoteProjects.trust(fingerprint, for: target)
   }
 
+  /// A path on the device as the project sees it: "Sources/Atlas" (the project's own folder is its name).
+  func relativePath(of path: String) -> String {
+    guard let root = source?.directory else { return path }
+    let trimmed = root.hasSuffix("/") ? String(root.dropLast()) : root
+    if path == trimmed { return project.name }
+    return path.hasPrefix(trimmed + "/") ? String(path.dropFirst(trimmed.count + 1)) : path
+  }
+
   static func describe(_ error: Error) -> String {
     (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
   }

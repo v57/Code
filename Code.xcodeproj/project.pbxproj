@@ -17,6 +17,7 @@
 		C0DE105000000000000000F3 /* VaultKit in Frameworks */ = {isa = PBXBuildFile; productRef = C0DE105000000000000000E3 /* VaultKit */; };
 		C0DE105000000000000000F4 /* ComponentKit in Frameworks */ = {isa = PBXBuildFile; productRef = C0DE105000000000000000E4 /* ComponentKit */; };
 		C0DE105000000000000000F5 /* SSHKit in Frameworks */ = {isa = PBXBuildFile; productRef = C0DE105000000000000000E5 /* SSHKit */; };
+		C0DE105000000000000000F6 /* CodeIcons in Frameworks */ = {isa = PBXBuildFile; productRef = C0DE105000000000000000E6 /* CodeIcons */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -53,6 +54,7 @@
 			files = (
 				C0DE105000000000000000F1 /* CodeActions in Frameworks */,
 				C0DE105000000000000000F2 /* CodeHighlighting in Frameworks */,
+				C0DE105000000000000000F6 /* CodeIcons in Frameworks */,
 				C0DE105000000000000000F3 /* VaultKit in Frameworks */,
 				C0DE105000000000000000F4 /* ComponentKit in Frameworks */,
 				C0DE105000000000000000F5 /* SSHKit in Frameworks */,
@@ -124,6 +126,7 @@
 			packageProductDependencies = (
 				C0DE105000000000000000E1 /* CodeActions */,
 				C0DE105000000000000000E2 /* CodeHighlighting */,
+				C0DE105000000000000000E6 /* CodeIcons */,
 				C0DE105000000000000000E3 /* VaultKit */,
 				C0DE105000000000000000E4 /* ComponentKit */,
 				C0DE105000000000000000E5 /* SSHKit */,
@@ -566,6 +569,10 @@
 		C0DE105000000000000000E2 /* CodeHighlighting */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = CodeHighlighting;
+		};
+		C0DE105000000000000000E6 /* CodeIcons */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = CodeIcons;
 		};
 		C0DE105000000000000000E3 /* VaultKit */ = {
 			isa = XCSwiftPackageProductDependency;
