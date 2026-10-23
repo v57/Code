@@ -127,6 +127,12 @@
         ]
         if let selector = selectors[argument] { document?.textView?.doCommand(by: selector) }
       case "save": document?.save()
+      case "findbar":
+        // The editor's find bar (⌘F): findbar:off closes it.
+        let action: NSTextFinder.Action = argument == "off" ? .hideFindInterface : .showFindInterface
+        let item = NSMenuItem()
+        item.tag = action.rawValue
+        document?.textView?.performFindPanelAction(item)
       case "insert": document?.textView?.insertText(argument, replacementRange: document!.textView!.selectedRange())
       case "console": model.isConsoleVisible = argument != "off"
       case "settings":

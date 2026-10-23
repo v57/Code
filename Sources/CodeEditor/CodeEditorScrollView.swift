@@ -46,6 +46,67 @@
         textView.applyWrapping()
       }
       textView.updateOverscroll()
+      clearFindBarBackground()
+    }
+
+    /// The find bar (⌘F) floats over the text as the window's other bars do: AppKit's band, the line it draws along
+    /// its bottom and the scroll edge's blur go, and the editor's ground fades in behind its field and buttons, as
+    /// ComponentKit's bars fade theirs.
+    private func clearFindBarBackground() {
+      for view in subviews {
+        let name = String(describing: type(of: view))
+        if name.contains("ScrollPocket") || name.contains("BackdropView") { view.isHidden = isFindBarVisible }
+      }
+      guard isFindBarVisible, let bar = findBarView, let banner = bar.subviews.first else { return }
+      for view in banner.subviews {
+        let name = String(describing: type(of: view))
+        if name.contains("PocketView") || name.contains("DecorationView") { view.isHidden = true }
+      }
+      // On a layer of its own the bar stays above the text's layers, which run on under it; the banner draws the
+      // line itself, so a mask leaves out the bar's bottom point.
+      bar.wantsLayer = true
+      if let layer = bar.layer {
+        let mask = layer.mask ?? CALayer()
+        mask.backgroundColor = NSColor.black.cgColor
+        mask.frame = CGRect(x: 0, y: bar.isFlipped ? 0 : 1, width: bar.bounds.width, height: bar.bounds.height - 1)
+        layer.mask = mask
+      }
+      let fade = banner.subviews.lazy.compactMap { $0 as? GroundFade }.first ?? {
+        let fade = GroundFade()
+        fade.autoresizingMask = [.width, .height]
+        banner.addSubview(fade, positioned: .below, relativeTo: nil)
+        return fade
+      }()
+      fade.frame = banner.bounds
+      fade.show(backgroundColor)
+    }
+  }
+
+  /// The ground behind the find bar's controls, fading out along its bottom edge instead of ending in a line (AppKit's
+  /// controls are see-through, so the text under them must fade too).
+  @MainActor private final class GroundFade: NSView {
+    private let gradient = CAGradientLayer()
+
+    init() {
+      super.init(frame: .zero)
+      layer = gradient
+      wantsLayer = true
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    func show(_ ground: NSColor) {
+      effectiveAppearance.performAsCurrentDrawingAppearance {
+        gradient.colors = [ground.withAlphaComponent(0.9), ground.withAlphaComponent(0.9), ground.withAlphaComponent(0)]
+          .map(\.cgColor)
+      }
+      gradient.locations = [0, 0.7, 1]
+      // Unflipped: y = 1 is the top.
+      gradient.startPoint = CGPoint(x: 0.5, y: 1)
+      gradient.endPoint = CGPoint(x: 0.5, y: 0)
     }
   }
 
