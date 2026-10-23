@@ -31,8 +31,12 @@ import SwiftUI
   }
   /// The navigator shows a checkbox per item to choose what the project hides.
   var isChoosingVisibleFiles = false
-  /// The console under the editor (Xcode's debug area, ⇧⌘Y).
+  /// The console, floating under the toolbar's title (⇧⌘Y, or a click on the title).
   var isConsoleVisible = false
+  /// The console is in a window of its own (its Open in Window button) instead of under the title.
+  private(set) var isConsoleDetached = false
+  /// That window, while it is open.
+  @ObservationIgnored private var consoleWindow: WindowReference?
   var isIssuesPresented = false
   /// The kit menu open in the window's chrome (the toolbar's scheme and destination, the project card's "…").
   var openMenu: ChromeMenu?
@@ -93,16 +97,68 @@ import SwiftUI
       }
     }
     services.actions.didFinish = { [weak self] kind, succeeded in
-      // A failed build shows its log, as Xcode shows the issues.
+      // A failed action without issues to show shows its log instead.
       if !succeeded, kind != .run, self?.services.actions.issues.isEmpty == true {
-        self?.isConsoleVisible = true
+        self?.showConsole()
       }
     }
   }
 
-  /// Runs an action; Run and Test show the console, as Xcode shows the debug
-  /// area, and so do Install, Export and Upload, which only log. Export
-  /// first asks for a notary profile when none is set up.
+  // MARK: - Console
+
+  /// The toolbar title's click and ⇧⌘Y: shows or hides the console under the title, or brings its own window
+  /// forward.
+  func toggleConsole() {
+    if isConsoleDetached {
+      consoleWindow?.bringToFront()
+    } else {
+      withKitAnimation(.kitFast) { isConsoleVisible.toggle() }
+    }
+  }
+
+  /// Shows the console under the title, unless it has a window of its own.
+  func showConsole() {
+    guard !isConsoleDetached, !isConsoleVisible else { return }
+    withKitAnimation(.kitFast) { isConsoleVisible = true }
+  }
+
+  func hideConsole() {
+    withKitAnimation(.kitFast) { isConsoleVisible = false }
+  }
+
+  /// Moves the console into a window of its own (`ConsoleWindow`).
+  func detachConsole() {
+    isConsoleVisible = false
+    if isConsoleDetached {
+      consoleWindow?.bringToFront()
+    } else {
+      AppState.shared.openWindow?(id: ConsoleWindow.id, value: workspace.root)
+    }
+  }
+
+  /// Puts the console back under the title, closing its window.
+  func attachConsole() {
+    consoleWindow?.close()
+    showConsole()
+  }
+
+  func consoleWindowDidOpen(_ window: WindowReference) {
+    consoleWindow = window
+    isConsoleDetached = true
+  }
+
+  func consoleWindowDidClose() {
+    consoleWindow = nil
+    isConsoleDetached = false
+  }
+
+  func closeConsoleWindow() {
+    consoleWindow?.close()
+  }
+
+  /// Runs an action. The console stays shut while it builds: it opens once a Run's program starts (see
+  /// `WorkspaceView`), or when an action fails without issues to list. Export first asks for a notary profile when
+  /// none is set up.
   func perform(_ kind: ActionKind) {
     guard services.settings.actionsEnabled else { return }
     var environment: [String: String] = [:]
@@ -113,7 +169,6 @@ import SwiftUI
       }
       environment["NOTARY_PROFILE"] = profile
     }
-    if kind == .run || kind == .test || kind.isDistribution { isConsoleVisible = true }
     services.actions.perform(kind, environment: environment)
   }
 

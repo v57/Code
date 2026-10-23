@@ -90,7 +90,7 @@ struct DetachedEditorWindow: View {
 }
 
 #if !os(macOS)
-  private struct DetachedWindowReader: View {
+  struct DetachedWindowReader: View {
     let reference: WindowReference
 
     var body: some View { Color.clear }
@@ -98,7 +98,7 @@ struct DetachedEditorWindow: View {
 #else
 /// Records the window in a `WindowReference` and keeps it out of state
 /// restoration, as project windows are.
-private struct DetachedWindowReader: NSViewRepresentable {
+struct DetachedWindowReader: NSViewRepresentable {
   let reference: WindowReference
 
   func makeNSView(context: Context) -> NSView { ReaderView(reference: reference) }

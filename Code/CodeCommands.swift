@@ -245,8 +245,8 @@ struct CodeCommands: Commands {
       Toggle("Line Numbers", isOn: $showLineNumbers)
       Toggle("Minimap", isOn: $showsMinimap)
         .keyboardShortcut("m", modifiers: [.command, .control, .shift])
-      Button(model?.isConsoleVisible == true ? "Hide Debug Area" : "Show Debug Area") {
-        model?.isConsoleVisible.toggle()
+      Button(model?.isConsoleVisible == true ? "Hide Console" : "Show Console") {
+        model?.toggleConsole()
       }
       .keyboardShortcut("y", modifiers: [.command, .shift])
       .disabled(model == nil)

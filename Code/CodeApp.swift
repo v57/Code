@@ -44,6 +44,13 @@ import VaultKit
     .defaultSize(width: 720, height: 560)
     .windowToolbarStyle(.unifiedCompact)
 
+    // A project's console in a window of its own (the console's Open in Window).
+    WindowGroup(id: ConsoleWindow.id, for: URL.self) { $root in
+      if let root { ConsoleWindow(root: root).componentKit() }
+    }
+    .defaultSize(width: 720, height: 480)
+    .windowToolbarStyle(.unifiedCompact)
+
     Settings {
       SettingsView()
         .componentKit()

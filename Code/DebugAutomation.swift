@@ -134,7 +134,14 @@
         item.tag = action.rawValue
         document?.textView?.performFindPanelAction(item)
       case "insert": document?.textView?.insertText(argument, replacementRange: document!.textView!.selectedRange())
-      case "console": model.isConsoleVisible = argument != "off"
+      case "console":
+        // console:on|off under the title, console:window in its own window, console:attach back.
+        switch argument {
+        case "off": model.hideConsole()
+        case "window": model.detachConsole()
+        case "attach": model.attachConsole()
+        default: model.showConsole()
+        }
       case "settings":
         if !argument.isEmpty { UserDefaults.standard.set(argument, forKey: "settings.tab") }
         AppState.shared.debugOpenSettings?()

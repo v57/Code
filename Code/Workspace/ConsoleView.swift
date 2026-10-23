@@ -2,10 +2,14 @@ import CodeKit
 import ComponentKit
 import SwiftUI
 
-/// Xcode's debug area under the editor, on the panel ground: the debug tools while debugging, and the last action's
-/// output as the kit's run blocks, one per command it ran (the build, the install, the program), each with its live
-/// icon, exit chip and output; a passed command folds to its header. LLDB's prompt sits under them while debugging.
+/// The console, on the panel ground: the debug tools while debugging, and the last action's output as the kit's run
+/// blocks, one per command it ran (the build, the install, the program), each with its live icon, exit chip and output;
+/// a passed command folds to its header. LLDB's prompt sits under them while debugging. It floats under the toolbar's
+/// title (`ConsoleOverlay`), or fills a window of its own (`ConsoleWindow`).
 struct ConsoleView: View {
+  enum Placement { case overlay, window }
+
+  var placement = Placement.overlay
   @Environment(WindowModel.self) private var model
   @State private var command = ""
   @State private var filter = ""
@@ -50,7 +54,6 @@ struct ConsoleView: View {
         .padding([.horizontal, .bottom], KitMetrics.gutter)
       }
     }
-    .kitPane(.secondary)
   }
 
   private var bar: some View {
@@ -67,10 +70,16 @@ struct ConsoleView: View {
         .help("Copy Log")
         Button("Clear Console", systemImage: "trash") { services.actions.log.clear() }
           .help("Clear Console")
-        Button("Hide Debug Area", systemImage: "rectangle.bottomthird.inset.filled") {
-          model.isConsoleVisible = false
+        switch placement {
+        case .overlay:
+          Button("Open in Window", systemImage: "pip.exit") { model.detachConsole() }
+            .help("Open in Window")
+          Button("Close", systemImage: "xmark") { model.hideConsole() }
+            .help("Close (⇧⌘Y)")
+        case .window:
+          Button("Show Under Title", systemImage: "pip.enter") { model.attachConsole() }
+            .help("Show under the toolbar's title")
         }
-        .help("Hide Debug Area (⇧⌘Y)")
       }
     }
     .padding([.horizontal, .top], KitMetrics.gutter)

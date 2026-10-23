@@ -3,8 +3,8 @@ import ComponentKit
 import SwiftUI
 
 /// A project window on the kit: the navigator, Back and Forward with the tab strip, the editor and the status bar
-/// card, with Open Quickly and Go to Line floating over the editor as the kit's palette, and the console under it in
-/// the kit's split.
+/// card, with Open Quickly and Go to Line floating over the editor as the kit's palette, and the console hanging
+/// under the toolbar's title.
 struct WorkspaceView: View {
   @Environment(WindowModel.self) private var model
   @Environment(Workspace.self) private var workspace
@@ -21,17 +21,7 @@ struct WorkspaceView: View {
         .navigationSplitViewColumnWidth(min: 200, ideal: KitMetrics.sidebarWidth, max: 420)
         .toolbar(removing: .sidebarToggle)
     } detail: {
-      Group {
-        if model.isConsoleVisible {
-          ResizableSplit("console.height", pane: .bottom, height: 220, range: 80...900, mainMinHeight: 120) {
-            EditorArea()
-          } pane: {
-            ConsoleView()
-          }
-        } else {
-          EditorArea()
-        }
-      }
+      EditorArea()
       // The tabs float over the editor, as the toolbar does above them and the status bar under it: the editor runs
       // on under all of them. A single tab isn't shown, so with nothing to go back or forward to there is no line.
       .safeAreaInset(edge: .top, spacing: 0) {
@@ -40,6 +30,7 @@ struct WorkspaceView: View {
       .kitPane(.content)
       .codeStatusBar()
       .projectToolbar(model: model, actionsEnabled: serviceSettings.settings.actionsEnabled)
+      .consoleOverlay(model: model)
       .kitSidebarToggle(columnVisibility: navigatorVisibility)
       .kitPaletteOverlay(isPresented: $model.isQuickOpenPresented) { QuickOpenView() }
       .kitPaletteOverlay(isPresented: $model.isGoToLinePresented) { GoToLineView() }
@@ -69,6 +60,10 @@ struct WorkspaceView: View {
     ) {
       model.confirmTrash()
     }
+    .onChange(of: isRunningProgram) { _, isRunning in
+      // The console opens once a Run's build is done and its program starts, never while it builds.
+      if isRunning { model.showConsole() }
+    }
     .onChange(of: hidesIgnoredFiles) { _, hides in
       workspace.hidesIgnoredFilesByDefault = hides
     }
@@ -81,6 +76,7 @@ struct WorkspaceView: View {
     }
     .onDisappear {
       AppState.shared.closeDetachedWindows(of: workspace)
+      model.closeConsoleWindow()
       workspace.flushAll()
       workspace.saveSession()
       model.services.shutDown()
@@ -91,6 +87,12 @@ struct WorkspaceView: View {
     Binding(
       get: { model.isNavigatorVisible ? .all : .detailOnly },
       set: { model.isNavigatorVisible = $0 != .detailOnly })
+  }
+
+  /// A Run is past its build: its program is running.
+  private var isRunningProgram: Bool {
+    let actions = model.services.actions
+    return actions.runningKind == .run && actions.stepTitle == "Run"
   }
 }
 

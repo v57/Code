@@ -131,10 +131,10 @@ Architecture
   project's tree in a card (extensions hidden; Settings › Files shows them),
   Package Dependencies in another, and the bottom bar's search button opening
   the search line, which is Find in Project. Above the editor: Back and
-  Forward with the kit's tab strip; under it, the status bar card with "Line: Col:" and the
-  console's runs as run blocks. Run, Stop, the project's rich title (its live
-  icon carries the running action) and scheme › destination are the toolbar's
-  tool groups; Open Quickly and Go to Line are the kit's palette, Settings the
+  Forward with the kit's tab strip; under it, the status bar card with "Line: Col:". Run, Stop, the
+  project's rich title (its live icon carries the running action; a click shows
+  the console, its runs as run blocks, hanging under it, or in a window of its
+  own) and scheme › destination are the toolbar's tool groups; Open Quickly and Go to Line are the kit's palette, Settings the
   kit's settings window. Xcode's per-kind fonts live in the text storage
   (applied only after an edit settles); colors stay draw-time.
 
@@ -246,7 +246,9 @@ Features
   - Xcode's toolbar: Run (⌘R; hold for Test, Build, Clean), Stop (⌘.), the
     scheme › destination picker, the activity view with a progress bar,
     status and issue counts (click for the issue list, ⌘5). The Product and
-    Debug menus, the debug area (⇧⌘Y) with the log, filter and debug bar.
+    Debug menus, the console (⇧⌘Y, or a click on the title) with the log,
+    filter and debug bar, under the title or in its own window; it opens
+    when a Run's program starts, never while building.
   - Issues from the build and language servers in the editor: a tinted line
     and a message banner (click for all of the line's messages), counted
     once when both report them.

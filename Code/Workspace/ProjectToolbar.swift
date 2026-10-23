@@ -50,16 +50,25 @@ private struct RunTools: View {
 }
 
 /// The project's name over what it is doing ("Building — Compiling 31 of 48", "Build Failed · 2 errors"), the
-/// action's state in the live icon, and the kit's success or failure effect as it ends.
+/// action's state in the live icon, and the kit's success or failure effect as it ends. A click shows or hides the
+/// console, which hangs under it.
 private struct ProjectTitle: View {
   let model: WindowModel
   let showsStatus: Bool
 
   var body: some View {
-    KitTitle(
-      model.workspace.name, meta: showsStatus ? [status] : [],
-      systemImage: "chevron.left.forwardslash.chevron.right", hue: .orange, status: showsStatus ? workStatus : .idle
-    )
+    Button {
+      model.toggleConsole()
+    } label: {
+      KitTitle(
+        model.workspace.name, meta: showsStatus ? [status] : [],
+        systemImage: "chevron.left.forwardslash.chevron.right", hue: .orange, status: showsStatus ? workStatus : .idle
+      )
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityHint(model.isConsoleVisible ? "Hides the console" : "Shows the console")
+    .consoleAnchor()
     .frame(minWidth: 120, idealWidth: 280, maxWidth: 420, alignment: .leading)
     // A finished build, test or run plays the kit's success or failure.
     .status(showsStatus ? workStatus : .idle)
