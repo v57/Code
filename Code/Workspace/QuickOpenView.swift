@@ -11,22 +11,27 @@ struct QuickOpenView: View {
 
   private typealias Result = (path: String, match: FuzzyMatch.Result, isHidden: Bool)
 
-  private var results: [Result] {
-    workspace.index.search(
-      model.quickOpenQuery, includingHidden: model.quickOpenIncludesHiddenFiles, limit: 60)
+  /// The last search's matches: the index searches off the main thread, and the list keeps the previous matches
+  /// until the next ones are in.
+  @State private var matches = FileIndex.Matches()
+  @State private var isSearching = false
+
+  /// What a search depends on: a new query, the hidden files switch or a rebuilt index searches again.
+  private struct SearchKey: Equatable {
+    var query: String
+    var includesHidden: Bool
+    var revision: Int
   }
 
   var body: some View {
     @Bindable var model = model
-    let results = results
-    let hiddenMatches =
-      model.quickOpenIncludesHiddenFiles ? 0 : workspace.index.hiddenMatchCount(model.quickOpenQuery)
+    let results = matches.results
     KitPalette(
       query: $model.quickOpenQuery, prompt: "Open Quickly", status: status(results), maxHeight: 360,
       dismiss: { model.isQuickOpenPresented = false }
     ) {
       PaletteGroup(
-        "Files in \(workspace.name)", meta: meta(results, hiddenMatches: hiddenMatches),
+        "Files in \(workspace.name)", meta: meta(results, hiddenMatches: matches.hiddenMatchCount),
         systemImage: "folder", hue: .teal
       ) {
         Button {
@@ -50,6 +55,18 @@ struct QuickOpenView: View {
       // Hidden files are indexed on first use, for the button and the hint.
       workspace.index.includesHiddenFiles = true
     }
+    .task(
+      id: SearchKey(
+        query: model.quickOpenQuery, includesHidden: model.quickOpenIncludesHiddenFiles,
+        revision: workspace.index.revision)
+    ) {
+      isSearching = true
+      let found = await workspace.index.matches(
+        model.quickOpenQuery, includingHidden: model.quickOpenIncludesHiddenFiles, limit: 60)
+      guard !Task.isCancelled else { return }
+      matches = found
+      isSearching = false
+    }
   }
 
   private func item(_ result: Result) -> some View {
@@ -72,7 +89,7 @@ struct QuickOpenView: View {
   }
 
   private func status(_ results: [Result]) -> WorkStatus {
-    if workspace.index.isIndexing { return .working }
+    if workspace.index.isIndexing || isSearching { return .working }
     if model.quickOpenQuery.isEmpty { return .idle }
     return results.isEmpty ? .failed : .done
   }
@@ -83,7 +100,7 @@ struct QuickOpenView: View {
     if workspace.index.isIndexing {
       parts.append("Indexing…")
     } else if results.isEmpty {
-      parts.append("No matching files")
+      if !isSearching { parts.append("No matching files") }
     } else if !model.quickOpenQuery.isEmpty {
       parts.append(results.count == 1 ? "1 match" : "\(results.count) matches")
     }

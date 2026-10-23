@@ -16,6 +16,8 @@ import Observation
   /// Hidden files, when `includesHiddenFiles` is set.
   public private(set) var hiddenPaths: [String] = []
   public private(set) var isIndexing = false
+  /// Counts finished rebuilds, so a search kept elsewhere knows to run again.
+  public private(set) var revision = 0
   /// True when indexing stopped at `limit`.
   public private(set) var isTruncated = false
   /// Also index hidden files (Quick Open's Hidden Files toggle). Setting it
@@ -48,6 +50,7 @@ import Observation
       self.hiddenPaths = result.hiddenPaths
       self.isTruncated = result.truncated
       self.isIndexing = false
+      self.revision += 1
     }
   }
 
@@ -57,6 +60,28 @@ import Observation
     path: String, match: FuzzyMatch.Result, isHidden: Bool
   )] {
     Self.search(query, in: paths, hidden: includingHidden ? hiddenPaths : [], limit: limit)
+  }
+
+  /// Matches of `query` found off the main thread: a large project takes a moment per keystroke.
+  public struct Matches: Sendable {
+    public var results: [(path: String, match: FuzzyMatch.Result, isHidden: Bool)] = []
+    /// How many hidden files match while they are left out of `results`.
+    public var hiddenMatchCount = 0
+
+    public init() {}
+  }
+
+  /// `search` and `hiddenMatchCount` on a background thread. Cancelling the calling task stops the search.
+  public func matches(_ query: String, includingHidden: Bool = false, limit: Int = 50) async -> Matches {
+    let paths = paths
+    let hiddenPaths = hiddenPaths
+    let task = Task.detached(priority: .userInitiated) {
+      var matches = Matches()
+      matches.results = Self.search(query, in: paths, hidden: includingHidden ? hiddenPaths : [], limit: limit)
+      if !includingHidden { matches.hiddenMatchCount = Self.matchCount(query, in: hiddenPaths) }
+      return matches
+    }
+    return await withTaskCancellationHandler { await task.value } onCancel: { task.cancel() }
   }
 
   nonisolated static func search(_ query: String, in paths: [String], hidden: [String], limit: Int)
@@ -71,7 +96,8 @@ import Observation
       return visible + rest
     }
     var results: [(path: String, match: FuzzyMatch.Result, isHidden: Bool)] = []
-    for path in paths {
+    for (index, path) in paths.enumerated() {
+      if index % 1024 == 0, Task.isCancelled { return [] }
       if let match = FuzzyMatch.match(trimmed, in: path) { results.append((path, match, false)) }
     }
     for path in hidden {
@@ -95,9 +121,18 @@ import Observation
 
   /// How many hidden files match `query`, when hidden files are indexed.
   public func hiddenMatchCount(_ query: String) -> Int {
+    Self.matchCount(query, in: hiddenPaths)
+  }
+
+  nonisolated static func matchCount(_ query: String, in paths: [String]) -> Int {
     let trimmed = query.trimmingCharacters(in: .whitespaces)
     guard !trimmed.isEmpty else { return 0 }
-    return hiddenPaths.lazy.filter { FuzzyMatch.match(trimmed, in: $0) != nil }.count
+    var count = 0
+    for (index, path) in paths.enumerated() {
+      if index % 1024 == 0, Task.isCancelled { return count }
+      if FuzzyMatch.match(trimmed, in: path) != nil { count += 1 }
+    }
+    return count
   }
 
   /// Walks the project depth first, reading each folder's `.gitignore`
