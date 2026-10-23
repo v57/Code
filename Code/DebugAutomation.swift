@@ -1,6 +1,9 @@
 #if DEBUG && os(macOS)
   import AppKit
   import CodeKit
+  import ComponentKit
+  import SwiftUI
+  import VaultKit
 
   /// Drives a window from the command line in Debug builds, for testing
   /// without clicking:
@@ -127,6 +130,18 @@
         ]
         if let selector = selectors[argument] { document?.textView?.doCommand(by: selector) }
       case "save": document?.save()
+      case "projectgroup":
+        // projectgroup:<name>:on|off opens or closes a group of the Projects card, as a click on its row does.
+        if let colon = argument.lastIndex(of: ":"),
+          let group = Vault.shared.localProjectTree.groups.first(where: { $0.name == String(argument[..<colon]) })
+        {
+          var collapsed = CollapsedGroups(rawValue: UserDefaults.standard.string(forKey: "welcome.collapsedGroups") ?? "")
+          if argument[argument.index(after: colon)...] == "off" { collapsed.ids.insert(group.id) } else { collapsed.ids.remove(group.id) }
+          withAnimation(.kit) { UserDefaults.standard.set(collapsed.rawValue, forKey: "welcome.collapsedGroups") }
+        }
+      case "projects":
+        // The sidebar's Projects card: projects:on|off, animated as its header's click is.
+        withKitAnimation { UserDefaults.standard.set(argument != "off", forKey: "sidebar.projectsExpanded") }
       case "findbar":
         // The editor's find bar (⌘F): findbar:off closes it.
         let action: NSTextFinder.Action = argument == "off" ? .hideFindInterface : .showFindInterface
