@@ -205,19 +205,19 @@ struct CodeCommands: Commands {
     CommandGroup(after: .toolbar) {
       // Xcode's ⌘0 shows and hides the navigator.
       Button(model?.isNavigatorVisible == false ? "Show Navigator" : "Hide Navigator") {
-        model?.isNavigatorVisible.toggle()
+        model.map { $0.setNavigatorVisible(!$0.isNavigatorVisible) }
       }
       .keyboardShortcut("0")
       .disabled(model == nil)
       // Xcode's navigator shortcuts: ⌘1 files, ⌘3 Find.
       Button("Show Project Navigator") {
-        model?.isNavigatorVisible = true
+        model?.setNavigatorVisible(true)
         model?.navigator = .project
       }
       .keyboardShortcut("1")
       .disabled(model == nil)
       Button("Show Find Navigator") {
-        model?.isNavigatorVisible = true
+        model?.setNavigatorVisible(true)
         model?.navigator = .find
         model?.isFindLineOpen = true
       }
@@ -228,7 +228,7 @@ struct CodeCommands: Commands {
           .keyboardShortcut(".", modifiers: [.command, .shift])
           .disabled(model == nil)
         Button("Edit Hidden Files") {
-          model?.isNavigatorVisible = true
+          model?.setNavigatorVisible(true)
           model?.navigator = .project
           model?.isChoosingVisibleFiles = true
         }

@@ -1,4 +1,5 @@
 import CodeKit
+import ComponentKit
 import SwiftUI
 
 /// The state of one project window around its workspace: overlays, prompts,
@@ -49,6 +50,12 @@ import SwiftUI
   var sidebarSelection: URL?
   /// The navigator (sidebar) column, toggled with ⌘0.
   var isNavigatorVisible = true
+
+  /// Shows or hides the navigator, sliding as the sidebar's own button does (a bare change snaps it).
+  func setNavigatorVisible(_ isVisible: Bool) {
+    guard isVisible != isNavigatorVisible else { return }
+    withKitAnimation(.kitSlow) { isNavigatorVisible = isVisible }
+  }
   /// What the navigator shows, as Xcode's navigator bar picks.
   enum Navigator: Hashable { case project, find }
   var navigator = Navigator.project
@@ -143,7 +150,7 @@ import SwiftUI
   /// ⇧⌘F: the Find navigator. A selection on one line becomes the query
   /// and is searched for.
   func findInProject() {
-    isNavigatorVisible = true
+    setNavigatorVisible(true)
     navigator = .find
     isFindLineOpen = true
     if let textView = workspace.selectedDocument?.textView, textView.isFocused {

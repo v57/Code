@@ -140,7 +140,7 @@
         AppState.shared.debugOpenSettings?()
       case "issues": model.isIssuesPresented.toggle()
       case "menu": model.openMenu = ChromeMenu(rawValue: argument)
-      case "navigator": model.isNavigatorVisible = argument != "off"
+      case "navigator": model.setNavigatorVisible(argument != "off")
       case "size":
         // size:<width>x<height>, the window's content size.
         let sides = argument.split(separator: "x").compactMap { Double($0) }
