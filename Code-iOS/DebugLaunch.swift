@@ -9,7 +9,8 @@
   /// - `CODE_DEBUG_REMOTE`: `{"name", "host", "port", "user", "directory", "key"}`, `key` a private key file the
   ///   server accepts (or `keyText`, its contents). Listed first and opened at launch.
   ///   An array lists several (`device` names the device, `devices` adds unreachable ones to the list).
-  /// - `CODE_DEBUG_SELECT`: the project opened at launch (its name), or `none` for the root list.
+  /// - `CODE_DEBUG_SELECT`: the project opened at launch (its name, one of the vault's projects too), or `none` for
+  ///   the root list.
   /// - `CODE_DEBUG_SHOW`: `issues`, `files` or `file:<path in the project>`, shown once the project is open.
   /// - `CODE_DEBUG_PERFORM`: `build`, `test` or `clean`, run once the schemes are found.
   ///
@@ -53,10 +54,12 @@
     /// `CODE_DEBUG_SHOW`: what the opened project shows once it's ready (`issues`, `files`, `file:<path>`).
     static let show = ProcessInfo.processInfo.environment["CODE_DEBUG_SHOW"]
 
-    /// The project opened at launch: `CODE_DEBUG_SELECT` (a name, or `none` for the root list), else the first.
-    static var selected: RemoteProject.ID? {
+    /// The project opened at launch: `CODE_DEBUG_SELECT` (a name among `listed`, or `none` for the root list), else
+    /// the first debug project.
+    static func selected(in listed: [RemoteProject]) -> RemoteProject.ID? {
       let select = ProcessInfo.processInfo.environment["CODE_DEBUG_SELECT"]
       if select == "none" { return nil }
+      if let select, let project = listed.first(where: { $0.name == select }) { return project.id }
       return projects.first { select == nil || $0.name == select }?.id
     }
 

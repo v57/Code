@@ -60,7 +60,7 @@ struct ProjectsView: View {
     }
     .task {
       #if DEBUG
-        if let id = DebugLaunch.selected { selection = id }
+        if let id = DebugLaunch.selected(in: projects) { selection = id }
       #endif
     }
   }
