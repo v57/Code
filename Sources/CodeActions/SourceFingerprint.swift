@@ -89,10 +89,15 @@ public struct SourceFingerprint: Hashable, Codable, Sendable {
 
   /// The fingerprint of `folders`, with `salt` (the scheme) in it.
   public static func of(folders: [URL], salt: String = "") -> SourceFingerprint {
+    combine(folders.map { ($0, folder($0)) }, salt: salt)
+  }
+
+  /// The fingerprint of folders whose own parts (`folder(_:)`) are known, as `of(folders:salt:)` makes it: for an
+  /// app that keeps each folder's part until the folder changes.
+  public static func combine(_ parts: [(URL, SourceFingerprint)], salt: String = "") -> SourceFingerprint {
     var lines = ["v1", salt]
     var isDirty = false
-    for folder in folders {
-      let state = folderState(folder)
+    for (folder, state) in parts {
       lines.append(folder.standardizedFileURL.path + " " + state.value)
       isDirty = isDirty || state.isDirty
     }
@@ -100,7 +105,7 @@ public struct SourceFingerprint: Hashable, Codable, Sendable {
   }
 
   /// One folder's part: its working tree's blob ids in Git, else its newest modification date.
-  static func folderState(_ folder: URL) -> SourceFingerprint {
+  public static func folder(_ folder: URL) -> SourceFingerprint {
     guard let location = git(["rev-parse", "--show-toplevel"], in: folder) else { return walkState(folder) }
     let topLevel = URL(fileURLWithPath: location.trimmingCharacters(in: .newlines))
     // Paths from the top level, as `git status` gives them. A repository without commits has no tree yet.

@@ -198,6 +198,15 @@ import Testing
       #expect(SourceFingerprint.of(folders: [fixtures.url("Plain")]) != before)
     }
 
+    @Test func knownPartsCombineAsTheWhole() throws {
+      let fixtures = try Fixtures()
+      try fixtures.repository("App", files: ["main.swift": "1"])
+      try fixtures.repository("Kit", files: ["Kit.swift": "1"])
+      let folders = [fixtures.url("App"), fixtures.url("Kit")]
+      let parts = folders.map { ($0, SourceFingerprint.folder($0)) }
+      #expect(SourceFingerprint.combine(parts, salt: "App") == SourceFingerprint.of(folders: folders, salt: "App"))
+    }
+
     @Test func theSchemeIsPartOfIt() throws {
       let fixtures = try Fixtures()
       try fixtures.repository("App", files: ["main.swift": ""])
@@ -224,6 +233,8 @@ import Testing
     @Test func theRecordOfThisCopyDecides() {
       let record = InstallRecord(fingerprint: "abc", app: app)
       #expect(InstallStatus.evaluate(installed: app, record: record, sourceBuild: 40) { source } == .current)
+      // What was installed, committed since.
+      #expect(InstallStatus.evaluate(installed: app, record: record, sourceBuild: 41) { source } == .current)
       let changed = SourceFingerprint(value: "def", isDirty: true)
       #expect(InstallStatus.evaluate(installed: app, record: record, sourceBuild: 40) { changed } == .outdated)
       // Another copy put there since: the record is about the old one.

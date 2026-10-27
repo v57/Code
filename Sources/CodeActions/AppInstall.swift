@@ -30,7 +30,7 @@ public enum AppInstall {
       let export =
         "echo '{\"method\":\"developer-id\"}' | plutil -convert xml1 -o \(shellQuote("\(folder)/DeveloperID.plist")) - && xcodebuild -exportArchive -archivePath \(shellQuote(archive)) -exportOptionsPlist \(shellQuote("\(folder)/DeveloperID.plist")) -exportPath \(shellQuote(developerID)) -allowProvisioningUpdates"
       let archiveCommand =
-        "rm -rf \(shellQuote(developerID)) && \(base) -destination 'generic/platform=macOS' -archivePath \(shellQuote(archive)) archive \(buildNumber) && if \(hasDeveloperID); then \(export); fi"
+        "rm -rf \(shellQuote(archive)) \(shellQuote(developerID)) && \(base) -destination 'generic/platform=macOS' -archivePath \(shellQuote(archive)) archive \(buildNumber) && if \(hasDeveloperID); then \(export); fi"
       let plan = Plan(directory: scheme.directory, archive: archive, developerID: developerID)
       return [
         .shell("Archive", archiveCommand),
@@ -192,23 +192,22 @@ public enum InstallStatus: Hashable, Sendable {
   /// The source changed since, or it can't be told it didn't.
   case outdated
 
-  /// The status of `installed` for the source at `sourceBuild` (its commit count): an older build number says so at
-  /// once, without the fingerprint. Otherwise the record of the install that put this very copy there decides (the
-  /// fingerprint then and now); without one (another app installed it), the build number does, unless the source has
-  /// uncommitted changes.
+  /// The status of `installed` for the source at `sourceBuild` (its commit count). The record of the install that put
+  /// this very copy there decides when there is one: its fingerprint then and now (a commit of what was installed
+  /// keeps it current although the commit count moved on). Otherwise (another app installed it) an older build number
+  /// says outdated without the fingerprint, and the same one current unless the source has uncommitted changes.
   public static func evaluate(
     installed: InstalledApp?, record: InstallRecord?, sourceBuild: Int?, fingerprint: () -> SourceFingerprint
   ) -> InstallStatus {
     guard let installed else { return .notInstalled }
-    let build = installed.build.flatMap(Int.init)
-    if let build, let sourceBuild, build < sourceBuild { return .outdated }
-    let source = fingerprint()
     if let record, record.app.url.standardizedFileURL == installed.url.standardizedFileURL,
       record.app.stamp == installed.stamp
     {
-      return record.fingerprint == source.value ? .current : .outdated
+      return record.fingerprint == fingerprint().value ? .current : .outdated
     }
-    guard let build, let sourceBuild, build == sourceBuild, !source.isDirty else { return .outdated }
+    let build = installed.build.flatMap(Int.init)
+    if let build, let sourceBuild, build < sourceBuild { return .outdated }
+    guard let build, let sourceBuild, build == sourceBuild, !fingerprint().isDirty else { return .outdated }
     return .current
   }
 }
