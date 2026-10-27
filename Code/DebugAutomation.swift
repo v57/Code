@@ -131,9 +131,12 @@
         if let selector = selectors[argument] { document?.textView?.doCommand(by: selector) }
       case "save": document?.save()
       case "projectgroup":
-        // projectgroup:<name>:on|off opens or closes a group of the Projects card, as a click on its row does.
+        // projectgroup:<name>:on|off opens or closes a group of the Projects card, as a click on its row does (a
+        // group of any account: which are closed is Code's own, the same in every window).
+        let vaults = Vaults.shared
         if let colon = argument.lastIndex(of: ":"),
-          let group = Vault.shared.localProjectTree.groups.first(where: { $0.name == String(argument[..<colon]) })
+          let group = vaults.allAccounts.compactMap(vaults.vault(for:)).lazy
+            .compactMap({ $0.localProjectTree.groups.first(where: { $0.name == String(argument[..<colon]) }) }).first
         {
           var collapsed = CollapsedGroups(rawValue: UserDefaults.standard.string(forKey: "welcome.collapsedGroups") ?? "")
           if argument[argument.index(after: colon)...] == "off" { collapsed.ids.insert(group.id) } else { collapsed.ids.remove(group.id) }

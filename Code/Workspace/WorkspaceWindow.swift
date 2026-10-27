@@ -1,5 +1,7 @@
 import CodeKit
 import SwiftUI
+import VaultKit
+import VaultUI
 
 /// One window: a project folder's workspace, or the Welcome screen while the
 /// window has no folder.
@@ -9,37 +11,69 @@ import SwiftUI
 /// hands them to an existing window instead of making a new one each. A
 /// Welcome window takes the folder itself; a project window opens files of
 /// its own folder and passes anything else on to that folder's window.
+///
+/// A window shows one account's vault (`VaultAccountScope`): Welcome picks it (the picker heads its actions), and a
+/// project takes the account its folder belongs to, so a project opened from another account's list, from Finder or
+/// from Recents comes up in that account. A project window has no picker; its Projects card lists its account's.
 struct WorkspaceWindow: View {
   static let id = "workspace"
 
   @Binding var root: URL?
   @Environment(\.openWindow) private var openWindow
   @Environment(\.dismissWindow) private var dismissWindow
+  @Environment(\.openSettings) private var openSettings
   @State private var model: WindowModel?
   @State private var window = WindowReference()
+  /// The account the window shows.
+  @SceneStorage("vault.account") private var accountID = VaultAccount.personal.id
+  /// The account the project was opened in: the window goes back to Welcome if that account goes away.
+  @State private var modelAccountID: String?
+  @AppStorage("settings.tab") private var settingsTab = "editor"
 
   var body: some View {
-    Group {
-      if let model {
-        WorkspaceView()
-          .environment(model)
-          .environment(model.workspace)
-          // Another project is a new view: the old one's disappearing saves and closes its project.
-          .id(model.workspace.root)
-      } else {
-        WelcomeScreen { open($0) }
+    VaultAccountScope(
+      selection: $accountID,
+      manage: { [$settingsTab, openSettings] in
+        $settingsTab.wrappedValue = "accounts"
+        openSettings()
+      },
+      openInNewWindow: { [openWindow] account in
+        AppState.shared.pendingWindowAccount = account
+        openWindow(id: WorkspaceWindow.id)
       }
+    ) { vault in
+      Group {
+        if let model {
+          WorkspaceView()
+            .environment(model)
+            .environment(model.workspace)
+            // Another project is a new view: the old one's disappearing saves and closes its project.
+            .id(model.workspace.root)
+        } else {
+          WelcomeScreen(vault: vault) { open($0) }
+        }
+      }
+      .onAppear { ProjectAccounts.findIcons(in: vault) }
     }
     .frame(minWidth: 640, minHeight: 400)
     .background(WindowReader(reference: window, isWelcome: model == nil))
     .onAppear {
       AppState.shared.openWindow = openWindow
+      // Opened on an account from the picker's Open in a New Window.
+      if model == nil, let account = AppState.shared.pendingWindowAccount {
+        AppState.shared.pendingWindowAccount = nil
+        accountID = account
+      }
       #if DEBUG
         // The screenshot demo's scenes, in the first window.
         ScreenshotDemo.attach { root = $0 }
       #endif
     }
     .onChange(of: root, initial: true) { _, root in makeModel(root) }
+    // The project's account was deleted (the scope fell back to Personal): its project leaves with it.
+    .onChange(of: accountID) { _, account in
+      if model != nil, let modelAccountID, account != modelAccountID { root = nil }
+    }
     .onOpenURL { open($0) }
     .onDisappear { if let workspace = model?.workspace { AppState.shared.unregister(workspace) } }
     .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
@@ -88,6 +122,7 @@ struct WorkspaceWindow: View {
       // Back to Welcome: the project's window is gone.
       if let workspace = model?.workspace { AppState.shared.unregister(workspace) }
       model = nil
+      modelAccountID = nil
       return
     }
     guard model?.workspace.root != root.standardizedFileURL else { return }
@@ -112,6 +147,9 @@ struct WorkspaceWindow: View {
     }
     // The project this window showed until now (the Projects card switched it).
     if let previous = model?.workspace { AppState.shared.unregister(previous) }
+    let account = ProjectAccounts.account(of: root, preferring: accountID)
+    modelAccountID = account
+    accountID = account
     let workspace = Workspace(
       root: root, hidesIgnoredFiles: EditorSettings.storedHidesIgnoredFiles,
       defaults: ScreenshotDemo.isOn ? ScreenshotDemo.defaults : .standard)

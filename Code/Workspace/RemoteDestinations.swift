@@ -4,9 +4,10 @@ import VaultKit
 
 /// Where else this project's Build, Test and Clean can run: the devices on the user's Hubs (the hosts the Vault app
 /// keeps from their device directories) that run a v57 app and have this project, reached over SSH at their Hub
-/// Network address, in the project's folder there (`path.<device>`), with the host key the device signed.
+/// Network address, in the project's folder there (`path.<device>`), with the host key the device signed. The vault is
+/// the window's account's.
 enum RemoteDestinations {
-  @MainActor static func targets(for root: URL, vault: Vault = .shared) -> [SSHExecutor.Target] {
+  @MainActor static func targets(for root: URL, vault: Vault) -> [SSHExecutor.Target] {
     let here = root.standardizedFileURL.path
     guard
       let project = vault.projects.first(where: {
@@ -23,7 +24,7 @@ enum RemoteDestinations {
   }
 
   /// The host's login password, which unlocks its login keychain for signing.
-  @MainActor static func loginPassword(for target: SSHExecutor.Target, vault: Vault = .shared) -> String? {
+  @MainActor static func loginPassword(for target: SSHExecutor.Target, vault: Vault) -> String? {
     vault.host(id: target.id)?.password
   }
 

@@ -4,6 +4,7 @@
 import CodeKit
 import ComponentKit
 import SwiftUI
+import VaultUI
 
 /// Settings as the kit's settings window: the panes in its sidebar, each a column of form cards.
 struct SettingsView: View {
@@ -23,6 +24,9 @@ struct SettingsView: View {
         FormattingSettingsView()
       }
       SettingsPane("Run", systemImage: "play.fill", hue: .green, id: "run") { RunSettingsView() }
+      SettingsPane("Accounts", systemImage: "person.2", hue: .indigo, section: "v57", id: "accounts") {
+        VaultAccountsSettings()
+      }
     }
     .toggleStyle(.kitSwitch)
     .frame(width: 680, height: 560)

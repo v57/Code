@@ -17,6 +17,8 @@ import SwiftUI
   /// Captured from the windows; opens project windows from menus outside a
   /// window's view tree (the Dock menu).
   @ObservationIgnored var openWindow: OpenWindowAction?
+  /// The account the next new window shows (the account picker's Open in a New Window).
+  @ObservationIgnored var pendingWindowAccount: String?
   /// Files to open once their folder's window is up, by folder.
   @ObservationIgnored private var pendingFiles: [URL: [URL]] = [:]
   @ObservationIgnored private var workspaces: [ObjectIdentifier: WeakWorkspace] = [:]

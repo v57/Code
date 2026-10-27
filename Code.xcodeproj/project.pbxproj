@@ -10,11 +10,13 @@
 		C0DE00000000000000000A05 /* CodeKit in Frameworks */ = {isa = PBXBuildFile; productRef = C0DE00000000000000000A04 /* CodeKit */; };
 		D5C0DE000000000000000003 /* UpdateKit in Frameworks */ = {isa = PBXBuildFile; productRef = D5C0DE000000000000000002 /* UpdateKit */; };
 		0F5A700F1095C24391180843 /* VaultKit in Frameworks */ = {isa = PBXBuildFile; productRef = 2C754DD20831A96E0D5C5AE0 /* VaultKit */; };
+		5A0C0DE00000000000000A01 /* VaultUI in Frameworks */ = {isa = PBXBuildFile; productRef = 5A0C0DE00000000000000A02 /* VaultUI */; };
 		DE5C0DE0000000000000DE03 /* DevScreenshots in Frameworks */ = {isa = PBXBuildFile; productRef = DE5C0DE0000000000000DE02 /* DevScreenshots */; };
 		C0C0DE000000000000000C03 /* ComponentKit in Frameworks */ = {isa = PBXBuildFile; productRef = C0C0DE000000000000000C02 /* ComponentKit */; };
 		C0DE105000000000000000F1 /* CodeActions in Frameworks */ = {isa = PBXBuildFile; productRef = C0DE105000000000000000E1 /* CodeActions */; };
 		C0DE105000000000000000F2 /* CodeHighlighting in Frameworks */ = {isa = PBXBuildFile; productRef = C0DE105000000000000000E2 /* CodeHighlighting */; };
 		C0DE105000000000000000F3 /* VaultKit in Frameworks */ = {isa = PBXBuildFile; productRef = C0DE105000000000000000E3 /* VaultKit */; };
+		5A0C0DE00000000000000A03 /* VaultUI in Frameworks */ = {isa = PBXBuildFile; productRef = 5A0C0DE00000000000000A04 /* VaultUI */; };
 		C0DE105000000000000000F4 /* ComponentKit in Frameworks */ = {isa = PBXBuildFile; productRef = C0DE105000000000000000E4 /* ComponentKit */; };
 		C0DE105000000000000000F5 /* SSHKit in Frameworks */ = {isa = PBXBuildFile; productRef = C0DE105000000000000000E5 /* SSHKit */; };
 		C0DE105000000000000000F6 /* CodeIcons in Frameworks */ = {isa = PBXBuildFile; productRef = C0DE105000000000000000E6 /* CodeIcons */; };
@@ -45,6 +47,7 @@
 				C0DE00000000000000000A05 /* CodeKit in Frameworks */,
 				D5C0DE000000000000000003 /* UpdateKit in Frameworks */,
 				0F5A700F1095C24391180843 /* VaultKit in Frameworks */,
+				5A0C0DE00000000000000A01 /* VaultUI in Frameworks */,
 				DE5C0DE0000000000000DE03 /* DevScreenshots in Frameworks */,
 				C0C0DE000000000000000C03 /* ComponentKit in Frameworks */,
 			);
@@ -56,6 +59,7 @@
 				C0DE105000000000000000F2 /* CodeHighlighting in Frameworks */,
 				C0DE105000000000000000F6 /* CodeIcons in Frameworks */,
 				C0DE105000000000000000F3 /* VaultKit in Frameworks */,
+				5A0C0DE00000000000000A03 /* VaultUI in Frameworks */,
 				C0DE105000000000000000F4 /* ComponentKit in Frameworks */,
 				C0DE105000000000000000F5 /* SSHKit in Frameworks */,
 			);
@@ -102,6 +106,7 @@
 				C0DE00000000000000000A04 /* CodeKit */,
 				D5C0DE000000000000000002 /* UpdateKit */,
 				2C754DD20831A96E0D5C5AE0 /* VaultKit */,
+				5A0C0DE00000000000000A02 /* VaultUI */,
 				DE5C0DE0000000000000DE02 /* DevScreenshots */,
 				C0C0DE000000000000000C02 /* ComponentKit */,
 			);
@@ -128,6 +133,7 @@
 				C0DE105000000000000000E2 /* CodeHighlighting */,
 				C0DE105000000000000000E6 /* CodeIcons */,
 				C0DE105000000000000000E3 /* VaultKit */,
+				5A0C0DE00000000000000A04 /* VaultUI */,
 				C0DE105000000000000000E4 /* ComponentKit */,
 				C0DE105000000000000000E5 /* SSHKit */,
 			);
@@ -613,6 +619,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = C0C0DE000000000000000C01 /* XCRemoteSwiftPackageReference "Component" */;
 			productName = ComponentKit;
+		};
+		5A0C0DE00000000000000A02 /* VaultUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 2B6E154177CEBEF3833B42A4 /* XCRemoteSwiftPackageReference "Vault" */;
+			productName = VaultUI;
+		};
+		5A0C0DE00000000000000A04 /* VaultUI */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 2B6E154177CEBEF3833B42A4 /* XCRemoteSwiftPackageReference "Vault" */;
+			productName = VaultUI;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

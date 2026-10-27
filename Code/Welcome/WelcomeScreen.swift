@@ -1,18 +1,21 @@
 import ComponentKit
 import SwiftUI
 import VaultKit
+import VaultUI
 
 /// What a window without a project shows: the kit's welcome as the window's content. The app's icon, name and
 /// version, Open…, and the recent projects (click selects, double-click or Return opens) or the projects the v57 apps
 /// share (added in Git and the others, through the vault) in the vault's groups, live as they change. A group opens
 /// and closes from its chevron, a double click or Return; which are closed is Code's own. A folder can also be
-/// dropped on the window.
+/// dropped on the window. The account picker heads the actions (with more than one account): the Projects list is
+/// the window's account's.
 struct WelcomeScreen: View {
+  /// The window's account's vault.
+  let vault: Vault
   let open: (URL) -> Void
   /// Recent or Projects, kept for the next time Welcome shows.
   @AppStorage("welcome.source") private var source = WelcomeSource.recent
   private var recents: RecentProjects { AppState.shared.recents }
-  private var vault: Vault { Vault.shared }
 
   /// The groups closed in the Projects list (vault group ids).
   @AppStorage("welcome.collapsedGroups") private var collapsedGroups = CollapsedGroups()
@@ -43,6 +46,7 @@ struct WelcomeScreen: View {
   }
 
   var body: some View {
+    let projectCount = projectTree.roots.flatMap(\.projects).count
     KitWelcome(
       emptyTitle: "No Recent Projects", emptyMessage: "Projects you open appear here.", source: $source,
       onDrop: { urls in
@@ -51,6 +55,7 @@ struct WelcomeScreen: View {
         return true
       }
     ) {
+      VaultAccountPicker(meta: projectCount == 1 ? "1 project" : "\(projectCount) projects")
       WelcomeAction("Open…", detail: "Choose a folder, or drop one on this window", systemImage: "folder") {
         AppState.shared.chooseFolder()
       }

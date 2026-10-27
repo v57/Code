@@ -2,16 +2,35 @@ import CodeActions
 import ComponentKit
 import SwiftUI
 import VaultKit
+import VaultUI
 
 /// Code on iPhone and iPad: the projects on the user's other devices, and Build, Test and Clean run there over SSH
 /// with the log and issues streamed back. Nothing builds here (there's no toolchain), and the folders stay there:
 /// files are browsed and read over SFTP.
 @main
 struct CodeApp: App {
+  init() {
+    // This device's key, so a Mac can let it in (the Vault app's SSH from your devices); devices are Personal's.
+    try? Vault.shared.store?.publishDeviceKey()
+  }
+
   var body: some Scene {
     WindowGroup {
-      ProjectsView()
+      AccountWindow()
         .componentKit()
+    }
+  }
+}
+
+/// A window shows one account's projects, as on the Mac: the account picker heads the projects list (drawn only with
+/// more than one account), and New Account… opens from it. Renaming and deleting accounts is in the Vault app and in
+/// the Mac apps' Settings ▸ Accounts.
+struct AccountWindow: View {
+  @SceneStorage("vault.account") private var accountID = VaultAccount.personal.id
+
+  var body: some View {
+    VaultAccountScope(selection: $accountID) { vault in
+      ProjectsView(vault: vault)
     }
   }
 }
@@ -19,7 +38,9 @@ struct CodeApp: App {
 /// The kit's split view: the projects in the sidebar (the root list on iPhone), the picked one beside it (pushed on
 /// iPhone).
 struct ProjectsView: View {
-  @State private var vault = Vault.shared
+  /// The window's account's vault.
+  let vault: Vault
+  @State private var vaults = Vaults.shared
   @State private var selection: RemoteProject.ID?
   @State private var columnVisibility = NavigationSplitViewVisibility.all
   @State private var compactColumn = NavigationSplitViewColumn.sidebar
@@ -28,8 +49,8 @@ struct ProjectsView: View {
   private var projects: [RemoteProject] { RemoteProjects.all(vault: vault) }
 
   var body: some View {
-    // iPhone with nothing to list: the welcome is the first screen.
-    if idiom == .phone, projects.isEmpty {
+    // iPhone with nothing to list: the welcome is the first screen (unless there are accounts to pick from).
+    if idiom == .phone, projects.isEmpty, vaults.accounts.isEmpty {
       ProjectsWelcome(projects: [], selection: $selection)
     } else {
       split
@@ -44,7 +65,7 @@ struct ProjectsView: View {
     } detail: {
       NavigationStack {
         if let project = projects.first(where: { $0.id == selection }) {
-          ProjectScreen(project: project).id(project.id)
+          ProjectScreen(project: project, vault: vault).id(project.id)
         } else {
           ProjectsWelcome(projects: projects, selection: $selection)
         }
@@ -76,7 +97,7 @@ struct ProjectsWelcome: View {
     KitWelcome(
       emptyTitle: "No Projects on Your Devices",
       emptyMessage:
-        "Code runs Build, Test and Clean on your Macs. Connect them to a Hub in the Vault app, and open a project in Code on a Mac: it shows up here."
+        "Code runs Build, Test and Clean on your Macs. In the Vault app on a Mac, turn on SSH from your devices and allow this device, or connect the Mac to a Hub; then open a project in Code there: it shows up here."
     ) {
       EmptyView()
     } recents: {
@@ -94,7 +115,7 @@ struct ProjectsWelcome: View {
 
 /// The projects as the kit's sidebar: one card of the vault's projects that have a folder on another device, each
 /// on its icon (or initial) with the devices that have it; search filters them, and the bar says how many devices
-/// Code can reach through the user's Hubs. With none, it says how to get some.
+/// Code can reach, through the user's Hubs or over SSH. With none, it says how to get some.
 struct ProjectsSidebar: View {
   let projects: [RemoteProject]
   @Binding var selection: RemoteProject.ID?
@@ -113,6 +134,7 @@ struct ProjectsSidebar: View {
     KitSidebar(
       selection: $selection, searchText: $search, searchPrompt: "Search Projects", columnVisibility: $columnVisibility
     ) {
+      VaultAccountPicker(meta: projects.count == 1 ? "1 project" : "\(projects.count) projects")
       if projects.isEmpty {
         // iPad: the welcome beside it says how to get some.
         KitSection("Projects", meta: ["None yet"], systemImage: "folder", hue: .orange) {
@@ -150,7 +172,7 @@ struct ProjectsSidebar: View {
     .status {
       HStack(spacing: 6) {
         StatusDot(hue: deviceCount > 0 ? .green : .gray)
-        Text(deviceCount == 0 ? "No devices" : deviceCount == 1 ? "1 device via Hub" : "\(deviceCount) devices via Hub")
+        Text(deviceCount == 0 ? "No devices" : deviceCount == 1 ? "1 device" : "\(deviceCount) devices")
       }
     }
     .navigationTitle("Code")

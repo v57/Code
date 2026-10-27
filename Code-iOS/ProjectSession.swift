@@ -2,6 +2,7 @@ import CodeActions
 import Foundation
 import Observation
 import SSHKit
+import VaultKit
 
 /// One open project: a copy of its manifests from one of the devices that have it (`ProjectMirror`), and the
 /// toolbar's model over that copy (`ActionController`), whose destinations are those devices. Build, Test and Clean
@@ -14,14 +15,17 @@ import SSHKit
   }
 
   let project: RemoteProject
+  /// The window's account's vault: the project's hosts, their signing and known keys.
+  let vault: Vault
   private(set) var phase: Phase = .loading("Connecting")
   private(set) var controller: ActionController?
   /// The device the copy came from, and the folder there.
   private(set) var source: SSHExecutor.Target?
   @ObservationIgnored private var files: SFTPClient?
 
-  init(project: RemoteProject) {
+  init(project: RemoteProject, vault: Vault) {
     self.project = project
+    self.vault = vault
   }
 
   /// Copies the project's manifests from the first device that answers, then finds its schemes.
@@ -62,9 +66,11 @@ import SSHKit
 
   private func start(root: URL, preferring target: SSHExecutor.Target) {
     let controller = ActionController(root: root)
-    controller.remoteLogin = { target in try RemoteProjects.login(for: target) }
-    controller.didMeetHostKey = { target, fingerprint in RemoteProjects.trust(fingerprint, for: target) }
-    controller.remoteLoginPassword = { target in RemoteProjects.loginPassword(for: target) }
+    controller.remoteLogin = { [vault] target in try RemoteProjects.login(for: target, vault: vault) }
+    controller.didMeetHostKey = { [vault] target, fingerprint in
+      RemoteProjects.trust(fingerprint, for: target, vault: vault)
+    }
+    controller.remoteLoginPassword = { [vault] target in RemoteProjects.loginPassword(for: target, vault: vault) }
     controller.remoteTargets = project.targets
     #if DEBUG
       if let signing = DebugLaunch.signing {
@@ -84,7 +90,7 @@ import SSHKit
 
   /// Builds on the target sign this way from now on, on every device (the vault keeps it for the host).
   func setSigning(_ signing: RemoteSigning, for target: SSHExecutor.Target) {
-    RemoteProjects.setSigning(signing, for: target)
+    RemoteProjects.setSigning(signing, for: target, vault: vault)
     guard let controller else { return }
     controller.remoteTargets = controller.remoteTargets.map {
       var other = $0
@@ -94,18 +100,20 @@ import SSHKit
   }
 
   func hasLoginPassword(for target: SSHExecutor.Target) -> Bool {
-    RemoteProjects.loginPassword(for: target) != nil
+    RemoteProjects.loginPassword(for: target, vault: vault) != nil
   }
 
   /// The login for a target, as the executor makes it (its address, its signed host key pinned).
   private func login(for target: SSHExecutor.Target) throws -> SSHServer {
-    let login = try RemoteProjects.login(for: target)
+    let login = try RemoteProjects.login(for: target, vault: vault)
     return SSHExecutor(target: target, localRoot: URL(fileURLWithPath: "/"), login: login).server(from: login)
   }
 
   private func remember(_ fingerprint: String, for target: SSHExecutor.Target) {
-    guard target.hostKey == nil, (try? RemoteProjects.login(for: target).knownFingerprint) == nil else { return }
-    RemoteProjects.trust(fingerprint, for: target)
+    guard target.hostKey == nil, (try? RemoteProjects.login(for: target, vault: vault).knownFingerprint) == nil else {
+      return
+    }
+    RemoteProjects.trust(fingerprint, for: target, vault: vault)
   }
 
   /// A path on the device as the project sees it: "Sources/Atlas" (the project's own folder is its name).

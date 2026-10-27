@@ -3,6 +3,7 @@ import CodeIcons
 import ComponentKit
 import SSHKit
 import SwiftUI
+import VaultKit
 
 /// A project under the kit's bar: its live title says what it is doing; Build, Test, Clean and Stop, its scheme and
 /// the device it runs on (one of those that have it), and its files there a push away. Under it, the log as run
@@ -21,9 +22,9 @@ struct ProjectScreen: View {
     case log, issues
   }
 
-  init(project: RemoteProject) {
+  init(project: RemoteProject, vault: Vault) {
     self.project = project
-    _session = State(initialValue: ProjectSession(project: project))
+    _session = State(initialValue: ProjectSession(project: project, vault: vault))
   }
 
   var body: some View {
@@ -79,7 +80,9 @@ struct ProjectScreen: View {
   #if DEBUG
     /// `CODE_DEBUG_SHOW`: `issues`, `files`, or `file:<path in the project>`.
     private func debugShow() async {
-      if let command = DebugLaunch.run, let source = session.source, let login = try? RemoteProjects.login(for: source) {
+      if let command = DebugLaunch.run, let source = session.source,
+        let login = try? RemoteProjects.login(for: source, vault: session.vault)
+      {
         await DebugLaunch.run(command, on: source, login: login)
       }
       guard let show = DebugLaunch.show, let source = session.source else { return }

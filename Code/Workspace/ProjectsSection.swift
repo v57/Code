@@ -2,14 +2,17 @@ import CodeKit
 import ComponentKit
 import SwiftUI
 import VaultKit
+import VaultUI
 
 /// The projects the v57 apps share (added in Git and the others, through the vault) that are on this Mac, in the
 /// vault's groups, as Git's sidebar lists its repositories: the open project is the current row, a group opens and
 /// closes from its row (which are closed is Code's own, shared with Welcome). Picking a project shows it in this
 /// window, or brings forward the window it is open in, and the card closes again; closed, its header counts them.
+/// They are the window's account's, named in the header when it isn't Personal.
 struct ProjectsSection: View {
   @Environment(Workspace.self) private var workspace
   @Environment(WindowModel.self) private var model
+  @Environment(\.vault) private var vault
   @AppStorage("sidebar.projectsExpanded") private var isExpanded = false
   @AppStorage("welcome.collapsedGroups") private var collapsedGroups = CollapsedGroups()
 
@@ -21,8 +24,8 @@ struct ProjectsSection: View {
   }
 
   /// The vault's projects whose folders are on this Mac.
-  private var tree: VaultProjectTree {
-    Vault.shared.localProjectTree.filter { project in
+  private func tree(_ vault: Vault) -> VaultProjectTree {
+    vault.localProjectTree.filter { project in
       project.localPath.map { FileManager.default.fileExists(atPath: $0) } ?? false
     }
   }
@@ -39,11 +42,17 @@ struct ProjectsSection: View {
   }
 
   var body: some View {
-    let tree = tree
+    if let vault { section(vault) }
+  }
+
+  @ViewBuilder private func section(_ vault: Vault) -> some View {
+    let tree = tree(vault)
     let count = tree.roots.flatMap(\.projects).count
+    let account = vault.isPersonal ? nil : Vaults.shared.account(id: vault.accountID)?.name
     if count > 0 {
       KitSection(
-        "Projects", meta: [count == 1 ? "1 project" : "\(count) projects"], systemImage: "square.stack.3d.up",
+        "Projects", meta: [count == 1 ? "1 project" : "\(count) projects", account].compactMap { $0 },
+        systemImage: "square.stack.3d.up",
         hue: .indigo, isExpanded: $isExpanded
       ) {
         ForEach(rows(tree)) { row in

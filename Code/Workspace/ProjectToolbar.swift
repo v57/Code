@@ -1,6 +1,8 @@
 import CodeKit
 import ComponentKit
 import SwiftUI
+import VaultKit
+import VaultUI
 
 extension View {
   /// Xcode's toolbar as the kit's bar: Run and Stop in a tool group before the project's rich title (its live icon
@@ -127,6 +129,12 @@ private struct ProjectTitle: View {
 /// The issue counts (they open the issue list), then "Scheme › Destination": two of the kit's menus in one tool group.
 private struct SchemeTools: View {
   let model: WindowModel
+  /// The window's account's vault, whose Hub devices are the remote destinations.
+  @Environment(\.vault) private var vault
+
+  private var remoteTargets: [SSHExecutor.Target] {
+    vault.map { RemoteDestinations.targets(for: model.workspace.root, vault: $0) } ?? []
+  }
 
   var body: some View {
     @Bindable var model = model
@@ -181,10 +189,12 @@ private struct SchemeTools: View {
         .help("Choose where to run")
       }
     }
-    // Other machines that have this project: the devices on the user's Hubs, kept current as the vault changes.
-    .onChange(of: RemoteDestinations.targets(for: model.workspace.root), initial: true) { _, targets in
+    // Other machines that have this project: the devices on the account's Hubs, kept current as the vault changes.
+    .onChange(of: remoteTargets, initial: true) { _, targets in
       actions.remoteTargets = targets
-      actions.remoteLoginPassword = { target in RemoteDestinations.loginPassword(for: target) }
+      actions.remoteLoginPassword = { [vault] target in
+        vault.flatMap { RemoteDestinations.loginPassword(for: target, vault: $0) }
+      }
     }
   }
 
