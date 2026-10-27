@@ -18,6 +18,24 @@ import VaultKit
     return (vaults.accounts + [.personal]).first(where: holds)?.id ?? current
   }
 
+  /// The recent folders a window on `vault`'s account lists: those its vault has as projects here, and on Personal
+  /// also those no other account has, so one client's folders never show in another account's window. The
+  /// accounts' vaults are open from launch (`findIcons`), so this only reads them.
+  static func recents(_ folders: [URL], for vault: Vault) -> [URL] {
+    func paths(_ vault: Vault) -> Set<String> {
+      Set(vault.localProjects.compactMap { $0.localPath.map { URL(fileURLWithPath: $0).standardizedFileURL.path } })
+    }
+    let own = paths(vault)
+    let vaults = Vaults.shared
+    let others = vault.isPersonal
+      ? vaults.accounts.compactMap { vaults.vault(for: $0) }.reduce(into: Set<String>()) { $0.formUnion(paths($1)) }
+      : []
+    return folders.filter { folder in
+      let path = folder.standardizedFileURL.path
+      return own.contains(path) || (vault.isPersonal && !others.contains(path))
+    }
+  }
+
   /// Keeps the icons of the vault's projects on this Mac current, for this app's lists and the other v57 apps'.
   /// Looking again at a vault that already looks is free.
   static func findIcons(in vault: Vault) {

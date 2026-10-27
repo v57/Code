@@ -7,8 +7,8 @@ import VaultUI
 /// version, Open…, and the recent projects (click selects, double-click or Return opens) or the projects the v57 apps
 /// share (added in Git and the others, through the vault) in the vault's groups, live as they change. A group opens
 /// and closes from its chevron, a double click or Return; which are closed is Code's own. A folder can also be
-/// dropped on the window. The account picker heads the actions (with more than one account): the Projects list is
-/// the window's account's.
+/// dropped on the window. The account picker heads the actions (with more than one account): both lists are the
+/// window's account's.
 struct WelcomeScreen: View {
   /// The window's account's vault.
   let vault: Vault
@@ -48,7 +48,10 @@ struct WelcomeScreen: View {
   var body: some View {
     let projectCount = projectTree.roots.flatMap(\.projects).count
     KitWelcome(
-      emptyTitle: "No Recent Projects", emptyMessage: "Projects you open appear here.", source: $source,
+      emptyTitle: source == .projects ? "No Projects" : "No Recent Projects",
+      emptyMessage: source == .projects
+        ? "Projects added in Code, Git or the other v57 apps appear here." : "Projects you open appear here.",
+      source: $source,
       onDrop: { urls in
         guard let url = urls.first else { return false }
         open(url)
@@ -60,7 +63,8 @@ struct WelcomeScreen: View {
         AppState.shared.chooseFolder()
       }
     } recents: {
-      ForEach(recents.existing, id: \.self) { folder in
+      // The window's account's: its own folders (and on Personal, those no other account has).
+      ForEach(ProjectAccounts.recents(recents.existing, for: vault), id: \.self) { folder in
         item(folder, isRecent: true)
       }
     } projects: {
