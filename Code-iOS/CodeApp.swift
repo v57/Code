@@ -35,8 +35,8 @@ struct AccountWindow: View {
   }
 }
 
-/// The kit's split view: the projects in the sidebar (the root list on iPhone), the picked one beside it (pushed on
-/// iPhone).
+/// The kit's split view on iPad: the projects in the sidebar, the picked one beside it. On iPhone the list is the root
+/// of a stack and the picked project is pushed.
 struct ProjectsView: View {
   /// The window's account's vault.
   let vault: Vault
@@ -44,22 +44,59 @@ struct ProjectsView: View {
   @State private var selection: RemoteProject.ID?
   @State private var columnVisibility = NavigationSplitViewVisibility.all
   @State private var compactColumn = NavigationSplitViewColumn.sidebar
+  /// iPhone's stack: the open project, then its files.
+  @State private var path = NavigationPath()
   @Environment(\.kitIdiom) private var idiom
 
   private var projects: [RemoteProject] { RemoteProjects.all(vault: vault) }
 
   var body: some View {
-    // iPhone with nothing to list: the welcome is the first screen (unless there are accounts to pick from).
-    if idiom == .phone, projects.isEmpty, vaults.accounts.isEmpty {
-      ProjectsWelcome(projects: [], selection: $selection)
-    } else {
-      split
+    Group {
+      // iPhone with nothing to list: the welcome is the first screen (unless there are accounts to pick from).
+      if idiom == .phone, projects.isEmpty, vaults.accounts.isEmpty {
+        ProjectsWelcome(projects: [], selection: $selection)
+      } else if idiom == .phone {
+        stack
+      } else {
+        split
+      }
+    }
+    .task {
+      #if DEBUG
+        if let id = DebugLaunch.selected(in: projects) { selection = id }
+      #endif
+    }
+  }
+
+  private var sidebar: some View {
+    ProjectsSidebar(projects: projects, selection: $selection, columnVisibility: $columnVisibility)
+  }
+
+  /// iPhone: one stack, the list at its root and the picked project pushed onto it, so back always closes the
+  /// project. (A collapsed split view reports its sidebar column whenever the detail's own stack pops, and value
+  /// links don't push under a destination pushed by `navigationDestination(item:)`.)
+  private var stack: some View {
+    NavigationStack(path: $path) {
+      sidebar
+        .navigationDestination(for: OpenProject.self) { open in
+          if let project = projects.first(where: { $0.id == open.id }) {
+            ProjectScreen(project: project, vault: vault).id(project.id)
+          }
+        }
+    }
+    .onChange(of: selection) { _, selection in
+      guard let selection else { return }
+      path = NavigationPath([OpenProject(id: selection)])
+    }
+    // Back on the root list: no row stays picked (tapping it again opens it again).
+    .onChange(of: path.count) { _, count in
+      if count == 0 { selection = nil }
     }
   }
 
   private var split: some View {
     NavigationSplitView(columnVisibility: $columnVisibility, preferredCompactColumn: $compactColumn) {
-      ProjectsSidebar(projects: projects, selection: $selection, columnVisibility: $columnVisibility)
+      sidebar
         .toolbar(removing: .sidebarToggle)
         .navigationSplitViewColumnWidth(min: 260, ideal: 300, max: 360)
     } detail: {
@@ -75,16 +112,12 @@ struct ProjectsView: View {
     .onChange(of: selection) { _, selection in
       if selection != nil { compactColumn = .detail }
     }
-    // iPhone: back on the root list, no row stays picked (tapping it again opens it again).
-    .onChange(of: compactColumn) { _, column in
-      if idiom == .phone, column == .sidebar { selection = nil }
-    }
-    .task {
-      #if DEBUG
-        if let id = DebugLaunch.selected(in: projects) { selection = id }
-      #endif
-    }
   }
+}
+
+/// The project iPhone's stack shows.
+struct OpenProject: Hashable {
+  let id: RemoteProject.ID
 }
 
 /// The main screen while no project is open: the kit's welcome, its list the projects on the user's devices (a tap
