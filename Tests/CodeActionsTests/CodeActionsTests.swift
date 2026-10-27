@@ -246,11 +246,15 @@ import Testing
     try FileManager.default.createDirectory(at: schemes, withIntermediateDirectories: true)
     try FileManager.default.createDirectory(
       at: root.appendingPathComponent("App-Local.xcworkspace"), withIntermediateDirectories: true)
-    let launch = #"<LaunchAction><BuildableReference BuildableName = "App.app"/></LaunchAction>"#
+    let launch =
+      #"<LaunchAction><BuildableProductRunnable><BuildableReference BuildableName = "App.app"/></BuildableProductRunnable></LaunchAction>"#
     try "<TestAction/>\(launch)".write(
       to: schemes.appendingPathComponent("App.xcscheme"), atomically: true, encoding: .utf8)
-    try #"<TestAction><BuildableReference BuildableName = "App.app"/></TestAction><LaunchAction/>"#.write(
-      to: schemes.appendingPathComponent("AppTests.xcscheme"), atomically: true, encoding: .utf8)
+    // A test scheme's launch action names the app it runs in, but runs nothing.
+    try #"""
+      <TestAction><Testables><TestableReference><BuildableReference BuildableName = "AppTests.xctest"/></TestableReference></Testables></TestAction>
+      <LaunchAction><MacroExpansion><BuildableReference BuildableName = "App.app"/></MacroExpansion></LaunchAction>
+      """#.write(to: schemes.appendingPathComponent("AppTests.xcscheme"), atomically: true, encoding: .utf8)
     try """
       1 /* Helper */ = {
         isa = PBXNativeTarget;
@@ -271,11 +275,70 @@ import Testing
         == ["Helper", "App", "AppKitExtras", "AppTests", "BSONTests"])
   }
 
+  @Test func xcodeProducts() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let files = FileManager.default
+    let app = root.appendingPathComponent("App")
+    try files.createDirectory(at: app.appendingPathComponent("App.xcodeproj"), withIntermediateDirectories: true)
+    try files.createDirectory(at: app.appendingPathComponent("App-Local.xcworkspace"), withIntermediateDirectories: true)
+    try """
+      1 /* App */ = {
+        isa = PBXNativeTarget;
+        name = App;
+        productType = "com.apple.product-type.application";
+      };
+      2 /* tool */ = {
+        isa = PBXNativeTarget;
+        name = tool;
+        productType = "com.apple.product-type.tool";
+      };
+      3 /* AppUITests */ = {
+        isa = PBXNativeTarget;
+        name = AppUITests;
+        productType = "com.apple.product-type.bundle.ui-testing";
+      };
+      4 /* XCLocalSwiftPackageReference "." */ = {
+        isa = XCLocalSwiftPackageReference;
+        relativePath = .;
+      };
+      """.write(to: app.appendingPathComponent("App.xcodeproj/project.pbxproj"), atomically: true, encoding: .utf8)
+    try """
+      .executableTarget(name: "app-cli"),
+      .testTarget(name: "AppKitTests"),
+      """.write(to: app.appendingPathComponent("Package.swift"), atomically: true, encoding: .utf8)
+    // A sibling package the workspace lists, with an executable product.
+    let kit = root.appendingPathComponent("Kit")
+    try files.createDirectory(at: kit, withIntermediateDirectories: true)
+    try #"products: [.executable(name: "kit-tool", targets: ["KitTool"]), .library(name: "Kit", targets: ["Kit"])], .testTarget(name: "KitTests")"#
+      .write(to: kit.appendingPathComponent("Package.swift"), atomically: true, encoding: .utf8)
+    try #"<Workspace><FileRef location = "group:App.xcodeproj"></FileRef><FileRef location = "group:../Kit"></FileRef></Workspace>"#
+      .write(
+        to: app.appendingPathComponent("App-Local.xcworkspace/contents.xcworkspacedata"), atomically: true,
+        encoding: .utf8)
+    let products = XcodeDetector.products(in: ProjectFolder(listing: app))
+    #expect(products["App"] == .app)
+    #expect(products["tool"] == .tool)
+    #expect(products["app-cli"] == .tool)
+    #expect(products["kit-tool"] == .tool)
+    #expect(products["AppUITests"] == .tests)
+    #expect(products["AppKitTests"] == .tests)
+    #expect(products["KitTests"] == .tests)
+    #expect(products["Kit"] == nil)
+
+    let library = #"<BuildAction><BuildActionEntry buildForRunning = "YES"><BuildableReference BuildableName = "Kit"/></BuildActionEntry></BuildAction><TestAction></TestAction><LaunchAction/>"#
+    #expect(XcodeDetector.product(ofScheme: library) == .library)
+    let tool = #"<LaunchAction><BuildableProductRunnable><BuildableReference BuildableName = "kit-tool"/></BuildableProductRunnable></LaunchAction>"#
+    #expect(XcodeDetector.product(ofScheme: tool) == .tool)
+    let tests = #"<BuildAction><BuildActionEntry buildForRunning = "NO"/></BuildAction><TestAction><Testables><TestableReference/></Testables></TestAction>"#
+    #expect(XcodeDetector.product(ofScheme: tests) == .tests)
+  }
+
   @Test func terminalCommands() {
     let directory = URL(fileURLWithPath: "/tmp/App")
     let mac = ActionScheme(
       name: "App", toolchain: .xcode, directory: directory,
-      commands: [.build: "xcodebuild -project App.xcodeproj -scheme App build"],
+      commands: [.build: "xcodebuild -project App.xcodeproj -scheme App build", .run: "build"],
       platforms: [.mac, .iOS], xcodeContainer: "App.xcodeproj")
     #expect(mac.terminalCommand(for: .build) == mac.commands[.build])
     let run = mac.terminalCommand(for: .run) ?? ""
@@ -286,6 +349,9 @@ import Testing
     var phone = mac
     phone.platforms = [.iOS]
     #expect(phone.terminalCommand(for: .run) == nil)
+    var library = mac
+    library.commands[.run] = nil
+    #expect(library.terminalCommand(for: .run) == nil)
     let android = ActionScheme(
       name: "app", toolchain: .android, directory: directory,
       commands: [.run: "./gradlew installDebug --console=plain"], platforms: [.android],

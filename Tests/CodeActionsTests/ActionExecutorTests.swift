@@ -47,18 +47,21 @@ import Testing
 
     @Test func remoteDestinationsPlanTheirOwnSteps() {
       let scheme = ActionScheme(
-        name: "Atlas", toolchain: .xcode, directory: URL(fileURLWithPath: "/tmp/Atlas"), commands: [:], platforms: [.mac, .iOS],
-        xcodeContainer: "Atlas.xcodeproj")
+        name: "Atlas", toolchain: .xcode, directory: URL(fileURLWithPath: "/tmp/Atlas"),
+        commands: [.build: "build", .run: "build"], platforms: [.mac, .iOS], xcodeContainer: "Atlas.xcodeproj")
       let remote = RunDestination(id: "ssh:studio", name: "Mac Studio", kind: .remote)
       let build = ActionPlanner.steps(for: .build, scheme: scheme, destination: remote)
       #expect(build.map(\.title) == ["Build"])
       #expect(ActionPlanner.steps(for: .run, scheme: scheme, destination: remote).map(\.title) == ["Run"])
+      // A scheme without the action (a library's Run) plans nothing.
+      #expect(ActionPlanner.steps(for: .test, scheme: scheme, destination: remote).isEmpty)
+      #expect(ActionPlanner.steps(for: .test, scheme: scheme, destination: nil).isEmpty)
     }
 
     @Test func remoteBuildsSignAsTheTargetSays() throws {
       let scheme = ActionScheme(
-        name: "Atlas", toolchain: .xcode, directory: URL(fileURLWithPath: "/tmp/Atlas"), commands: [:], platforms: [.mac],
-        xcodeContainer: "Atlas.xcodeproj")
+        name: "Atlas", toolchain: .xcode, directory: URL(fileURLWithPath: "/tmp/Atlas"), commands: [.test: "test"],
+        platforms: [.mac], xcodeContainer: "Atlas.xcodeproj")
       let remote = RunDestination(id: "ssh:studio", name: "Mac Studio", kind: .remote)
       #expect(ActionPlanner.steps(for: .test, scheme: scheme, destination: remote, signing: .loginKeychain).map(\.title) == ["Test"])
       #expect(RemoteSigning.unsigned.xcodebuild("-project Atlas.xcodeproj", "build")

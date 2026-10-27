@@ -125,6 +125,8 @@ public struct ActionStep: Sendable {
     public static func steps(
       for kind: ActionKind, scheme: ActionScheme, destination: RunDestination?, signing: RemoteSigning? = nil
     ) -> [ActionStep] {
+      // An Xcode library has no Run, a test bundle no Build either.
+      guard scheme.supports(kind) else { return [] }
       if destination?.kind == .remote { return remoteSteps(kind, scheme, signing: signing ?? .unsigned) }
       switch scheme.toolchain {
       case .xcode: return xcodeSteps(kind, scheme, destination)

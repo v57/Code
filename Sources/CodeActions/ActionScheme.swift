@@ -149,14 +149,14 @@ public struct ActionScheme: Identifiable, Hashable, Codable, Sendable {
 
   /// The action as one shell command run in `directory`, for a terminal
   /// that runs commands instead of `ActionPlanner`'s steps (Shell). Run
-  /// builds an Xcode scheme for this Mac into build/ and runs its product
+  /// builds an Xcode app or tool for this Mac into build/ and runs its product
   /// in the foreground, and installs and launches an Android app on the
   /// connected device; the other actions are the scheme's commands.
   public func terminalCommand(for kind: ActionKind) -> String? {
     guard kind == .run else { return commands[kind] }
     switch toolchain {
     case .xcode:
-      guard platforms.contains(.mac), let container = xcodeContainer else { return nil }
+      guard supports(.run), platforms.contains(.mac), let container = xcodeContainer else { return nil }
       let flag = container.hasSuffix(".xcworkspace") ? "-workspace" : "-project"
       let products = "build/Build/Products/Debug"
       let named = shellQuote("\(products)/\(name)")
