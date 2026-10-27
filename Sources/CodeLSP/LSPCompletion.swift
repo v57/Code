@@ -1,4 +1,4 @@
-#if os(macOS) || os(Windows)
+#if os(macOS) || os(Windows) || os(Linux)
   import Foundation
 
   /// Why completions are asked for (the protocol's `CompletionTriggerKind`).
