@@ -4,13 +4,15 @@ import Foundation
   import CoreServices
 #elseif os(Windows)
   import WinSDK
+#elseif os(Linux)
+  import SwiftUIPortability
 #endif
 
 /// Watches a folder tree for changes with FSEvents (ReadDirectoryChangesW on
-/// Windows) and reports them on the main queue, batched (`latency`) so a `git
-/// checkout` arrives as a few callbacks rather than thousands. Without
-/// `fileEvents`, a change is the folder whose items changed: far fewer events in
-/// a busy tree. A no-op elsewhere.
+/// Windows, inotify on Linux) and reports them on the main queue, batched
+/// (`latency`) so a `git checkout` arrives as a few callbacks rather than
+/// thousands. Without `fileEvents`, a change is the folder whose items changed:
+/// far fewer events in a busy tree. A no-op elsewhere.
 public final class FileWatcher: @unchecked Sendable {
   /// One changed path. `structural` is true when an item was created, removed
   /// or renamed (the tree and Quick Open index need a re-read), false for a
@@ -28,6 +30,8 @@ public final class FileWatcher: @unchecked Sendable {
     private var stream: FSEventStreamRef?
   #elseif os(Windows)
     private var reader: DirectoryReader?
+  #elseif os(Linux)
+    private var watcher: DirectoryWatcher?
   #endif
 
   public init(
@@ -36,7 +40,7 @@ public final class FileWatcher: @unchecked Sendable {
   ) {
     self.root = root
     self.handler = handler
-    #if os(macOS) || os(Windows)
+    #if os(macOS) || os(Windows) || os(Linux)
       start(latency: latency, fileEvents: fileEvents)
     #endif
   }
@@ -50,6 +54,8 @@ public final class FileWatcher: @unchecked Sendable {
       }
     #elseif os(Windows)
       reader?.close()
+    #elseif os(Linux)
+      watcher?.stop()
     #endif
   }
 
@@ -179,6 +185,16 @@ public final class FileWatcher: @unchecked Sendable {
       }
       thread.name = "CodeWorkspace.FileWatcher"
       thread.start()
+    }
+  #elseif os(Linux)
+    private func start(latency: TimeInterval, fileEvents: Bool) {
+      let handler = self.handler
+      watcher = DirectoryWatcher(paths: [root.path], fileEvents: fileEvents, latency: latency, queue: .main) { changes in
+        let mapped = changes.map {
+          Change(url: URL(fileURLWithPath: $0.path), structural: $0.structural, rescan: $0.rescan)
+        }
+        MainActor.assumeIsolated { handler(mapped) }
+      }
     }
   #endif
 }

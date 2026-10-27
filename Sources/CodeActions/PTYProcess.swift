@@ -237,12 +237,15 @@ import Foundation
       }
     }
   }
-#elseif os(Windows)
+#elseif os(Windows) || os(Linux)
   import SwiftUIPortability
-  import WinSDK
+  #if os(Windows)
+    import WinSDK
+  #endif
 
-  /// A shell command (`cmd /c`) with its output read from pipes: Windows has pseudo-consoles, but a pipe is
-  /// enough for build output. Stopping it ends everything it started (`taskkill /T`).
+  /// A shell command (`cmd /c`; on Linux `bash -c`) with its output read from pipes: Windows has pseudo-consoles
+  /// and Linux pseudo-terminals, but a pipe is enough for build output. Stopping it ends everything it started
+  /// (`taskkill /T`; on Linux its process group).
   public final class PTYProcess: @unchecked Sendable {
     /// One piece of output: a line, or a transient status line that a later
     /// one replaces (text ending in a carriage return, like a progress bar).
@@ -332,6 +335,19 @@ import Foundation
       }
     }
 
+    #if os(Linux)
+      /// Sends `signal` to the command and everything it started (its process group).
+      public func signal(_ signal: Int32) { kill(-pid, signal) }
+
+      /// Stops the command like Xcode's Stop: SIGTERM to its process group, SIGKILL if it's still there 4 s later.
+      public func stop() {
+        let pid = pid
+        kill(-pid, SIGTERM)
+        DispatchQueue.global().asyncAfter(deadline: .now() + 4) {
+          if kill(-pid, 0) == 0 { kill(-pid, SIGKILL) }
+        }
+      }
+    #else
     /// Ends the command and everything it started (Windows has no signals to pass on).
     public func signal(_ signal: Int32) { stop() }
 
@@ -348,6 +364,7 @@ import Foundation
         }
       }
     }
+    #endif
   }
 #endif
 

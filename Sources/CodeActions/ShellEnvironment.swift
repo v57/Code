@@ -1,6 +1,6 @@
 import Foundation
 
-#if os(Windows)
+#if os(Windows) || os(Linux)
   import SwiftUIPortability
 #endif
 
@@ -99,7 +99,7 @@ public final class ShellEnvironment: @unchecked Sendable {
       return ProcessInfo.processInfo.environment
     #else
     var result = ProcessInfo.processInfo.environment
-    let shell = result["SHELL"].flatMap { $0.isEmpty ? nil : $0 } ?? "/bin/zsh"
+    let shell = result["SHELL"].flatMap { $0.isEmpty ? nil : $0 } ?? SubprocessCapture.shellPath
     let marker = "__CODE_ENVIRONMENT__"
     if let output = SubprocessCapture.run(
       shell, ["-l", "-i", "-c", "printf '\\n\(marker)\\n'; /usr/bin/env -0"],
@@ -175,7 +175,7 @@ public enum SubprocessCapture {
       _ = readDone.wait(timeout: .now() + 2)
       if requireSuccess, process.terminationStatus != 0 { return nil }
       return String(decoding: data, as: UTF8.self)
-    #elseif os(Windows)
+    #elseif os(Windows) || os(Linux)
       guard
         let child = try? ChildProcess(
           executable: URL(fileURLWithPath: executable), arguments: arguments, directory: directory,
@@ -207,11 +207,13 @@ public enum SubprocessCapture {
     #endif
   }
 
-  /// The shell commands run in: zsh, or cmd on Windows.
+  /// The shell commands run in: zsh, cmd on Windows, bash on Linux (sh where there's none).
   #if os(Windows)
     public static let shellPath =
       ProcessInfo.processInfo.environment["ComSpec"] ?? ProcessInfo.processInfo.environment["COMSPEC"]
       ?? "C:\\Windows\\System32\\cmd.exe"
+  #elseif os(Linux)
+    public static let shellPath = FileManager.default.isExecutableFile(atPath: "/bin/bash") ? "/bin/bash" : "/bin/sh"
   #else
     public static let shellPath = "/bin/zsh"
   #endif

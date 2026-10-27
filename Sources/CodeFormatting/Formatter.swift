@@ -1,5 +1,9 @@
 import Foundation
 
+#if os(Linux)
+  import SwiftUIPortability
+#endif
+
 /// A code formatter run on a file's text before an explicit save: the text
 /// goes in on standard input and comes back formatted on standard output, so
 /// the file is written once, already formatted.
@@ -272,6 +276,56 @@ public struct FormattingService: Sendable {
         throw Failure.failed(
           formatter: name,
           message: message.isEmpty ? "exit code \(process.terminationStatus)" : message)
+      }
+      let formatted = String(decoding: output, as: UTF8.self)
+      // An empty answer for a non-empty file is a failure, not a format.
+      if formatted.isEmpty && !input.isEmpty {
+        throw Failure.failed(formatter: name, message: "no output")
+      }
+      return formatted
+    #elseif os(Linux)
+      // SwiftUIPortability's ChildProcess: Foundation's Process there can hang when children run side by side.
+      let child: ChildProcess
+      do {
+        child = try ChildProcess(
+          executable: URL(fileURLWithPath: executable), arguments: arguments, directory: directory,
+          environment: environment, input: true)
+      } catch {
+        throw Failure.failed(formatter: name, message: error.localizedDescription)
+      }
+      nonisolated(unsafe) var output = Data()
+      nonisolated(unsafe) var errors = Data()
+      let reads = DispatchGroup()
+      reads.enter()
+      DispatchQueue.global().async {
+        child.read(.output) { output.append($0) }
+        reads.leave()
+      }
+      reads.enter()
+      DispatchQueue.global().async {
+        child.read(.error) { errors.append($0) }
+        reads.leave()
+      }
+      DispatchQueue.global().async {
+        child.write(Data(input.utf8))
+        child.closeInput()
+      }
+      let done = DispatchSemaphore(value: 0)
+      nonisolated(unsafe) var status: Int32 = 0
+      DispatchQueue.global().async {
+        status = child.waitUntilExit()
+        done.signal()
+      }
+      if done.wait(timeout: .now() + timeout) == .timedOut {
+        child.terminate()
+        throw Failure.timedOut(formatter: name)
+      }
+      _ = reads.wait(timeout: .now() + 2)
+      guard status == 0 else {
+        let message = String(decoding: errors, as: UTF8.self)
+          .split(separator: "\n").filter { !$0.contains("deprecated") }.prefix(3)
+          .joined(separator: " ")
+        throw Failure.failed(formatter: name, message: message.isEmpty ? "exit code \(status)" : message)
       }
       let formatted = String(decoding: output, as: UTF8.self)
       // An empty answer for a non-empty file is a failure, not a format.

@@ -29,7 +29,7 @@ public protocol ActionCommand: AnyObject, Sendable {
   func stop()
 }
 
-#if os(macOS) || os(Windows)
+#if os(macOS) || os(Windows) || os(Linux)
   extension PTYProcess: ActionCommand {}
 
   /// Commands on this computer, on a pseudo-terminal (`PTYProcess`).
@@ -127,7 +127,7 @@ public struct SSHExecutor: ActionExecutor {
   public func start(_ command: String, directory: URL, environment: [String: String]) throws -> any ActionCommand {
     let remote = remoteCommand(command, directory: directory)
     if let login { return SSHActionCommand(server: server(from: login), command: remote, onNewHostKey: onNewHostKey) }
-    #if os(macOS) || os(Windows)
+    #if os(macOS) || os(Windows) || os(Linux)
       let arguments = try sshArguments(remote)
       // Locally only the `ssh` client runs (from the home folder: the project needn't exist here); the remote side
       // gets its own login environment.

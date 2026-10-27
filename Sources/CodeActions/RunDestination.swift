@@ -33,11 +33,13 @@ public struct RunDestination: Identifiable, Hashable, Codable, Sendable {
     self.isAvailable = isAvailable
   }
 
-  /// This computer (`.mac` is the computer Code runs on): "My Mac", or "This PC" on Windows.
+  /// This computer (`.mac` is the computer Code runs on): "My Mac", "This PC" on Windows, "This Computer" on Linux.
   public static let mac = RunDestination(id: "mac", name: localName, kind: .mac)
 
   #if os(Windows)
     public static let localName = "This PC"
+  #elseif os(Linux)
+    public static let localName = "This Computer"
   #else
     public static let localName = "My Mac"
   #endif
@@ -53,7 +55,7 @@ public struct RunDestination: Identifiable, Hashable, Codable, Sendable {
   public var symbolName: String {
     switch kind {
     case .mac:
-      #if os(Windows)
+      #if os(Windows) || os(Linux)
         return "desktopcomputer"
       #else
         return "laptopcomputer"
