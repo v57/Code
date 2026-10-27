@@ -82,6 +82,14 @@ struct ProjectScreen: View {
       guard let show = DebugLaunch.show, let source = session.source else { return }
       if show == "issues" { pane = .issues }
       if show == "files" { showsFiles = true }
+      if show == "signingSetup" {
+        do {
+          try await session.placeSigningSetup(on: source)
+          DebugLaunch.writeSetup("placed")
+        } catch {
+          DebugLaunch.writeSetup("failed: \(ProjectSession.describe(error))")
+        }
+      }
       if show.hasPrefix("file:") {
         let path = source.directory + "/" + show.dropFirst(5)
         shownFile = try? await session.fileClient().stat(path)

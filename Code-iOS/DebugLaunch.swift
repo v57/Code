@@ -15,6 +15,8 @@
   /// - `CODE_DEBUG_PERFORM`: `build`, `test` or `clean`, run once the schemes are found.
   /// - `CODE_DEBUG_SIGNING`: `unsigned`, `loginKeychain` or `signingKeychain`, how Xcode builds sign on every device
   ///   for this launch (the vault's choice stays as it is).
+  /// - `CODE_DEBUG_SHOW=signingSetup`: puts Signing Keychain's setup script on the project's device, as picking it
+  ///   does, the outcome in `Documents/code-debug-setup.txt`.
   ///
   /// The state goes to `Documents/code-debug-state.txt` in the app's container as it changes:
   ///
@@ -115,9 +117,12 @@
       return lines.joined(separator: "\n") + "\n"
     }
 
-    private static func write(_ state: String) {
+    private static func write(_ state: String, to name: String = "code-debug-state.txt") {
       guard let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
-      try? Data(state.utf8).write(to: documents.appendingPathComponent("code-debug-state.txt"), options: .atomic)
+      try? Data(state.utf8).write(to: documents.appendingPathComponent(name), options: .atomic)
     }
+
+    /// `CODE_DEBUG_SHOW=signingSetup`: what putting the setup script on the device came to.
+    static func writeSetup(_ outcome: String) { write(outcome + "\n", to: "code-debug-setup.txt") }
   }
 #endif
