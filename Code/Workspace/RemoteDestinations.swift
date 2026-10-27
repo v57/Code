@@ -33,7 +33,7 @@ enum RemoteDestinations {
     switch signing {
     case VaultHost.BuildSigning.none: return .unsigned
     case .loginKeychain: return .loginKeychain
-    case .signingKeychain: return .signingKeychain
+    case .desktopSession: return .desktopSession
     }
   }
 }

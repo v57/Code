@@ -44,7 +44,7 @@ struct RemoteProject: Identifiable, Hashable {
     switch signing {
     case VaultHost.BuildSigning.none: return .unsigned
     case .loginKeychain: return .loginKeychain
-    case .signingKeychain: return .signingKeychain
+    case .desktopSession: return .desktopSession
     }
   }
 
@@ -53,7 +53,7 @@ struct RemoteProject: Identifiable, Hashable {
     switch signing {
     case .unsigned: host.buildSigning = VaultHost.BuildSigning.none
     case .loginKeychain: host.buildSigning = .loginKeychain
-    case .signingKeychain: host.buildSigning = .signingKeychain
+    case .desktopSession: host.buildSigning = .desktopSession
     }
     vault.save(host)
   }

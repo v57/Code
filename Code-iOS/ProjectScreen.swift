@@ -79,17 +79,13 @@ struct ProjectScreen: View {
   #if DEBUG
     /// `CODE_DEBUG_SHOW`: `issues`, `files`, or `file:<path in the project>`.
     private func debugShow() async {
+      if let command = DebugLaunch.run, let source = session.source, let login = try? RemoteProjects.login(for: source) {
+        await DebugLaunch.run(command, on: source, login: login)
+      }
       guard let show = DebugLaunch.show, let source = session.source else { return }
       if show == "issues" { pane = .issues }
       if show == "files" { showsFiles = true }
-      if show == "signingSetup" {
-        do {
-          try await session.placeSigningSetup(on: source)
-          DebugLaunch.writeSetup("placed")
-        } catch {
-          DebugLaunch.writeSetup("failed: \(ProjectSession.describe(error))")
-        }
-      }
+
       if show.hasPrefix("file:") {
         let path = source.directory + "/" + show.dropFirst(5)
         shownFile = try? await session.fileClient().stat(path)
@@ -243,8 +239,6 @@ struct SchemeTools: View {
   @State private var showsDevices = false
   /// The Mac whose login password Login Keychain asks for, having none saved.
   @State private var passwordTarget: SSHExecutor.Target?
-  /// The Mac Signing Keychain was just picked for: how to set it up there.
-  @State private var setupTarget: SSHExecutor.Target?
 
   var body: some View {
     ToolGroup {
@@ -315,12 +309,11 @@ struct SchemeTools: View {
         session.setSigning(.loginKeychain, for: target)
       }
     }
-    .kitSheet(item: $setupTarget) { target in SigningSetupSheet(target: target, session: session) }
   }
 
   private func pick(_ signing: RemoteSigning, for target: SSHExecutor.Target) {
     switch signing {
-    case .unsigned:
+    case .unsigned, .desktopSession:
       session.setSigning(signing, for: target)
     case .loginKeychain:
       if session.hasLoginPassword(for: target) {
@@ -328,9 +321,6 @@ struct SchemeTools: View {
       } else {
         passwordTarget = target
       }
-    case .signingKeychain:
-      session.setSigning(signing, for: target)
-      setupTarget = target
     }
   }
 }
@@ -372,56 +362,6 @@ struct LoginPasswordSheet: View {
       .buttonStyle(.kitPrimary)
       .keyboardShortcut(.defaultAction)
       .disabled(password.isEmpty)
-    }
-  }
-}
-
-/// Signing Keychain's setup: the script goes onto the Mac, and the user runs it in Terminal there once (macOS asks
-/// to allow copying each signing key out of the login keychain, which needs the Mac's screen).
-struct SigningSetupSheet: View {
-  let target: SSHExecutor.Target
-  let session: ProjectSession
-  @State private var placing = true
-  @State private var problem: String?
-  @State private var copied = false
-  @Environment(\.kitDismiss) private var dismiss
-
-  var body: some View {
-    KitSheet(
-      title: "Signing Keychain", meta: target.name, systemImage: RemoteSigning.signingKeychain.symbolName, hue: .indigo
-    ) {
-      FormCard(
-        footer:
-          "It makes a keychain holding only this Mac’s signing identities, with a password kept on the Mac, and macOS asks to allow copying each one. Run it again after renewing a certificate."
-      ) {
-        FormRow("In Terminal on \(target.name)", systemImage: "terminal", hue: .indigo) {
-          Button(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc") {
-            UIPasteboard.general.string = RemoteSigning.setupCommand
-            copied = true
-          }
-          .buttonStyle(.kit)
-        }
-        Text(RemoteSigning.setupCommand)
-          .font(.system(.footnote, design: .monospaced))
-          .textSelection(.enabled)
-      }
-    } footer: {
-      if let problem {
-        SheetStatus(problem, systemImage: "exclamationmark.triangle", hue: .red)
-      } else if placing {
-        SheetStatus("Putting the script on \(target.name)…", systemImage: "arrow.up.doc", hue: .gray)
-      }
-      Button("Done") { dismiss() }
-        .buttonStyle(.kitPrimary)
-        .keyboardShortcut(.defaultAction)
-    }
-    .task {
-      do {
-        try await session.placeSigningSetup(on: target)
-      } catch {
-        problem = "Couldn’t put the script on \(target.name): \(ProjectSession.describe(error))"
-      }
-      placing = false
     }
   }
 }

@@ -13,10 +13,10 @@
   ///   the root list.
   /// - `CODE_DEBUG_SHOW`: `issues`, `files` or `file:<path in the project>`, shown once the project is open.
   /// - `CODE_DEBUG_PERFORM`: `build`, `test` or `clean`, run once the schemes are found.
-  /// - `CODE_DEBUG_SIGNING`: `unsigned`, `loginKeychain` or `signingKeychain`, how Xcode builds sign on every device
+  /// - `CODE_DEBUG_SIGNING`: `unsigned`, `loginKeychain` or `desktopSession`, how Xcode builds sign on every device
   ///   for this launch (the vault's choice stays as it is).
-  /// - `CODE_DEBUG_SHOW=signingSetup`: puts Signing Keychain's setup script on the project's device, as picking it
-  ///   does, the outcome in `Documents/code-debug-setup.txt`.
+  /// - `CODE_DEBUG_RUN`: a shell command run once on the project's device over this device's SSH login (as an
+  ///   action's command runs), its output and status in `Documents/code-debug-run.txt`.
   ///
   /// The state goes to `Documents/code-debug-state.txt` in the app's container as it changes:
   ///
@@ -122,7 +122,33 @@
       try? Data(state.utf8).write(to: documents.appendingPathComponent(name), options: .atomic)
     }
 
-    /// `CODE_DEBUG_SHOW=signingSetup`: what putting the setup script on the device came to.
-    static func writeSetup(_ outcome: String) { write(outcome + "\n", to: "code-debug-setup.txt") }
+    /// `CODE_DEBUG_RUN`: a command for the project's device.
+    static let run = ProcessInfo.processInfo.environment["CODE_DEBUG_RUN"]
+
+    /// Runs `CODE_DEBUG_RUN` on the target and writes what it printed and its status.
+    static func run(_ command: String, on target: SSHExecutor.Target, login: SSHServer) async {
+      // A root no path in the command starts with: the command runs in the project's folder there, as written.
+      let root = URL(fileURLWithPath: "/code-debug-run")
+      let executor = SSHExecutor(target: target, localRoot: root, login: login)
+      let lines = Lines()
+      let context = ActionContext(directory: root, environment: [:], executor: executor) {
+        lines.append($0.text)
+      }
+      let status: String
+      do {
+        try await context.run(command, title: "Run")
+        status = "status: 0"
+      } catch {
+        status = "status: failed (\(ProjectSession.describe(error)))"
+      }
+      write((lines.all + [status]).joined(separator: "\n") + "\n", to: "code-debug-run.txt")
+    }
+
+    private nonisolated final class Lines: @unchecked Sendable {
+      private let lock = NSLock()
+      private var lines: [String] = []
+      func append(_ line: String) { lock.withLock { lines.append(line) } }
+      var all: [String] { lock.withLock { lines } }
+    }
   }
 #endif

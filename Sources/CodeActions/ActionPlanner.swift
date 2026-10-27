@@ -62,19 +62,26 @@ public struct ActionStep: Sendable {
     }
 
     /// Runs a shell command on a terminal, streaming its output; throws when
-    /// it fails (unless `allowFailure`) or Stop was pressed.
+    /// it fails (unless `allowFailure`) or Stop was pressed. The log shows
+    /// `shown` as the command (nothing for ""), and only the lines `filter`
+    /// keeps.
     @discardableResult
     public func run(
       _ command: String, title: String, in directory: URL? = nil,
-      environment extra: [String: String] = [:], allowFailure: Bool = false
+      environment extra: [String: String] = [:], allowFailure: Bool = false, shown: String? = nil,
+      filter: (@Sendable (ActionLine) -> Bool)? = nil
     ) async throws -> Int32 {
       if isCancelled { throw ActionError.cancelled }
       var environment = environment
       for (key, value) in extra { environment[key] = value }
       let process = try executor.start(command, directory: directory ?? self.directory, environment: environment)
       lock.withLock { current = process }
-      log("$ " + command)
-      let status = await process.run(onLine: output)
+      let shown = shown ?? command
+      if !shown.isEmpty { log("$ " + shown) }
+      let output = output
+      let status = await process.run { line in
+        if filter?(line) ?? true { output(line) }
+      }
       lock.withLock { current = nil }
       if isCancelled { throw ActionError.cancelled }
       if status != 0 && !allowFailure { throw ActionError.failed(status: status, step: title) }
@@ -137,8 +144,8 @@ public struct ActionStep: Sendable {
       case .xcode:
         let arguments = xcodeArguments(scheme, .mac)
         switch kind {
-        case .build: return [.shell("Build", signing.xcodebuild(arguments, "build"))]
-        case .test: return [.shell("Test", signing.xcodebuild(arguments, "test"))]
+        case .build: return [signing.step("Build", arguments, "build")]
+        case .test: return [signing.step("Test", arguments, "test")]
         case .clean: return [.shell("Clean", "xcodebuild \(arguments) clean", resource: .disk)]
         default:
           return [

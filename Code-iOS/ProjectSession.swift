@@ -97,22 +97,6 @@ import SSHKit
     RemoteProjects.loginPassword(for: target) != nil
   }
 
-  /// Puts the signing keychain's setup script on the target (`RemoteSigning.setupScript`), for the user to run in
-  /// Terminal there: copying the signing identities out of the login keychain needs the Mac's screen.
-  func placeSigningSetup(on target: SSHExecutor.Target) async throws {
-    let client: SFTPClient
-    if target.id == source?.id {
-      client = try await fileClient()
-    } else {
-      client = try await SFTPClient.connect(server: try login(for: target), timeout: 15)
-    }
-    defer { if client !== files { client.close() } }
-    let home = try await client.realPath(".")
-    try await client.write(
-      Data(RemoteSigning.setupScript.utf8), to: home + "/" + RemoteSigning.setupPath, createParents: true,
-      permissions: 0o700)
-  }
-
   /// The login for a target, as the executor makes it (its address, its signed host key pinned).
   private func login(for target: SSHExecutor.Target) throws -> SSHServer {
     let login = try RemoteProjects.login(for: target)

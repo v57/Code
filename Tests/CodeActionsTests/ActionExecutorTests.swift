@@ -66,8 +66,10 @@ import Testing
       let login = RemoteSigning.loginKeychain.xcodebuild("-project Atlas.xcodeproj", "test")
       #expect(login.contains("security unlock-keychain -p \"$CODE_LOGIN_PASSWORD\""))
       #expect(login.hasSuffix("exec xcodebuild -project Atlas.xcodeproj test"))
-      let keychain = RemoteSigning.signingKeychain.xcodebuild("-project Atlas.xcodeproj", "build")
-      #expect(keychain.contains("--keychain $HOME/Library/Keychains/remote-signing.keychain-db"))
+      #expect(RemoteSigning.desktopSession.step("Build", "-project Atlas.xcodeproj", "build").title == "Build")
+      let job = DesktopJob(id: "abc", command: "xcodebuild -project Atlas.xcodeproj build")
+      #expect(job.startScript.contains("launchctl bootstrap \"gui/$(id -u)\""))
+      #expect(job.followScript(from: 42).contains("tail -n +42 -f"))
     }
 
     /// The login password reaches `security` there as a shell variable, never in the command the log shows; a
@@ -106,16 +108,23 @@ import Testing
       #expect(missing.lines.contains("error: No login password is saved for this Mac to unlock its keychain."))
     }
 
-    @Test func theSetupScriptParses() throws {
-      let file = FileManager.default.temporaryDirectory.appendingPathComponent("setup-\(UUID().uuidString).sh")
-      try Data(RemoteSigning.setupScript.utf8).write(to: file)
-      defer { try? FileManager.default.removeItem(at: file) }
-      let process = Process()
-      process.executableURL = URL(fileURLWithPath: "/bin/sh")
-      process.arguments = ["-n", file.path]
-      try process.run()
-      process.waitUntilExit()
-      #expect(process.terminationStatus == 0)
+    /// The desktop session's job (`DesktopJob`) on this Mac's own `gui/<uid>` domain: its output once each though
+    /// the first connection drops halfway, and its exit status. Starts real launchd jobs, so it runs only with
+    /// `CODE_DESKTOP_JOB_TEST=1`, logged in on this Mac.
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["CODE_DESKTOP_JOB_TEST"] != nil))
+    func desktopJobsOutliveTheirConnection() async throws {
+      let job = DesktopJob(command: "for i in 1 2 3 4 5 6; do echo line-$i; sleep 1; done; exit 3")
+      let lines = LineBox()
+      let context = ActionContext(
+        directory: URL(fileURLWithPath: NSTemporaryDirectory()), environment: ProcessInfo.processInfo.environment,
+        executor: DroppingExecutor(after: 2.5)
+      ) { lines.append($0.text) }
+      await #expect(throws: ActionError.self) { try await job.step("Build").work(context) }
+      let output = lines.all.filter { $0.hasPrefix("line-") }
+      #expect(output == (1...6).map { "line-\($0)" })
+      #expect(lines.all.contains("Reconnecting: the build goes on on the Mac."))
+      #expect(!lines.all.contains { $0.contains(DesktopJob.exitMarker) })
+      #expect(lines.all.first == "$ " + job.command)
     }
 
     /// A real run over SSH, when a server is given: `CODE_SSH_TEST_HOST`, `CODE_SSH_TEST_PORT`, `CODE_SSH_TEST_USER`
@@ -236,6 +245,31 @@ import Testing
     ) { refused.append($0.text) }
     await #expect(throws: ActionError.failed(status: 255, step: "Echo")) { try await refusing.run("true", title: "Echo") }
     #expect(refused.all.contains { $0.contains("identity changed") })
+  }
+}
+
+/// Runs commands here, cutting the first one off after `after` seconds, as a dropped SSH connection does.
+final class DroppingExecutor: ActionExecutor, @unchecked Sendable {
+  let after: TimeInterval
+  private let lock = NSLock()
+  private var dropped = false
+
+  init(after: TimeInterval) { self.after = after }
+
+  func start(_ command: String, directory: URL, environment: [String: String]) throws -> any ActionCommand {
+    let process = try LocalExecutor().start(command, directory: directory, environment: environment)
+    let drop = lock.withLock { () -> Bool in
+      defer { dropped = true }
+      return !dropped
+    }
+    if drop {
+      let after = after
+      Task {
+        try? await Task.sleep(for: .seconds(after))
+        process.stop()
+      }
+    }
+    return process
   }
 }
 
