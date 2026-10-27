@@ -1,6 +1,9 @@
 import CodeKit
-import DevScreenshots
 import Foundation
+#if canImport(DevScreenshots)
+  // Dev's screenshot capture (not on Linux, where Dev's package depends on this one).
+  import DevScreenshots
+#endif
 #if os(Windows)
   import WinSDK
 #endif
@@ -52,7 +55,7 @@ enum ScreenshotDemo {
     #else
       setenv("VAULT_DIRECTORY", vault.path, 1)
     #endif
-    #if DEBUG
+    #if DEBUG && canImport(DevScreenshots)
       Screenshots.prepare(waitsForReady: true) { scene in await show(scene.arguments) }
     #endif
   }
@@ -83,7 +86,9 @@ enum ScreenshotDemo {
       showFolder = show
       Task {
         await self.show(CommandLine.arguments)
-        Screenshots.ready()
+        #if canImport(DevScreenshots)
+          Screenshots.ready()
+        #endif
       }
     }
 
