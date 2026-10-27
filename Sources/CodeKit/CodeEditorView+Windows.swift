@@ -189,6 +189,37 @@
         if edited != text { text = edited }
       }
 
+      /// The selection in the highlighted text (`highlightedText(theme:)`), for the text editor.
+      func highlightedSelection(theme: EditorTheme) -> AttributedTextSelection {
+        let value = highlightedText(theme: theme)
+        let range = selectedRange
+        func index(_ utf16Offset: Int) -> AttributedString.Index {
+          let stringIndex = String.Index(utf16Offset: min(utf16Offset, text.utf16.count), in: text)
+          let scalars = text.unicodeScalars.distance(from: text.unicodeScalars.startIndex, to: stringIndex)
+          return value.unicodeScalars.index(value.startIndex, offsetBy: scalars)
+        }
+        let lower = index(range.location)
+        return AttributedTextSelection(range: lower..<max(lower, index(range.location + range.length)))
+      }
+
+      /// The selection the text editor reports, as the String selection the rest of the editor reads.
+      func setHighlightedSelection(_ selection: AttributedTextSelection, theme: EditorTheme) {
+        let value = highlightedText(theme: theme)
+        func index(_ index: AttributedString.Index) -> String.Index {
+          let scalars = value.unicodeScalars.distance(from: value.startIndex, to: min(index, value.endIndex))
+          return text.unicodeScalars.index(text.unicodeScalars.startIndex, offsetBy: min(scalars, text.unicodeScalars.count))
+        }
+        let range: Range<String.Index>
+        switch selection.indices(in: value) {
+        case .insertionPoint(let point): range = index(point)..<index(point)
+        case .ranges(let ranges):
+          guard let first = ranges.ranges.first else { return }
+          range = index(first.lowerBound)..<index(first.upperBound)
+        }
+        let new = TextSelection(range: range)
+        if new != self.selection { self.selection = new }
+      }
+
       private static func highlight(_ text: String, language: LanguageSpec?, scheme: CodeColorScheme) -> AttributedString {
         func piece(_ substring: Substring, _ kind: SyntaxKind) -> AttributedString {
           var piece = AttributedString(String(substring))
@@ -262,6 +293,7 @@
         editor: editor, theme: theme,
         font: configuration.fontName.map { Font.custom($0, size: configuration.fontSize) }
           ?? .system(size: configuration.fontSize, design: .monospaced),
+        showsLineNumbers: configuration.showLineNumbers,
         onSelectionChange: onSelectionChange
       )
       .onAppear {
@@ -276,11 +308,13 @@
     @Bindable var editor: PortableDocumentEditor
     let theme: EditorTheme
     let font: Font
+    var showsLineNumbers = true
     let onSelectionChange: @MainActor (EditorSelection) -> Void
 
     var body: some View {
       textEditor
         .textEditorStyle(.plain)
+        .textEditorLineNumbers(showsLineNumbers ? .visible : .hidden)
         .font(font)
         .foregroundStyle(Color(hex: theme.syntax.plainText))
         .padding(.leading, 8)
@@ -296,14 +330,16 @@
   }
 
   extension EditorTextView {
-    /// On Linux the text in its syntax colors (GTK's text view has no selection binding); elsewhere plain text
-    /// with the selection.
+    /// On Linux the text in its syntax colors with the selection; elsewhere plain text with the selection.
     @ViewBuilder fileprivate var textEditor: some View {
       #if os(Linux)
         TextEditor(
           text: Binding(
             get: { [editor, theme] in editor.highlightedText(theme: theme) },
-            set: { [editor] in editor.setHighlightedText($0) }))
+            set: { [editor] in editor.setHighlightedText($0) }),
+          selection: Binding(
+            get: { [editor, theme] in editor.highlightedSelection(theme: theme) },
+            set: { [editor, theme] in editor.setHighlightedSelection($0, theme: theme) }))
       #else
         TextEditor(text: $editor.text, selection: $editor.selection)
       #endif
