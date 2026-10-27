@@ -114,7 +114,7 @@ struct ProjectIconTests {
     zip(pixel, expected).allSatisfy { abs(Int($0) - Int($1)) <= 8 }
   }
 
-  @Test func findsIconComposerIconsBelowAppIconSets() throws {
+  @Test func findsIconComposerIconsLikeAppIconSets() throws {
     let json = #"{"groups":[]}"#
     let only = try folder(
       iconBundle("App/Resources/AppIcon.icon", json: json, assets: [:]).merging([
@@ -125,7 +125,13 @@ struct ProjectIconTests {
       iconBundle("App/AppIcon.icon", json: json, assets: [:]).merging([
         "App/Assets.xcassets/AppIcon.appiconset/a.png": Data([1])
       ]) { $1 })
-    #expect(ProjectIcon.find(in: both)?.lastPathComponent == "a.png")
+    #expect(ProjectIcon.find(in: both)?.path.hasSuffix("AppIcon.icon/icon.json") == true)
+    // A fixture app's set deeper down isn't the project's icon.
+    let fixture = try folder(
+      iconBundle("App/AppIcon.icon", json: json, assets: [:]).merging([
+        "Tools/screenshots/DemoApp/Assets.xcassets/AppIcon.appiconset/a.png": Data([1])
+      ]) { $1 })
+    #expect(ProjectIcon.find(in: fixture)?.path.hasSuffix("App/AppIcon.icon/icon.json") == true)
     // A bundle without its description isn't an icon.
     let empty = try folder(folders: ["App/AppIcon.icon/Assets"])
     #expect(ProjectIcon.find(in: empty) == nil)

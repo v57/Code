@@ -6,9 +6,9 @@ import Foundation
   import UniformTypeIdentifiers
 #endif
 
-/// A project's icon, found in its folder: an Xcode asset catalog's app icon, else an Icon Composer icon (`.icon`),
-/// else an Android launcher icon, else an `icon.png`-like file near the top. Apps keep a small thumbnail of it (the
-/// vault's project icon).
+/// A project's icon, found in its folder: the shallowest app icon, an Icon Composer icon (`AppIcon.icon`, which Xcode
+/// uses over an asset catalog's) or an asset catalog's app icon, else one of another name, else an Android launcher
+/// icon, else an `icon.png`-like file near the top. Apps keep a small thumbnail of it (the vault's project icon).
 public enum ProjectIcon {
   /// The image file that is the icon of the project in `root` (an Icon Composer icon's `icon.json`), or nil. Walks at
   /// most `maxDepth` folders down, skipping hidden folders, dependencies and build output, and gives up after
@@ -39,7 +39,7 @@ public enum ProjectIcon {
           }
         }
         if url.pathExtension == "icon" {
-          let rank = name == "AppIcon.icon" ? 2 : 3
+          let rank = name == "AppIcon.icon" ? 0 : 1
           let file = url.appendingPathComponent("icon.json")
           if fileManager.fileExists(atPath: file.path), isBetter(rank, depth, than: best) {
             best = (rank, depth, file)
