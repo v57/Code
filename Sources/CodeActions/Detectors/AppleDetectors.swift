@@ -2,7 +2,8 @@ import Foundation
 
 /// An Xcode project or workspace: one scheme per Xcode scheme of its own,
 /// from `xcodebuild -list -json` (not its packages'). Runs on this Mac, iOS simulators and devices,
-/// depending on the platforms the project builds for. A scheme gets the
+/// depending on the platforms its target builds for (the project's when the
+/// target doesn't set them). A scheme gets the
 /// actions its product has: an app all of them, a command-line tool Run but
 /// no distribution, a library or framework Build, Test and Clean, and a
 /// test bundle Test and Clean.
@@ -26,21 +27,25 @@ public struct XcodeDetector: ProjectDetector {
     guard let listed = Self.schemeNames(url, in: folder), !listed.isEmpty else { return [] }
     let names = Self.own(listed, in: folder)
     let platforms = Self.platforms(of: folder)
+    let schemePlatforms = Self.schemePlatforms(in: folder)
     let products = Self.products(in: folder)
     let flag = container.hasSuffix(".xcworkspace") ? "-workspace" : "-project"
     return Self.ranked(names, in: folder).map { name in
       let base = "xcodebuild \(flag) \(shellQuote(container)) -scheme \(shellQuote(name))"
-      // A scheme found nowhere is a remote package's, a library.
-      let product = products[name] ?? .library
+      // A scheme found nowhere is a remote package's, a library; so is a
+      // package's that has a project scheme's name.
+      let plain = Self.plainName(name)
+      let product = plain.package ? .library : products[plain.name] ?? .library
+      let builtFor = product == .tool ? [.mac] : (plain.package ? nil : schemePlatforms[plain.name]) ?? platforms
       var commands: [ActionKind: String] = [.test: base + " test", .clean: base + " clean"]
       if product != .tests { commands[.build] = base + " build" }
       if product >= .tool { commands[.run] = base + " build" }
       if product == .app {
-        commands.merge(Self.distributionCommands(base, scheme: name, mac: platforms.contains(.mac))) { $1 }
+        commands.merge(Self.distributionCommands(base, scheme: plain.name, mac: builtFor.contains(.mac))) { $1 }
       }
       return ActionScheme(
         name: name, toolchain: .xcode, directory: folder.url, commands: commands,
-        platforms: product == .tool ? [.mac] : platforms, xcodeContainer: container)
+        platforms: builtFor, xcodeContainer: container)
     }
   }
 
@@ -88,12 +93,20 @@ public struct XcodeDetector: ProjectDetector {
     return products
   }
 
+  /// The name a scheme has in its project or package, and whether it's a
+  /// package's: `xcodebuild -list` tells two schemes of the same name apart
+  /// as "Name (Project project)" and "Name (Package)".
+  static func plainName(_ name: String) -> (name: String, package: Bool) {
+    guard let groups = matches(of: #"^(.+) \(([^()]+)\)$"#, in: name).first else { return (name, false) }
+    return (groups[0], !groups[1].hasSuffix(" project"))
+  }
+
   /// `names` without the schemes of the folder's dependencies, which
   /// `xcodebuild -list` reports for a project or workspace that uses
   /// packages; all of them when none is the folder's own.
   static func own(_ names: [String], in folder: ProjectFolder) -> [String] {
     let own = ownSchemes(in: folder)
-    let kept = names.filter(own.contains)
+    let kept = names.filter { own.contains($0) || own.contains(plainName($0).name) }
     return kept.isEmpty ? names : kept
   }
 
@@ -200,10 +213,72 @@ public struct XcodeDetector: ProjectDetector {
     for entry in folder.entries where entry.name.hasSuffix(".xcodeproj") {
       text += folder.read(entry.name + "/project.pbxproj") ?? ""
     }
+    return platforms(inSettings: text) ?? [.mac]
+  }
+
+  /// The platforms build settings name (macosx, iphoneos), nil when they
+  /// name neither.
+  static func platforms(inSettings text: String) -> [Platform]? {
     var platforms: [Platform] = []
-    if text.contains("macosx") || text.isEmpty { platforms.append(.mac) }
+    if text.contains("macosx") { platforms.append(.mac) }
     if text.contains("iphoneos") { platforms.append(.iOS) }
-    return platforms.isEmpty ? [.mac] : platforms
+    return platforms.isEmpty ? nil : platforms
+  }
+
+  /// Each scheme's platforms, from the target it builds (a scheme file's
+  /// runnable, else its first target; a scheme without a file is named after
+  /// its target), when that target's own configurations set them: an iOS
+  /// app in a project with a Mac app runs only on iOS.
+  static func schemePlatforms(in folder: ProjectFolder) -> [String: [Platform]] {
+    var targets: [String: [Platform]] = [:]
+    for entry in folder.entries where entry.name.hasSuffix(".xcodeproj") {
+      targets.merge(targetPlatforms(in: folder.read(entry.name + "/project.pbxproj") ?? "")) { first, _ in first }
+    }
+    var schemes = targets
+    for entry in folder.entries
+    where entry.name.hasSuffix(".xcodeproj") || entry.name.hasSuffix(".xcworkspace") {
+      for (scheme, text) in schemeTexts(in: folder.url.appendingPathComponent(entry.name)) {
+        if let target = target(ofScheme: text), let platforms = targets[target] { schemes[scheme] = platforms }
+      }
+    }
+    return schemes
+  }
+
+  /// The platforms of each native target in a `project.pbxproj` whose own
+  /// build configurations set SDKROOT or SUPPORTED_PLATFORMS, by name.
+  static func targetPlatforms(in pbxproj: String) -> [String: [Platform]] {
+    var platforms: [String: [Platform]] = [:]
+    let targets = matches(
+      of: #"isa = PBXNativeTarget;[^}]*?buildConfigurationList = (\w+)[^}]*?\bname = "?([^";]+)"?;"#, in: pbxproj)
+    for groups in targets {
+      let list = NSRegularExpression.escapedPattern(for: groups[0])
+      guard
+        let configurations = matches(
+          of: #"\b\#(list)\b[^=\n]*= \{\s*isa = XCConfigurationList;\s*buildConfigurations = \(([^)]*)\)"#,
+          in: pbxproj
+        ).first?[0]
+      else { continue }
+      var settings = ""
+      for id in matches(of: #"(\w+)\s*(?:/\*[^*]*\*/)?\s*,"#, in: configurations) {
+        let configuration = NSRegularExpression.escapedPattern(for: id[0])
+        settings += matches(
+          of: #"\b\#(configuration)\b[^=\n]*= \{\s*isa = XCBuildConfiguration;(.*?)\n\s*name = "#, in: pbxproj,
+          options: .dotMatchesLineSeparators
+        ).first?[0] ?? ""
+      }
+      let set = matches(of: #"\b(?:SDKROOT|SUPPORTED_PLATFORMS) = ("[^"]*"|[^;]*);"#, in: settings)
+      if let found = Self.platforms(inSettings: set.map { $0[0] }.joined(separator: " ")) {
+        platforms[groups[1]] = found
+      }
+    }
+    return platforms
+  }
+
+  /// The target a scheme file builds: its runnable's, else its first.
+  static func target(ofScheme text: String) -> String? {
+    let runnable = text.range(of: #"<(BuildableProductRunnable|RemoteRunnable)\b"#, options: .regularExpression)
+    let from = runnable.map { String(text[$0.lowerBound...]) } ?? text
+    return matches(of: #"BlueprintName = "([^"]+)""#, in: from).first?[0]
   }
 
   /// `names` with the folder's own app schemes first, then its other project
@@ -222,7 +297,11 @@ public struct XcodeDetector: ProjectDetector {
         if product == .app { apps.insert(name) }
       }
     }
-    func rank(_ name: String) -> Int { apps.contains(name) ? 0 : own.contains(name) ? 1 : 2 }
+    func rank(_ name: String) -> Int {
+      let plain = plainName(name)
+      if plain.package { return own.contains(name) ? 1 : 2 }
+      return apps.contains(plain.name) ? 0 : own.contains(plain.name) ? 1 : 2
+    }
     return names.enumerated().sorted { (rank($0.element), $0.offset) < (rank($1.element), $1.offset) }
       .map(\.element)
   }
@@ -230,6 +309,12 @@ public struct XcodeDetector: ProjectDetector {
   /// The shared and user `.xcscheme` files of a project, workspace or
   /// package (its `.swiftpm/xcode`), with what each builds.
   static func schemeFiles(in container: URL) -> [(String, Product)] {
+    schemeTexts(in: container).map { ($0.0, product(ofScheme: $0.1)) }
+  }
+
+  /// The shared and user `.xcscheme` files of a container, by name, with
+  /// their contents.
+  static func schemeTexts(in container: URL) -> [(String, String)] {
     let files = FileManager.default
     var folders = [container.appendingPathComponent("xcshareddata/xcschemes")]
     let users = container.appendingPathComponent("xcuserdata")
@@ -240,7 +325,7 @@ public struct XcodeDetector: ProjectDetector {
       ((try? files.contentsOfDirectory(atPath: folder.path)) ?? []).filter { $0.hasSuffix(".xcscheme") }
         .map { file in
           let text = (try? String(contentsOf: folder.appendingPathComponent(file), encoding: .utf8)) ?? ""
-          return (String(file.dropLast(".xcscheme".count)), product(ofScheme: text))
+          return (String(file.dropLast(".xcscheme".count)), text)
         }
     }
   }

@@ -393,6 +393,92 @@ import Testing
     #expect(XcodeDetector.own(["Kit", "Remote"], in: folder) == ["Kit", "Remote"])
   }
 
+  @Test func xcodeTargetPlatforms() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let schemes = root.appendingPathComponent("App.xcodeproj/xcshareddata/xcschemes")
+    try FileManager.default.createDirectory(at: schemes, withIntermediateDirectories: true)
+    // As Xcode writes them: the Mac app and the iOS app set their SDKs, the
+    // framework inherits the project's.
+    try """
+      \t\tA1 /* Mac */ = {
+      \t\t\tisa = PBXNativeTarget;
+      \t\t\tbuildConfigurationList = L1 /* Build configuration list for PBXNativeTarget "Mac" */;
+      \t\t\tbuildPhases = (
+      \t\t\t);
+      \t\t\tname = Mac;
+      \t\t\tproductType = "com.apple.product-type.application";
+      \t\t};
+      \t\tA2 /* Phone iOS */ = {
+      \t\t\tisa = PBXNativeTarget;
+      \t\t\tbuildConfigurationList = L2 /* Build configuration list for PBXNativeTarget "Phone iOS" */;
+      \t\t\tname = "Phone iOS";
+      \t\t\tproductType = "com.apple.product-type.application";
+      \t\t};
+      \t\tA3 /* Kit */ = {
+      \t\t\tisa = PBXNativeTarget;
+      \t\t\tbuildConfigurationList = L3 /* Build configuration list for PBXNativeTarget "Kit" */;
+      \t\t\tname = Kit;
+      \t\t\tproductType = "com.apple.product-type.framework";
+      \t\t};
+      \t\tC1 /* Debug */ = {
+      \t\t\tisa = XCBuildConfiguration;
+      \t\t\tbuildSettings = {
+      \t\t\t\tPRODUCT_NAME = Mac;
+      \t\t\t\tSDKROOT = macosx;
+      \t\t\t};
+      \t\t\tname = Debug;
+      \t\t};
+      \t\tC2 /* Debug */ = {
+      \t\t\tisa = XCBuildConfiguration;
+      \t\t\tbuildSettings = {
+      \t\t\t\tINFOPLIST_KEY_CFBundleDisplayName = Phone;
+      \t\t\t\tSDKROOT = iphoneos;
+      \t\t\t\tSUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+      \t\t\t};
+      \t\t\tname = Debug;
+      \t\t};
+      \t\tC3 /* Debug */ = {
+      \t\t\tisa = XCBuildConfiguration;
+      \t\t\tbuildSettings = {
+      \t\t\t\tPRODUCT_NAME = Kit;
+      \t\t\t};
+      \t\t\tname = Debug;
+      \t\t};
+      \t\tL1 /* Build configuration list for PBXNativeTarget "Mac" */ = {
+      \t\t\tisa = XCConfigurationList;
+      \t\t\tbuildConfigurations = (
+      \t\t\t\tC1 /* Debug */,
+      \t\t\t);
+      \t\t};
+      \t\tL2 /* Build configuration list for PBXNativeTarget "Phone iOS" */ = {
+      \t\t\tisa = XCConfigurationList;
+      \t\t\tbuildConfigurations = (
+      \t\t\t\tC2 /* Debug */,
+      \t\t\t);
+      \t\t};
+      \t\tL3 /* Build configuration list for PBXNativeTarget "Kit" */ = {
+      \t\t\tisa = XCConfigurationList;
+      \t\t\tbuildConfigurations = (
+      \t\t\t\tC3 /* Debug */,
+      \t\t\t);
+      \t\t};
+      """.write(
+        to: root.appendingPathComponent("App.xcodeproj/project.pbxproj"), atomically: true, encoding: .utf8)
+    // A scheme named apart from its target.
+    try #"<LaunchAction><BuildableProductRunnable><BuildableReference BuildableName = "Phone.app" BlueprintName = "Phone iOS"/></BuildableProductRunnable></LaunchAction>"#
+      .write(to: schemes.appendingPathComponent("Phone.xcscheme"), atomically: true, encoding: .utf8)
+    let platforms = XcodeDetector.schemePlatforms(in: ProjectFolder(listing: root))
+    #expect(platforms["Mac"] == [.mac])
+    #expect(platforms["Phone iOS"] == [.iOS])
+    #expect(platforms["Phone"] == [.iOS])
+    #expect(platforms["Kit"] == nil)
+    // A project's and a package's scheme of the same name, as xcodebuild lists them.
+    #expect(XcodeDetector.plainName("Database (Database project)") == ("Database", false))
+    #expect(XcodeDetector.plainName("Database (Database)") == ("Database", true))
+    #expect(XcodeDetector.plainName("Code iOS") == ("Code iOS", false))
+  }
+
   @Test func terminalCommands() {
     let directory = URL(fileURLWithPath: "/tmp/App")
     let mac = ActionScheme(
