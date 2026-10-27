@@ -82,10 +82,12 @@ public struct SSHExecutor: ActionExecutor {
     public var directory: String
     /// "via Hub", "SSH": shown after the name.
     public var detail: String?
+    /// How Xcode builds there sign; nil doesn't sign.
+    public var signing: RemoteSigning?
 
     public init(
       id: String, name: String, host: String, port: Int = 22, user: String = "", hostKey: String? = nil,
-      directory: String, detail: String? = nil
+      directory: String, detail: String? = nil, signing: RemoteSigning? = nil
     ) {
       self.id = id
       self.name = name
@@ -95,6 +97,7 @@ public struct SSHExecutor: ActionExecutor {
       self.hostKey = hostKey
       self.directory = directory
       self.detail = detail
+      self.signing = signing
     }
   }
 
@@ -106,13 +109,18 @@ public struct SSHExecutor: ActionExecutor {
   public var login: SSHServer?
   /// Called with the host's key after a first login to a host whose key wasn't known, for the app to remember.
   public var onNewHostKey: (@Sendable (String) -> Void)?
+  /// Shell variables set there before each command (the login password `RemoteSigning` unlocks the keychain with),
+  /// kept out of the command line the log shows.
+  public var secrets: [String: String]
 
   public init(
-    target: Target, localRoot: URL, login: SSHServer? = nil, onNewHostKey: (@Sendable (String) -> Void)? = nil
+    target: Target, localRoot: URL, login: SSHServer? = nil, secrets: [String: String] = [:],
+    onNewHostKey: (@Sendable (String) -> Void)? = nil
   ) {
     self.target = target
     self.localRoot = localRoot
     self.login = login
+    self.secrets = secrets
     self.onNewHostKey = onNewHostKey
   }
 
@@ -152,12 +160,17 @@ public struct SSHExecutor: ActionExecutor {
   }
 
   /// `cd <folder there> && <command>` in the remote user's login shell, with paths into the project here
-  /// rewritten to the folder there.
+  /// rewritten to the folder there, and the secrets set first as plain (unexported) shell variables.
   func remoteCommand(_ command: String, directory: URL) -> String {
+    "exec \"$SHELL\" -lc \(shellQuote(remoteScript(command, directory: directory)))"
+  }
+
+  /// What the login shell there runs.
+  func remoteScript(_ command: String, directory: URL) -> String {
     let remoteDirectory = remotePath(directory.path)
     let command = command.replacingOccurrences(of: localRoot.path, with: target.directory)
-    let script = "cd \(shellQuote(remoteDirectory)) && \(command)"
-    return "exec \"$SHELL\" -lc \(shellQuote(script))"
+    let variables = secrets.keys.sorted().map { "\($0)=\(shellQuote(secrets[$0]!)); " }.joined()
+    return "\(variables)cd \(shellQuote(remoteDirectory)) && \(command)"
   }
 
   /// The path there for a path in the project here.

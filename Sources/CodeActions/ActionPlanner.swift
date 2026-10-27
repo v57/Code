@@ -116,9 +116,9 @@ public struct ActionStep: Sendable {
   /// devices and Android.
   public enum ActionPlanner {
     public static func steps(
-      for kind: ActionKind, scheme: ActionScheme, destination: RunDestination?
+      for kind: ActionKind, scheme: ActionScheme, destination: RunDestination?, signing: RemoteSigning? = nil
     ) -> [ActionStep] {
-      if destination?.kind == .remote { return remoteSteps(kind, scheme) }
+      if destination?.kind == .remote { return remoteSteps(kind, scheme, signing: signing ?? .unsigned) }
       switch scheme.toolchain {
       case .xcode: return xcodeSteps(kind, scheme, destination)
       case .android: return androidSteps(kind, scheme, destination)
@@ -130,15 +130,15 @@ public struct ActionStep: Sendable {
 
     // MARK: - Another machine
 
-    /// The steps on another machine (`SSHExecutor`): the scheme's own commands, and xcodebuild for the Mac there.
-    /// Running an Xcode app there and installing to devices it reaches come later.
-    static func remoteSteps(_ kind: ActionKind, _ scheme: ActionScheme) -> [ActionStep] {
+    /// The steps on another machine (`SSHExecutor`): the scheme's own commands, and xcodebuild for the Mac there,
+    /// signed as `signing` says. Running an Xcode app there and installing to devices it reaches come later.
+    static func remoteSteps(_ kind: ActionKind, _ scheme: ActionScheme, signing: RemoteSigning) -> [ActionStep] {
       switch scheme.toolchain {
       case .xcode:
         let arguments = xcodeArguments(scheme, .mac)
         switch kind {
-        case .build: return [.shell("Build", "xcodebuild \(arguments) build")]
-        case .test: return [.shell("Test", "xcodebuild \(arguments) test")]
+        case .build: return [.shell("Build", signing.xcodebuild(arguments, "build"))]
+        case .test: return [.shell("Test", signing.xcodebuild(arguments, "test"))]
         case .clean: return [.shell("Clean", "xcodebuild \(arguments) clean", resource: .disk)]
         default:
           return [

@@ -6,6 +6,9 @@ and build, run, test and debug it from an Xcode-style toolbar, with language
 servers for definitions and issues. On iPhone and iPad, Code runs Build, Test
 and Clean on the user's Macs over SSH (the devices on their Hub that have the
 project), with the log and issues streamed back, and reads the files there.
+Builds there sign as picked for each Mac: not at all, with the login keychain
+unlocked by the Mac's password, or with a keychain set up on the Mac for
+signing (an SSH session can't use the login keychain otherwise).
 
 Two parts, like `../Markdown`: the libraries (this package) and thin SwiftUI
 apps (`Code.xcodeproj`: the Mac app in `Code/`, the iPhone and iPad app in

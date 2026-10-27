@@ -64,7 +64,13 @@ import SSHKit
     let controller = ActionController(root: root)
     controller.remoteLogin = { target in try RemoteProjects.login(for: target) }
     controller.didMeetHostKey = { target, fingerprint in RemoteProjects.trust(fingerprint, for: target) }
+    controller.remoteLoginPassword = { target in RemoteProjects.loginPassword(for: target) }
     controller.remoteTargets = project.targets
+    #if DEBUG
+      if let signing = DebugLaunch.signing {
+        controller.remoteTargets = project.targets.map { var target = $0; target.signing = signing; return target }
+      }
+    #endif
     if controller.selectedDestinationID == nil { controller.selectedDestinationID = "ssh:" + target.id }
     controller.scan()
     self.controller = controller
@@ -72,6 +78,39 @@ import SSHKit
     #if DEBUG
       DebugLaunch.attach(to: controller)
     #endif
+  }
+
+  // MARK: Signing
+
+  /// Builds on the target sign this way from now on, on every device (the vault keeps it for the host).
+  func setSigning(_ signing: RemoteSigning, for target: SSHExecutor.Target) {
+    RemoteProjects.setSigning(signing, for: target)
+    guard let controller else { return }
+    controller.remoteTargets = controller.remoteTargets.map {
+      var other = $0
+      if other.id == target.id { other.signing = signing }
+      return other
+    }
+  }
+
+  func hasLoginPassword(for target: SSHExecutor.Target) -> Bool {
+    RemoteProjects.loginPassword(for: target) != nil
+  }
+
+  /// Puts the signing keychain's setup script on the target (`RemoteSigning.setupScript`), for the user to run in
+  /// Terminal there: copying the signing identities out of the login keychain needs the Mac's screen.
+  func placeSigningSetup(on target: SSHExecutor.Target) async throws {
+    let client: SFTPClient
+    if target.id == source?.id {
+      client = try await fileClient()
+    } else {
+      client = try await SFTPClient.connect(server: try login(for: target), timeout: 15)
+    }
+    defer { if client !== files { client.close() } }
+    let home = try await client.realPath(".")
+    try await client.write(
+      Data(RemoteSigning.setupScript.utf8), to: home + "/" + RemoteSigning.setupPath, createParents: true,
+      permissions: 0o700)
   }
 
   /// The login for a target, as the executor makes it (its address, its signed host key pinned).

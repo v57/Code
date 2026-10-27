@@ -52,7 +52,7 @@ struct ProjectScreen: View {
         ProjectTitle(project: project, session: session, showsDevice: idiom != .phone)
       }
     }) {
-      if idiom != .phone, let controller = session.controller { SchemeTools(controller: controller) }
+      if idiom != .phone, let controller = session.controller { SchemeTools(controller: controller, session: session) }
       if let source = session.source {
         ToolGroup(iconOnly: true) {
           Button("Files on \(source.name)", systemImage: "folder") { showsFiles = true }
@@ -91,7 +91,7 @@ struct ProjectScreen: View {
 
   @ViewBuilder private func content(_ controller: ActionController) -> some View {
     VStack(alignment: .leading, spacing: 12) {
-      if idiom == .phone { SchemeTools(controller: controller) }
+      if idiom == .phone { SchemeTools(controller: controller, session: session) }
       KitSegmented(
         selection: $pane,
         segments: [
@@ -230,8 +230,13 @@ private struct PhoneActionBar: ViewModifier {
 /// project.
 struct SchemeTools: View {
   let controller: ActionController
+  let session: ProjectSession
   @State private var showsSchemes = false
   @State private var showsDevices = false
+  /// The Mac whose login password Login Keychain asks for, having none saved.
+  @State private var passwordTarget: SSHExecutor.Target?
+  /// The Mac Signing Keychain was just picked for: how to set it up there.
+  @State private var setupTarget: SSHExecutor.Target?
 
   var body: some View {
     ToolGroup {
@@ -278,9 +283,138 @@ struct SchemeTools: View {
             .disabled(!destination.isAvailable)
           }
         }
+        if let target = controller.remoteTarget(for: controller.selectedDestination),
+          controller.selectedScheme?.toolchain == .xcode
+        {
+          KitMenuSection("Signing") {
+            ForEach(RemoteSigning.allCases, id: \.self) { signing in
+              Button {
+                pick(signing, for: target)
+              } label: {
+                Label(
+                  signing.title,
+                  systemImage: (target.signing ?? .unsigned) == signing ? "checkmark" : signing.symbolName)
+              }
+            }
+          }
+        }
       }
     }
     .lineLimit(1)
+    .kitSheet(item: $passwordTarget) { target in
+      LoginPasswordSheet(target: target) { password in
+        try RemoteProjects.setLoginPassword(password, for: target)
+        session.setSigning(.loginKeychain, for: target)
+      }
+    }
+    .kitSheet(item: $setupTarget) { target in SigningSetupSheet(target: target, session: session) }
+  }
+
+  private func pick(_ signing: RemoteSigning, for target: SSHExecutor.Target) {
+    switch signing {
+    case .unsigned:
+      session.setSigning(signing, for: target)
+    case .loginKeychain:
+      if session.hasLoginPassword(for: target) {
+        session.setSigning(signing, for: target)
+      } else {
+        passwordTarget = target
+      }
+    case .signingKeychain:
+      session.setSigning(signing, for: target)
+      setupTarget = target
+    }
+  }
+}
+
+/// Login Keychain's password: the Mac user's own, saved in the vault (iCloud Keychain) for the host, which Code
+/// sends to unlock the login keychain before each signed build there.
+struct LoginPasswordSheet: View {
+  let target: SSHExecutor.Target
+  let save: (String) throws -> Void
+  @State private var password = ""
+  @State private var error: String?
+  @Environment(\.kitDismiss) private var dismiss
+
+  var body: some View {
+    KitSheet(
+      title: "Login Keychain", meta: target.name, systemImage: RemoteSigning.loginKeychain.symbolName, hue: .indigo
+    ) {
+      FormCard(
+        footer:
+          "An SSH session can’t use the login keychain until it’s unlocked. Code unlocks it with this password before each build, and keeps it in iCloud Keychain."
+      ) {
+        FormRow(
+          "Password", help: target.user.isEmpty ? nil : "\(target.user) on \(target.name)",
+          systemImage: "ellipsis.rectangle", hue: .indigo,
+          field: SecureField("Mac password", text: $password).textContentType(.password))
+      }
+    } footer: {
+      if let error { SheetStatus(error, systemImage: "exclamationmark.triangle", hue: .red) }
+      Button("Cancel") { dismiss() }
+        .keyboardShortcut(.cancelAction)
+      Button("Save") {
+        do {
+          try save(password)
+          dismiss()
+        } catch {
+          self.error = ProjectSession.describe(error)
+        }
+      }
+      .buttonStyle(.kitPrimary)
+      .keyboardShortcut(.defaultAction)
+      .disabled(password.isEmpty)
+    }
+  }
+}
+
+/// Signing Keychain's setup: the script goes onto the Mac, and the user runs it in Terminal there once (macOS asks
+/// to allow copying each signing key out of the login keychain, which needs the Mac's screen).
+struct SigningSetupSheet: View {
+  let target: SSHExecutor.Target
+  let session: ProjectSession
+  @State private var placing = true
+  @State private var problem: String?
+  @State private var copied = false
+  @Environment(\.kitDismiss) private var dismiss
+
+  var body: some View {
+    KitSheet(
+      title: "Signing Keychain", meta: target.name, systemImage: RemoteSigning.signingKeychain.symbolName, hue: .indigo
+    ) {
+      FormCard(
+        footer:
+          "It makes a keychain holding only this Mac’s signing identities, with a password kept on the Mac, and macOS asks to allow copying each one. Run it again after renewing a certificate."
+      ) {
+        FormRow("In Terminal on \(target.name)", systemImage: "terminal", hue: .indigo) {
+          Button(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc") {
+            UIPasteboard.general.string = RemoteSigning.setupCommand
+            copied = true
+          }
+          .buttonStyle(.kit)
+        }
+        Text(RemoteSigning.setupCommand)
+          .font(.system(.footnote, design: .monospaced))
+          .textSelection(.enabled)
+      }
+    } footer: {
+      if let problem {
+        SheetStatus(problem, systemImage: "exclamationmark.triangle", hue: .red)
+      } else if placing {
+        SheetStatus("Putting the script on \(target.name)…", systemImage: "arrow.up.doc", hue: .gray)
+      }
+      Button("Done") { dismiss() }
+        .buttonStyle(.kitPrimary)
+        .keyboardShortcut(.defaultAction)
+    }
+    .task {
+      do {
+        try await session.placeSigningSetup(on: target)
+      } catch {
+        problem = "Couldn’t put the script on \(target.name): \(ProjectSession.describe(error))"
+      }
+      placing = false
+    }
   }
 }
 

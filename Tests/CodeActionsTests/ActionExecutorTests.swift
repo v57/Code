@@ -55,6 +55,69 @@ import Testing
       #expect(ActionPlanner.steps(for: .run, scheme: scheme, destination: remote).map(\.title) == ["Run"])
     }
 
+    @Test func remoteBuildsSignAsTheTargetSays() throws {
+      let scheme = ActionScheme(
+        name: "Atlas", toolchain: .xcode, directory: URL(fileURLWithPath: "/tmp/Atlas"), commands: [:], platforms: [.mac],
+        xcodeContainer: "Atlas.xcodeproj")
+      let remote = RunDestination(id: "ssh:studio", name: "Mac Studio", kind: .remote)
+      #expect(ActionPlanner.steps(for: .test, scheme: scheme, destination: remote, signing: .loginKeychain).map(\.title) == ["Test"])
+      #expect(RemoteSigning.unsigned.xcodebuild("-project Atlas.xcodeproj", "build")
+        == "xcodebuild -project Atlas.xcodeproj CODE_SIGNING_ALLOWED=NO build")
+      let login = RemoteSigning.loginKeychain.xcodebuild("-project Atlas.xcodeproj", "test")
+      #expect(login.contains("security unlock-keychain -p \"$CODE_LOGIN_PASSWORD\""))
+      #expect(login.hasSuffix("exec xcodebuild -project Atlas.xcodeproj test"))
+      let keychain = RemoteSigning.signingKeychain.xcodebuild("-project Atlas.xcodeproj", "build")
+      #expect(keychain.contains("--keychain $HOME/Library/Keychains/remote-signing.keychain-db"))
+    }
+
+    /// The login password reaches `security` there as a shell variable, never in the command the log shows; a
+    /// build with none saved stops with why.
+    @Test func theLoginPasswordStaysOutOfTheLog() async throws {
+      let bin = FileManager.default.temporaryDirectory.appendingPathComponent("fake-bin-\(UUID().uuidString)")
+      try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+      defer { try? FileManager.default.removeItem(at: bin) }
+      for tool in ["security", "xcodebuild"] {
+        let file = bin.appendingPathComponent(tool)
+        try Data("#!/bin/sh\necho \"\(tool) $*\"\n".utf8).write(to: file)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: file.path)
+      }
+      let command = RemoteSigning.loginKeychain.xcodebuild("-scheme Atlas", "build")
+      func run(_ secrets: [String: String]) async -> (lines: [String], failed: Bool) {
+        let executor = SSHExecutor(
+          target: .init(id: "studio", name: "Mac Studio", host: "h", directory: "/tmp", signing: .loginKeychain),
+          localRoot: URL(fileURLWithPath: "/project"), secrets: secrets)
+        let script = "PATH=\(bin.path):$PATH; " + executor.remoteScript(command, directory: URL(fileURLWithPath: "/project"))
+        let lines = LineBox()
+        let context = ActionContext(directory: URL(fileURLWithPath: "/tmp"), environment: [:], executor: LocalExecutor()) {
+          lines.append($0.text)
+        }
+        let failed = (try? await context.run("/bin/zsh -c \(shellQuote(script))", title: "Build")) == nil
+        return (lines.all, failed)
+      }
+      let saved = await run([RemoteSigning.passwordVariable: "it's s3cret"])
+      #expect(saved.lines.contains("security unlock-keychain -p it's s3cret \(NSHomeDirectory())/Library/Keychains/login.keychain-db"))
+      #expect(saved.lines.contains("xcodebuild -scheme Atlas build"))
+      #expect(!saved.failed)
+      // The step's command, which the log shows, doesn't have it (here the log also shows the test's own wrapper).
+      #expect(!command.contains("s3cret"))
+      #expect(saved.lines.filter { $0.contains("s3cret") && !$0.hasPrefix("$ ") }.count == 1)
+      let missing = await run([:])
+      #expect(missing.failed)
+      #expect(missing.lines.contains("error: No login password is saved for this Mac to unlock its keychain."))
+    }
+
+    @Test func theSetupScriptParses() throws {
+      let file = FileManager.default.temporaryDirectory.appendingPathComponent("setup-\(UUID().uuidString).sh")
+      try Data(RemoteSigning.setupScript.utf8).write(to: file)
+      defer { try? FileManager.default.removeItem(at: file) }
+      let process = Process()
+      process.executableURL = URL(fileURLWithPath: "/bin/sh")
+      process.arguments = ["-n", file.path]
+      try process.run()
+      process.waitUntilExit()
+      #expect(process.terminationStatus == 0)
+    }
+
     /// A real run over SSH, when a server is given: `CODE_SSH_TEST_HOST`, `CODE_SSH_TEST_PORT`, `CODE_SSH_TEST_USER`
     /// and `CODE_SSH_TEST_HOST_KEY` (an OpenSSH public key line), with the user's keys authorized there.
     @Test(.enabled(if: ProcessInfo.processInfo.environment["CODE_SSH_TEST_HOST"] != nil))

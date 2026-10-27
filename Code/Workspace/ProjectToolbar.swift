@@ -184,6 +184,7 @@ private struct SchemeTools: View {
     // Other machines that have this project: the devices on the user's Hubs, kept current as the vault changes.
     .onChange(of: RemoteDestinations.targets(for: model.workspace.root), initial: true) { _, targets in
       actions.remoteTargets = targets
+      actions.remoteLoginPassword = { target in RemoteDestinations.loginPassword(for: target) }
     }
   }
 

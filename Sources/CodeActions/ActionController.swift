@@ -85,6 +85,8 @@
     @ObservationIgnored public var remoteLogin: (@MainActor (SSHExecutor.Target) throws -> SSHServer?)?
     /// Called on the main actor with a remote target's host key after a first in-process login to it, to remember.
     @ObservationIgnored public var didMeetHostKey: (@MainActor (SSHExecutor.Target, String) -> Void)?
+    /// The login password of a remote target whose builds unlock the login keychain (`RemoteSigning.loginKeychain`).
+    @ObservationIgnored public var remoteLoginPassword: (@MainActor (SSHExecutor.Target) -> String?)?
     public var selectedDestinationID: String? {
       didSet { defaults.set(selectedDestinationID, forKey: key("destination")) }
     }
@@ -208,11 +210,15 @@
 
     private static let remotePrefix = "ssh:"
 
+    /// The remote target a destination stands for.
+    public func remoteTarget(for destination: RunDestination?) -> SSHExecutor.Target? {
+      guard let destination, destination.kind == .remote else { return nil }
+      return remoteTargets.first { Self.remotePrefix + $0.id == destination.id }
+    }
+
     /// Where the destination's commands run: over SSH for another machine, else here.
     private func executor(for destination: RunDestination?) -> any ActionExecutor {
-      guard let destination, destination.kind == .remote,
-        let target = remoteTargets.first(where: { Self.remotePrefix + $0.id == destination.id })
-      else { return LocalExecutor() }
+      guard let target = remoteTarget(for: destination) else { return LocalExecutor() }
       let login: SSHServer?
       do {
         login = try remoteLogin?(target)
@@ -221,7 +227,11 @@
         return UnavailableExecutor(reason: "couldn't sign in to \(target.name): \(reason)")
       }
       let didMeetHostKey = didMeetHostKey
-      return SSHExecutor(target: target, localRoot: root, login: login) { fingerprint in
+      var secrets: [String: String] = [:]
+      if target.signing == .loginKeychain, let password = remoteLoginPassword?(target) {
+        secrets[RemoteSigning.passwordVariable] = password
+      }
+      return SSHExecutor(target: target, localRoot: root, login: login, secrets: secrets) { fingerprint in
         Task { @MainActor in didMeetHostKey?(target, fingerprint) }
       }
     }
@@ -249,7 +259,8 @@
       // The debugger (the override) runs here, never on another machine.
       let steps =
         (destination?.kind == .remote ? nil : stepsOverride?(kind, scheme, destination))
-        ?? ActionPlanner.steps(for: kind, scheme: scheme, destination: destination)
+        ?? ActionPlanner.steps(
+          for: kind, scheme: scheme, destination: destination, signing: remoteTarget(for: destination)?.signing)
 
       // Steps are stages, named so that Run's build and Build's share their
       // history. Run's last step runs the app, which has no end to estimate.

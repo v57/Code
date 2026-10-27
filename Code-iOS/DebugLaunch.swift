@@ -13,6 +13,8 @@
   ///   the root list.
   /// - `CODE_DEBUG_SHOW`: `issues`, `files` or `file:<path in the project>`, shown once the project is open.
   /// - `CODE_DEBUG_PERFORM`: `build`, `test` or `clean`, run once the schemes are found.
+  /// - `CODE_DEBUG_SIGNING`: `unsigned`, `loginKeychain` or `signingKeychain`, how Xcode builds sign on every device
+  ///   for this launch (the vault's choice stays as it is).
   ///
   /// The state goes to `Documents/code-debug-state.txt` in the app's container as it changes:
   ///
@@ -50,6 +52,9 @@
         return RemoteProject(id: "debug-" + remote.name, name: remote.name, targets: [target] + others)
       }
     }
+
+    /// `CODE_DEBUG_SIGNING`: how Xcode builds sign for this launch.
+    static let signing = ProcessInfo.processInfo.environment["CODE_DEBUG_SIGNING"].flatMap(RemoteSigning.init(rawValue:))
 
     /// `CODE_DEBUG_SHOW`: what the opened project shows once it's ready (`issues`, `files`, `file:<path>`).
     static let show = ProcessInfo.processInfo.environment["CODE_DEBUG_SHOW"]

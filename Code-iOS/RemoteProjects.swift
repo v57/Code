@@ -34,8 +34,37 @@ struct RemoteProject: Identifiable, Hashable {
       guard let host = place.host else { return nil }
       return SSHExecutor.Target(
         id: host.id, name: host.displayName, host: host.hostname, port: host.port, user: host.user,
-        hostKey: host.hub?.hostKey, directory: place.path, detail: "via Hub")
+        hostKey: host.hub?.hostKey, directory: place.path, detail: "via Hub", signing: signing(of: host))
     }
+  }
+
+  /// How Xcode builds on a host sign, as the vault keeps it for the host (every v57 device sees the same).
+  static func signing(of host: VaultHost) -> RemoteSigning? {
+    guard let signing = host.buildSigning else { return nil }
+    switch signing {
+    case VaultHost.BuildSigning.none: return .unsigned
+    case .loginKeychain: return .loginKeychain
+    case .signingKeychain: return .signingKeychain
+    }
+  }
+
+  static func setSigning(_ signing: RemoteSigning, for target: SSHExecutor.Target, vault: Vault = .shared) {
+    guard var host = vault.host(id: target.id) else { return }
+    switch signing {
+    case .unsigned: host.buildSigning = VaultHost.BuildSigning.none
+    case .loginKeychain: host.buildSigning = .loginKeychain
+    case .signingKeychain: host.buildSigning = .signingKeychain
+    }
+    vault.save(host)
+  }
+
+  /// The host's login password, which unlocks its login keychain for signing (and signs in, for a password host).
+  static func loginPassword(for target: SSHExecutor.Target, vault: Vault = .shared) -> String? {
+    vault.host(id: target.id)?.password
+  }
+
+  static func setLoginPassword(_ password: String, for target: SSHExecutor.Target) throws {
+    try VaultSecrets.setPassword(password, for: target.id)
   }
 
   /// How Code signs in to a target: its host's user, this device's key (the Secure Enclave key every v57 app shares)
