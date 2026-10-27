@@ -1,4 +1,4 @@
-#if os(macOS) || os(Windows)
+#if os(macOS) || os(Windows) || os(Linux)
   #if os(macOS)
     import AppKit
     import Darwin
@@ -91,8 +91,10 @@
       #if os(macOS)
         let tty = terminal?.path ?? "/dev/null"
         send("process launch --working-dir \(quote(directory.path)) -i /dev/null -o \(tty) -e \(tty)")
-      #else
+      #elseif os(Windows)
         send("process launch --working-dir \(quote(directory.path)) -i NUL")
+      #else
+        send("process launch --working-dir \(quote(directory.path)) -i /dev/null")
       #endif
       state = .running
       await withCheckedContinuation { continuation in finished = continuation }
@@ -247,11 +249,16 @@
       finished = nil
     }
 
-    #if os(Windows)
+    #if os(Windows) || os(Linux)
       /// The toolchain's LLDB from the PATH, its output read on threads.
       private func startLLDB(environment: [String: String]) throws {
-        let path = (environment["Path"] ?? environment["PATH"] ?? "").split(separator: ";")
-          .map { URL(fileURLWithPath: String($0)).appendingPathComponent("lldb.exe") }
+        #if os(Windows)
+          let (separator, name): (Character, String) = (";", "lldb.exe")
+        #else
+          let (separator, name): (Character, String) = (":", "lldb")
+        #endif
+        let path = (environment["Path"] ?? environment["PATH"] ?? "").split(separator: separator)
+          .map { URL(fileURLWithPath: String($0)).appendingPathComponent(name) }
           .first { FileManager.default.fileExists(atPath: $0.path) }
         guard let path else { throw ActionError.missing("LLDB wasn’t found on the PATH (it comes with the Swift toolchain).") }
         let lldb = try ChildProcess(

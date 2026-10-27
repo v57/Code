@@ -1,4 +1,4 @@
-#if os(Windows)
+#if os(Windows) || os(Linux)
   import CodeEditor
   import CodeHighlighting
   import CodeWorkspace
@@ -6,7 +6,7 @@
   import Observation
   import SwiftUI
 
-  /// The editor of one workspace document on Windows: the text in SwiftUI's text editor, saving through the
+  /// The editor of one workspace document on Windows and Linux: the text in SwiftUI's text editor, saving through the
   /// document and connected to the project's services (language servers, formatting, breakpoints) as the Mac's
   /// `DocumentEditor` is. Kept in `TextDocument.editorState`, so a tab brought back keeps its text and caret.
   @MainActor @Observable final class PortableDocumentEditor: CodeTextEditing {
@@ -25,6 +25,10 @@
     /// The file ends lines with CRLF: the editor works with "\n" (as the text box reports its lines) and the
     /// file keeps its own line endings when saved.
     @ObservationIgnored private var usesCRLF = false
+    #if os(Linux)
+      /// The text in the theme's colors, until the text or the theme changes.
+      @ObservationIgnored private var highlighted: (text: String, theme: String, value: AttributedString)?
+    #endif
 
     init(document: TextDocument) {
       usesCRLF = document.text.contains("\r\n")
@@ -166,9 +170,61 @@
     }
 
     func showQuickHelp(_ text: String, at range: NSRange) { quickHelp = text }
+
+    #if os(Linux)
+      /// Files longer than this are shown in the plain text color (each edit colors the whole text again).
+      private static let highlightLimit = 400_000
+
+      /// The text with its syntax in `theme`'s colors, for a text editor of an attributed string.
+      func highlightedText(theme: EditorTheme) -> AttributedString {
+        if let highlighted, highlighted.text == text, highlighted.theme == theme.id { return highlighted.value }
+        let value = Self.highlight(text, language: document?.language, scheme: theme.syntax)
+        highlighted = (text, theme.id, value)
+        return value
+      }
+
+      /// The edited text from the text editor (its colors are the next highlight's).
+      func setHighlightedText(_ value: AttributedString) {
+        let edited = String(value.characters)
+        if edited != text { text = edited }
+      }
+
+      private static func highlight(_ text: String, language: LanguageSpec?, scheme: CodeColorScheme) -> AttributedString {
+        func piece(_ substring: Substring, _ kind: SyntaxKind) -> AttributedString {
+          var piece = AttributedString(String(substring))
+          piece.foregroundColor = Color(hex: scheme.color(for: kind))
+          return piece
+        }
+        guard let language, text.utf8.count <= highlightLimit else { return piece(text[...], .plainText) }
+        var scanner = CodeScanner(code: text, spec: language)
+        let tokens = scanner.scan().sorted { $0.range.location < $1.range.location }
+        // Walks the text once, by the tokens' UTF-16 offsets.
+        let utf16 = text.utf16
+        var result = AttributedString()
+        var index = utf16.startIndex
+        var offset = 0
+        func advance(to target: Int) -> String.Index {
+          let target = min(target, utf16.count)
+          if target > offset {
+            index = utf16.index(index, offsetBy: target - offset)
+            offset = target
+          }
+          return index
+        }
+        for token in tokens where token.range.location >= offset && token.range.length > 0 {
+          let gapStart = index
+          let start = advance(to: token.range.location)
+          if start > gapStart { result += piece(text[gapStart..<start], .plainText) }
+          let end = advance(to: token.range.location + token.range.length)
+          if end > start { result += piece(text[start..<end], token.kind) }
+        }
+        if index < text.endIndex { result += piece(text[index...], .plainText) }
+        return result
+      }
+    #endif
   }
 
-  /// The editor for a workspace document (Windows): the document's text in the theme's colors and the editor
+  /// The editor for a workspace document (Windows and Linux): the document's text in the theme's colors and the editor
   /// font, saving through the document; the Mac's has the same initializer.
   public struct CodeEditorView: View {
     public let document: TextDocument
@@ -223,7 +279,7 @@
     let onSelectionChange: @MainActor (EditorSelection) -> Void
 
     var body: some View {
-      TextEditor(text: $editor.text, selection: $editor.selection)
+      textEditor
         .textEditorStyle(.plain)
         .font(font)
         .foregroundStyle(Color(hex: theme.syntax.plainText))
@@ -236,6 +292,21 @@
               .padding(12)
           }
         }
+    }
+  }
+
+  extension EditorTextView {
+    /// On Linux the text in its syntax colors (GTK's text view has no selection binding); elsewhere plain text
+    /// with the selection.
+    @ViewBuilder fileprivate var textEditor: some View {
+      #if os(Linux)
+        TextEditor(
+          text: Binding(
+            get: { [editor, theme] in editor.highlightedText(theme: theme) },
+            set: { [editor] in editor.setHighlightedText($0) }))
+      #else
+        TextEditor(text: $editor.text, selection: $editor.selection)
+      #endif
     }
   }
 
