@@ -334,6 +334,65 @@ import Testing
     #expect(XcodeDetector.product(ofScheme: tests) == .tests)
   }
 
+  @Test func xcodeDropsDependencySchemes() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let files = FileManager.default
+    let app = root.appendingPathComponent("App")
+    let schemes = app.appendingPathComponent("App.xcodeproj/xcshareddata/xcschemes")
+    try files.createDirectory(at: schemes, withIntermediateDirectories: true)
+    try "<LaunchAction/>".write(
+      to: schemes.appendingPathComponent("App Release.xcscheme"), atomically: true, encoding: .utf8)
+    try files.createDirectory(at: app.appendingPathComponent("App-Local.xcworkspace"), withIntermediateDirectories: true)
+    try """
+      1 /* App */ = {
+        isa = PBXNativeTarget;
+        name = App;
+        productType = "com.apple.product-type.application";
+      };
+      2 /* XCLocalSwiftPackageReference "Packages/AppCore" */ = {
+        isa = XCLocalSwiftPackageReference;
+        relativePath = Packages/AppCore;
+      };
+      3 /* XCLocalSwiftPackageReference "../Kit" */ = {
+        isa = XCLocalSwiftPackageReference;
+        relativePath = ../Kit;
+      };
+      """.write(to: app.appendingPathComponent("App.xcodeproj/project.pbxproj"), atomically: true, encoding: .utf8)
+    // The folder's own package, and a local package inside it.
+    try #"let package = Package(name: "App", products: [.library(name: "AppKit", targets: ["AppKit"])], targets: [.target(name: "AppKit"), .testTarget(name: "AppKitTests")])"#
+      .write(to: app.appendingPathComponent("Package.swift"), atomically: true, encoding: .utf8)
+    let core = app.appendingPathComponent("Packages/AppCore")
+    try files.createDirectory(at: core, withIntermediateDirectories: true)
+    try #"let package = Package(name: "AppCore", products: [.library(name: "AppCore", targets: ["AppCore"])])"#
+      .write(to: core.appendingPathComponent("Package.swift"), atomically: true, encoding: .utf8)
+    // Sibling packages the project and workspace use: dependencies.
+    for (name, product) in [("Kit", "Kit"), ("Store", "StoreKitPlus")] {
+      let package = root.appendingPathComponent(name)
+      try files.createDirectory(
+        at: package.appendingPathComponent(".swiftpm/xcode/xcshareddata/xcschemes"), withIntermediateDirectories: true)
+      try #"let package = Package(name: "\#(name)", products: [.library(name: "\#(product)", targets: ["\#(product)"])], targets: [.testTarget(name: "\#(name)Tests")])"#
+        .write(to: package.appendingPathComponent("Package.swift"), atomically: true, encoding: .utf8)
+      try "<LaunchAction/>".write(
+        to: package.appendingPathComponent(".swiftpm/xcode/xcshareddata/xcschemes/\(name)Wire.xcscheme"),
+        atomically: true, encoding: .utf8)
+    }
+    try #"<Workspace><FileRef location = "group:App.xcodeproj"></FileRef><FileRef location = "group:../Kit"></FileRef><FileRef location = "group:../Store"></FileRef></Workspace>"#
+      .write(
+        to: app.appendingPathComponent("App-Local.xcworkspace/contents.xcworkspacedata"), atomically: true,
+        encoding: .utf8)
+    let folder = ProjectFolder(listing: app)
+    // As `xcodebuild -list` reports them; Remote is a remote package's.
+    let listed = [
+      "App", "App Release", "App-Package", "AppCore", "AppKit", "Kit", "KitTests", "KitWire", "Remote",
+      "StoreKitPlus", "StoreWire",
+    ]
+    #expect(
+      XcodeDetector.own(listed, in: folder) == ["App", "App Release", "App-Package", "AppCore", "AppKit"])
+    // With nothing of its own found, it keeps them all.
+    #expect(XcodeDetector.own(["Kit", "Remote"], in: folder) == ["Kit", "Remote"])
+  }
+
   @Test func terminalCommands() {
     let directory = URL(fileURLWithPath: "/tmp/App")
     let mac = ActionScheme(

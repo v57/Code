@@ -1,7 +1,7 @@
 import Foundation
 
-/// An Xcode project or workspace: one scheme per Xcode scheme, from
-/// `xcodebuild -list -json`. Runs on this Mac, iOS simulators and devices,
+/// An Xcode project or workspace: one scheme per Xcode scheme of its own,
+/// from `xcodebuild -list -json` (not its packages'). Runs on this Mac, iOS simulators and devices,
 /// depending on the platforms the project builds for. A scheme gets the
 /// actions its product has: an app all of them, a command-line tool Run but
 /// no distribution, a library or framework Build, Test and Clean, and a
@@ -23,7 +23,8 @@ public struct XcodeDetector: ProjectDetector {
         ?? folder.first(withSuffix: ".xcodeproj")
     else { return [] }
     let url = folder.url.appendingPathComponent(container)
-    guard let names = Self.schemeNames(url, in: folder), !names.isEmpty else { return [] }
+    guard let listed = Self.schemeNames(url, in: folder), !listed.isEmpty else { return [] }
+    let names = Self.own(listed, in: folder)
     let platforms = Self.platforms(of: folder)
     let products = Self.products(in: folder)
     let flag = container.hasSuffix(".xcworkspace") ? "-workspace" : "-project"
@@ -85,6 +86,68 @@ public struct XcodeDetector: ProjectDetector {
       }
     }
     return products
+  }
+
+  /// `names` without the schemes of the folder's dependencies, which
+  /// `xcodebuild -list` reports for a project or workspace that uses
+  /// packages; all of them when none is the folder's own.
+  static func own(_ names: [String], in folder: ProjectFolder) -> [String] {
+    let own = ownSchemes(in: folder)
+    let kept = names.filter(own.contains)
+    return kept.isEmpty ? names : kept
+  }
+
+  /// The schemes that come from inside the folder: the scheme files and
+  /// targets of its projects and workspaces, and the products, targets and
+  /// scheme files of its packages (its own `Package.swift`, and the local
+  /// packages its projects and workspaces use that live in it). Packages
+  /// elsewhere and remote ones are dependencies.
+  static func ownSchemes(in folder: ProjectFolder) -> Set<String> {
+    var own = Set<String>()
+    var visited = Set<String>()
+    let root = folder.url.standardizedFileURL.path
+    func inside(_ url: URL) -> Bool {
+      let path = url.standardizedFileURL.path
+      return path == root || path.hasPrefix(root.hasSuffix("/") ? root : root + "/")
+    }
+    func addPackage(_ url: URL) {
+      guard inside(url), visited.insert(url.standardizedFileURL.path).inserted,
+        let manifest = try? String(contentsOf: url.appendingPathComponent("Package.swift"), encoding: .utf8)
+      else { return }
+      // With several products Xcode adds a scheme for the whole package.
+      for groups in matches(of: #"Package\s*\(\s*name:\s*"([^"]+)""#, in: manifest) {
+        own.formUnion([groups[0], groups[0] + "-Package"])
+      }
+      let declared = matches(
+        of: #"\.(?:library|executable|plugin|target|executableTarget|testTarget|macro)\s*\(\s*name:\s*"([^"]+)""#,
+        in: manifest)
+      own.formUnion(declared.map { $0[0] })
+      own.formUnion(schemeFiles(in: url.appendingPathComponent(".swiftpm/xcode")).map(\.0))
+    }
+    func addProject(_ url: URL) {
+      guard inside(url), visited.insert(url.standardizedFileURL.path).inserted else { return }
+      own.formUnion(schemeFiles(in: url).map(\.0))
+      let pbxproj = (try? String(contentsOf: url.appendingPathComponent("project.pbxproj"), encoding: .utf8)) ?? ""
+      own.formUnion(targets(in: pbxproj).map(\.0))
+      let packages = matches(
+        of: #"isa = XCLocalSwiftPackageReference;[^}]*?relativePath = "?([^";]+)"?;"#, in: pbxproj)
+      for groups in packages { addPackage(url.deletingLastPathComponent().appendingPathComponent(groups[0])) }
+    }
+    addPackage(folder.url)
+    for entry in folder.entries {
+      let url = folder.url.appendingPathComponent(entry.name)
+      if entry.name.hasSuffix(".xcodeproj") { addProject(url) }
+      guard entry.name.hasSuffix(".xcworkspace") else { continue }
+      own.formUnion(schemeFiles(in: url).map(\.0))
+      let contents = folder.read(entry.name + "/contents.xcworkspacedata") ?? ""
+      for groups in matches(of: #"location = "(group|container|absolute):([^"]+)""#, in: contents) {
+        let referenced =
+          groups[0] == "absolute"
+          ? URL(fileURLWithPath: groups[1]) : folder.url.appendingPathComponent(groups[1])
+        if referenced.pathExtension == "xcodeproj" { addProject(referenced) } else { addPackage(referenced) }
+      }
+    }
+    return own
   }
 
   /// Install, Export and Upload to App Store, each archiving into
