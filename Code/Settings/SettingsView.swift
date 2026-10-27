@@ -1,6 +1,3 @@
-#if os(macOS)
-  import AppKit
-#endif
 import CodeKit
 import ComponentKit
 import SwiftUI
@@ -51,21 +48,7 @@ private struct EditorSettingsView: View {
   @AppStorage(EditorSettings.suggestsCompletions) private var suggestsCompletions = true
 
   /// Installed fixed-pitch font families.
-  private let monospacedFamilies: [String] = {
-    #if os(macOS)
-      let manager = NSFontManager.shared
-      return manager.availableFontFamilies.filter { family in
-        guard let members = manager.availableMembers(ofFontFamily: family),
-          let name = members.first?.first as? String,
-          let font = NSFont(name: name, size: 12)
-        else { return false }
-        return font.isFixedPitch
-      }
-    #else
-      // Windows' own fixed-pitch families.
-      return ["Cascadia Code", "Cascadia Mono", "Consolas", "Courier New", "Lucida Console"]
-    #endif
-  }()
+  private let monospacedFamilies = KitFont.monospacedFamilies()
 
   var body: some View {
     FormCard("Appearance") {
@@ -79,7 +62,7 @@ private struct EditorSettingsView: View {
         KitPicker(
           "Font", selection: $fontName, options: [("Theme Font (SF Mono)", "")] + monospacedFamilies.map { ($0, $0) })
       }
-      FormRow("Font size", help: "⌘+ and ⌘− change it too", systemImage: "textformat.size", hue: .blue) {
+      FormRow("Font size", help: "\(Keycaps.label("⌘+")) and \(Keycaps.label("⌘−")) change it too", systemImage: "textformat.size", hue: .blue) {
         KitStepper(
           "Font size", value: $fontSize,
           in: Double(EditorConfiguration.fontSizes.lowerBound)...Double(EditorConfiguration.fontSizes.upperBound),
@@ -141,7 +124,7 @@ private struct FilesSettingsView: View {
     }
     FormCard(
       footer:
-        "For projects that haven’t chosen. Choose a project’s visible files from its navigator (View › Hidden Files › Edit Hidden Files); ⇧⌘. shows hidden files."
+        "For projects that haven’t chosen. Choose a project’s visible files from its navigator (View › Hidden Files › Edit Hidden Files); \(Keycaps.label("⇧⌘.")) shows hidden files."
     ) {
       FormRow("Hide files listed in .gitignore", systemImage: "eye.slash", hue: .gray) {
         Toggle("Hide files listed in .gitignore", isOn: $hidesIgnoredFiles).kitLabelsHidden()

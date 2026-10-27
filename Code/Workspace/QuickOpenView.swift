@@ -39,12 +39,12 @@ struct QuickOpenView: View {
         } label: {
           HStack(spacing: 5) {
             Text(model.quickOpenIncludesHiddenFiles ? "Leave out hidden" : "Include hidden")
-            Keycap("⇧⌘.")
+            Keycaps("⇧⌘.")
           }
         }
         .buttonStyle(.kit)
         .controlSize(.small)
-        .help(model.quickOpenIncludesHiddenFiles ? "Leave out hidden files (⇧⌘.)" : "Include hidden files (⇧⌘.)")
+        .help(model.quickOpenIncludesHiddenFiles ? "Leave out hidden files (\(Keycaps.label("⇧⌘.")))" : "Include hidden files (\(Keycaps.label("⇧⌘.")))")
       } items: {
         ForEach(results, id: \.path) { result in
           item(result)

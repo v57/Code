@@ -40,7 +40,7 @@ struct SidebarView: View {
           workspace.visibility.showsHiddenFiles ? "Hide Hidden Files" : "Show Hidden Files",
           systemImage: workspace.visibility.showsHiddenFiles ? "eye.slash" : "eye"
         ) { workspace.visibility.showsHiddenFiles.toggle() }
-        .help(workspace.visibility.showsHiddenFiles ? "Hide Hidden Files (⇧⌘.)" : "Show Hidden Files (⇧⌘.)")
+        .help(workspace.visibility.showsHiddenFiles ? "Hide Hidden Files (\(Keycaps.label("⇧⌘.")))" : "Show Hidden Files (\(Keycaps.label("⇧⌘.")))")
       }
       .onReturn(activateSelection)
       .kitRowDensity(.compact)

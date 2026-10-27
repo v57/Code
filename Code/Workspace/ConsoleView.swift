@@ -75,7 +75,7 @@ struct ConsoleView: View {
           Button("Open in Window", systemImage: "pip.exit") { model.detachConsole() }
             .help("Open in Window")
           Button("Close", systemImage: "xmark") { model.hideConsole() }
-            .help("Close (⇧⌘Y)")
+            .help("Close (\(Keycaps.label("⇧⌘Y")))")
         case .window:
           Button("Show Under Title", systemImage: "pip.enter") { model.attachConsole() }
             .help("Show under the toolbar's title")
