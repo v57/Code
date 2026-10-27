@@ -105,6 +105,10 @@
     /// More callbacks for finished actions, for services that follow the
     /// builds (the language servers' compiler arguments).
     @ObservationIgnored private var finishHandlers: [@MainActor (ActionKind, Bool) -> Void] = []
+    /// Where actions for this Mac run (`LowPriorityExecutor` for installs in the background).
+    @ObservationIgnored public var localExecutor: any ActionExecutor = LocalExecutor()
+    /// Asks the user before a step does something they may mind (Install quitting the running app); nil doesn't ask.
+    @ObservationIgnored public var confirm: (@MainActor @Sendable (String) async -> Bool)?
     /// Folder names never searched for projects.
     @ObservationIgnored public var excludedNames: Set<String> = []
     /// Runs the action instead of the planned steps when it returns some
@@ -218,7 +222,7 @@
 
     /// Where the destination's commands run: over SSH for another machine, else here.
     private func executor(for destination: RunDestination?) -> any ActionExecutor {
-      guard let target = remoteTarget(for: destination) else { return LocalExecutor() }
+      guard let target = remoteTarget(for: destination) else { return localExecutor }
       let login: SSHServer?
       do {
         login = try remoteLogin?(target)
@@ -248,7 +252,13 @@
     /// (Export's `NOTARY_PROFILE`).
     public func perform(_ kind: ActionKind, environment: [String: String] = [:]) {
       guard let scheme = selectedScheme else { return }
-      let destination = selectedDestination
+      perform(kind, scheme: scheme, destination: selectedDestination, environment: environment)
+    }
+
+    /// Runs an action on `scheme` and `destination` rather than the selected ones (an app's queued installs).
+    public func perform(
+      _ kind: ActionKind, scheme: ActionScheme, destination: RunDestination?, environment: [String: String] = [:]
+    ) {
       let previous = task
       if isRunning { stop() }
       log.clear()
@@ -286,7 +296,8 @@
       let context = ActionContext(
         directory: scheme.directory,
         environment: ShellEnvironment.shared.variables.merging(environment) { $1 },
-        executor: executor(for: destination)
+        executor: executor(for: destination),
+        confirm: confirm.map { confirm in { @Sendable question in await confirm(question) } }
       ) { line in sink.add(line) }
       self.context = context
 

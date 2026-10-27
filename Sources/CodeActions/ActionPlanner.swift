@@ -43,14 +43,18 @@ public struct ActionStep: Sendable {
     private var current: (any ActionCommand)?
     private var stopHandlers: [@Sendable () -> Void] = []
     private var cancelled = false
+    /// Asks the user a yes-or-no question before a step does something they may mind (Install quitting the
+    /// running app); nil goes ahead without asking.
+    public let confirm: (@Sendable (String) async -> Bool)?
 
     public init(
       directory: URL, environment: [String: String], executor: any ActionExecutor = LocalExecutor(),
-      output: @escaping @Sendable (ActionLine) -> Void
+      confirm: (@Sendable (String) async -> Bool)? = nil, output: @escaping @Sendable (ActionLine) -> Void
     ) {
       self.directory = directory
       self.environment = environment
       self.executor = executor
+      self.confirm = confirm
       self.output = output
     }
 
@@ -190,7 +194,12 @@ public struct ActionStep: Sendable {
       case .build: return [.shell("Build", "xcodebuild \(arguments) build")]
       case .test: return [.shell("Test", "xcodebuild \(arguments) test")]
       case .clean: return [.shell("Clean", "xcodebuild \(arguments) clean", resource: .disk)]
-      case .lint, .install, .export, .upload:
+      case .install:
+        // Quitting and opening the app take more than its command; elsewhere the command does.
+        let steps = AppInstall.steps(scheme)
+        if !steps.isEmpty { return steps }
+        return scheme.commands[kind].map { [.shell(kind.title, $0)] } ?? []
+      case .lint, .export, .upload:
         return scheme.commands[kind].map { [.shell(kind.title, $0)] } ?? []
       case .run: break
       }

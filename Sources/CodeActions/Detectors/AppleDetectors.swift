@@ -194,8 +194,9 @@ public struct XcodeDetector: ProjectDetector {
       "installed=\"$HOME\"/Applications/\(app); if [ ! -e \"$installed\" ]; then installed=/Applications/\(app); fi"
     let installed = "\"$installed\""
     let archived = shellQuote("\(folder)/\(scheme).xcarchive/Products/Applications/\(scheme).app")
+    // Stamped with the commit count as its build number, as releases are.
     commands[.install] =
-      "\(chooseInstalled); \(archiveMac) && if \(hasDeveloperID); then \(exportDeveloperID) && rm -rf \(installed) && ditto \(developerIDApp) \(installed); else rm -rf \(installed) && ditto \(archived) \(installed); fi"
+      "\(chooseInstalled); \(archiveMac) \(AppInstall.buildNumber) && if \(hasDeveloperID); then \(exportDeveloperID) && rm -rf \(installed) && ditto \(developerIDApp) \(installed); else rm -rf \(installed) && ditto \(archived) \(installed); fi"
     let exportFolder = shellQuote("\(folder)/Export")
     let notarizeZip = shellQuote("\(folder)/Export/notarize.zip")
     let zip = shellQuote("\(folder)/Export/\(scheme).zip")
