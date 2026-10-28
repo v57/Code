@@ -124,7 +124,8 @@ package.targets.append(
     name: "CodeApp",
     dependencies: [
       "CodeKit", .product(name: "SwiftUI", package: "SwiftUI"), .product(name: "ComponentKit", package: "Component"),
-      .product(name: "VaultKit", package: "Vault"), .product(name: "UpdateKit", package: "UpdateKit"),
+      .product(name: "VaultKit", package: "Vault"), .product(name: "VaultUI", package: "Vault"),
+      .product(name: "UpdateKit", package: "UpdateKit"),
       .product(name: "DevScreenshots", package: "Dev"),
     ],
     path: "Code", exclude: ["Assets.xcassets", "Code.entitlements"],
