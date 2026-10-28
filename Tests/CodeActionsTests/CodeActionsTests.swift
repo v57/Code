@@ -231,7 +231,7 @@ import Testing
     #expect(Set(mac.keys) == [.install, .export, .upload])
     #expect(mac[.install]?.contains("-destination 'generic/platform=macOS'") == true)
     #expect(mac[.install]?.hasPrefix("installed=\"$HOME\"/Applications/App.app; if [ ! -e \"$installed\" ]; then installed=/Applications/App.app; fi; ") == true)
-    #expect(mac[.install]?.contains("ditto build/App/DeveloperID/App.app \"$installed\"") == true)
+    #expect(mac[.install]?.contains("ditto .build/App/DeveloperID/App.app \"$installed\"") == true)
     #expect(mac[.export]?.contains("--keychain-profile \"${NOTARY_PROFILE:-notary}\"") == true)
     #expect(mac[.upload]?.contains(#"{"method":"app-store-connect"}"#) == true)
     #expect(Set(XcodeDetector.distributionCommands(base, scheme: "App", mac: false).keys) == [.upload])
@@ -487,10 +487,16 @@ import Testing
       platforms: [.mac, .iOS], xcodeContainer: "App.xcodeproj")
     #expect(mac.terminalCommand(for: .build) == mac.commands[.build])
     let run = mac.terminalCommand(for: .run) ?? ""
+    // Built into DerivedData, found from the build settings.
+    #expect(run.hasPrefix("xcodebuild -project App.xcodeproj -scheme App -destination 'platform=macOS' build && "))
+    #expect(run.contains("products=\"$(xcodebuild -project App.xcodeproj -scheme App -destination 'platform=macOS' -showBuildSettings"))
+    #expect(run.contains("app=\"$products\"/App.app;"))
+    var shared = mac
+    shared.derivedDataPath = "/Builds/xcode/App/1"
     #expect(
-      run.hasPrefix(
-        "xcodebuild -project App.xcodeproj -scheme App -destination 'platform=macOS' -derivedDataPath build build && "))
-    #expect(run.contains("app=build/Build/Products/Debug/App.app;"))
+      shared.terminalCommand(for: .run)?.hasPrefix(
+        "xcodebuild -derivedDataPath /Builds/xcode/App/1 -project App.xcodeproj -scheme App -destination 'platform=macOS' build && products=/Builds/xcode/App/1/Build/Products/Debug && "
+      ) == true)
     var phone = mac
     phone.platforms = [.iOS]
     #expect(phone.terminalCommand(for: .run) == nil)

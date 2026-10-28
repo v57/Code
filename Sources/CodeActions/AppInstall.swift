@@ -11,17 +11,16 @@ import Foundation
 /// only when it was running before).
 public enum AppInstall {
   /// The folder the archive and its export go to, relative to the scheme's folder.
-  static func folder(_ scheme: ActionScheme) -> String { "build/\(XcodeDetector.plainName(scheme.name).name)" }
+  static func folder(_ scheme: ActionScheme) -> String { ".build/\(XcodeDetector.plainName(scheme.name).name)" }
 
   /// What `CURRENT_PROJECT_VERSION` is set to: the commit count, 1 outside Git.
   static let buildNumber = "CURRENT_PROJECT_VERSION=$(git rev-list --count HEAD 2>/dev/null || echo 1)"
 
   static func steps(_ scheme: ActionScheme) -> [ActionStep] {
     #if os(macOS)
-      guard let container = scheme.xcodeContainer else { return [] }
+      guard scheme.xcodeContainer != nil else { return [] }
       let name = XcodeDetector.plainName(scheme.name).name
-      let flag = container.hasSuffix(".xcworkspace") ? "-workspace" : "-project"
-      let base = "xcodebuild \(flag) \(shellQuote(container)) -scheme \(shellQuote(scheme.name))"
+      let base = "xcodebuild \(scheme.xcodeArguments)"
       let folder = folder(scheme)
       let archive = "\(folder)/\(name).xcarchive"
       let developerID = "\(folder)/DeveloperID"

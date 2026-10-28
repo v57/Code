@@ -266,11 +266,14 @@
       progress = ActionProgress(message: "Preparing")
       stepTitle = nil
       state = .running(kind)
-      // The debugger (the override) runs here, never on another machine.
+      // The debugger (the override) runs here, never on another machine. Builds here go to ~/Developer/Builds
+      // when it exists (`BuildFolders`); another machine builds where its tools do.
+      let remote = destination?.kind == .remote
+      let building = remote ? scheme : scheme.inBuildFolders()
       let steps =
-        (destination?.kind == .remote ? nil : stepsOverride?(kind, scheme, destination))
+        (remote ? nil : stepsOverride?(kind, building, destination))
         ?? ActionPlanner.steps(
-          for: kind, scheme: scheme, destination: destination, signing: remoteTarget(for: destination)?.signing)
+          for: kind, scheme: building, destination: destination, signing: remoteTarget(for: destination)?.signing)
 
       // Steps are stages, named so that Run's build and Build's share their
       // history. Run's last step runs the app, which has no end to estimate.

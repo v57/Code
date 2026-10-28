@@ -14,7 +14,7 @@ public enum ActionKind: String, CaseIterable, Codable, Sendable {
   /// afterwards (`AppInstall`).
   case install
   /// Archives the Mac app, exports it with Developer ID, notarizes and staples
-  /// it, and zips it in build/<scheme>/Export (needs `Notarization`).
+  /// it, and zips it in .build/<scheme>/Export (needs `Notarization`).
   case export
   /// Archives the app and uploads it to App Store Connect.
   case upload
@@ -122,13 +122,16 @@ public struct ActionScheme: Identifiable, Hashable, Codable, Sendable {
   /// The Android application ID and its Gradle module, for Android apps.
   public var androidApplicationID: String?
   public var androidModule: String?
-  /// The built executable, relative to `directory`, for debugging with LLDB.
+  /// The built executable, relative to `directory` (absolute once `inBuildFolders()` moved it), for debugging with LLDB.
   public var executable: String?
+  /// Xcode's derived data folder (`-derivedDataPath`), set by `inBuildFolders()`; nil builds into DerivedData.
+  public var derivedDataPath: String?
 
   public init(
     name: String, toolchain: Toolchain, directory: URL, commands: [ActionKind: String],
     platforms: [Platform] = [.mac], xcodeContainer: String? = nil,
-    androidApplicationID: String? = nil, androidModule: String? = nil, executable: String? = nil
+    androidApplicationID: String? = nil, androidModule: String? = nil, executable: String? = nil,
+    derivedDataPath: String? = nil
   ) {
     self.name = name
     self.toolchain = toolchain
@@ -139,6 +142,20 @@ public struct ActionScheme: Identifiable, Hashable, Codable, Sendable {
     self.androidApplicationID = androidApplicationID
     self.androidModule = androidModule
     self.executable = executable
+    self.derivedDataPath = derivedDataPath
+  }
+
+  /// `executable`'s full path.
+  public var executableURL: URL? {
+    executable.map { $0.hasPrefix("/") ? URL(fileURLWithPath: $0) : directory.appendingPathComponent($0) }
+  }
+
+  /// `xcodebuild`'s arguments for the container and scheme, with the derived data folder when there is one.
+  public var xcodeArguments: String {
+    let container = xcodeContainer ?? ""
+    let flag = container.hasSuffix(".xcworkspace") ? "-workspace" : "-project"
+    let derivedData = derivedDataPath.map { "-derivedDataPath \(shellQuote($0)) " } ?? ""
+    return "\(derivedData)\(flag) \(shellQuote(container)) -scheme \(shellQuote(name))"
   }
 
   public var id: String { directory.path + "#" + toolchain.rawValue + "#" + name }
@@ -150,21 +167,22 @@ public struct ActionScheme: Identifiable, Hashable, Codable, Sendable {
 
   /// The action as one shell command run in `directory`, for a terminal
   /// that runs commands instead of `ActionPlanner`'s steps (Shell). Run
-  /// builds an Xcode app or tool for this Mac into build/ and runs its product
-  /// in the foreground, and installs and launches an Android app on the
-  /// connected device; the other actions are the scheme's commands.
+  /// builds an Xcode app or tool for this Mac and runs its product (found
+  /// with -showBuildSettings) in the foreground, and installs and launches an
+  /// Android app on the connected device; the other actions are the scheme's
+  /// commands.
   public func terminalCommand(for kind: ActionKind) -> String? {
     guard kind == .run else { return commands[kind] }
     switch toolchain {
     case .xcode:
-      guard supports(.run), platforms.contains(.mac), let container = xcodeContainer else { return nil }
-      let flag = container.hasSuffix(".xcworkspace") ? "-workspace" : "-project"
-      let products = "build/Build/Products/Debug"
-      let named = shellQuote("\(products)/\(name)")
+      guard supports(.run), platforms.contains(.mac), xcodeContainer != nil else { return nil }
+      let arguments = "\(xcodeArguments) -destination 'platform=macOS'"
+      let products =
+        derivedDataPath.map { shellQuote($0 + "/Build/Products/Debug") }
+        ?? "\"$(xcodebuild \(arguments) -showBuildSettings 2>/dev/null | sed -n 's/^ *BUILT_PRODUCTS_DIR = //p' | head -1)\""
       return
-        "xcodebuild \(flag) \(shellQuote(container)) -scheme \(shellQuote(name)) -destination 'platform=macOS' -derivedDataPath build build"
-        + " && app=\(shellQuote("\(products)/\(name).app")); [ -d \"$app\" ] || app=$(ls -d \(products)/*.app 2>/dev/null | head -1)"
-        + "; if [ -n \"$app\" ]; then \"$app/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' \"$app/Contents/Info.plist\")\"; else \(named); fi"
+        "xcodebuild \(arguments) build && products=\(products) && app=\"$products\"/\(shellQuote(name + ".app")); [ -d \"$app\" ] || app=$(ls -d \"$products\"/*.app 2>/dev/null | head -1)"
+        + "; if [ -n \"$app\" ]; then \"$app/Contents/MacOS/$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' \"$app/Contents/Info.plist\")\"; else \"$products\"/\(shellQuote(name)); fi"
     case .android:
       guard let install = commands[.run] else { return nil }
       guard let applicationID = androidApplicationID else { return install }

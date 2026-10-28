@@ -173,9 +173,7 @@ public struct ActionStep: Sendable {
     // MARK: - Xcode
 
     static func xcodeArguments(_ scheme: ActionScheme, _ destination: RunDestination?) -> String {
-      let container = scheme.xcodeContainer ?? ""
-      let flag = container.hasSuffix(".xcworkspace") ? "-workspace" : "-project"
-      var arguments = "\(flag) \(shellQuote(container)) -scheme \(shellQuote(scheme.name))"
+      var arguments = scheme.xcodeArguments
       switch destination?.kind {
       case .mac?: arguments += " -destination 'platform=macOS'"
       case .iOSSimulator?: arguments += " -destination \(shellQuote("id=" + destination!.id))"

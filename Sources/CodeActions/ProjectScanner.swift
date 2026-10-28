@@ -76,7 +76,7 @@ public enum ProjectScanner {
 
   /// Bumped whenever a detector finds different schemes or commands, so
   /// scans cached under `fingerprint(of:)` are redone.
-  public static let revision = 6
+  public static let revision = 7
 
   /// Folders never searched: build products, dependencies, caches.
   public static let skippedFolders: Set<String> = [

@@ -349,10 +349,7 @@
       else { return nil }
       let directory = scheme.directory
       if scheme.toolchain == .xcode {
-        let container = scheme.xcodeContainer ?? ""
-        let flag = container.hasSuffix(".xcworkspace") ? "-workspace" : "-project"
-        let arguments =
-          "\(flag) \(shellQuote(container)) -scheme \(shellQuote(scheme.name)) -destination 'platform=macOS'"
+        let arguments = "\(scheme.xcodeArguments) -destination 'platform=macOS'"
         return [
           .shell("Build", "xcodebuild \(arguments) build"),
           ActionStep("Debug") { [weak self] context in
@@ -363,12 +360,11 @@
           },
         ]
       }
-      guard let executable = scheme.executable, let build = scheme.commands[.build] else { return nil }
+      guard let executable = scheme.executableURL, let build = scheme.commands[.build] else { return nil }
       return [
         .shell("Build", build),
         ActionStep("Debug") { [weak self] context in
-          try await self?.debug(
-            directory.appendingPathComponent(executable).path, in: directory, context: context)
+          try await self?.debug(executable.path, in: directory, context: context)
         },
       ]
     }

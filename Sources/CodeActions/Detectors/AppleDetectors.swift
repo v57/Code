@@ -164,16 +164,16 @@ public struct XcodeDetector: ProjectDetector {
   }
 
   /// Install, Export and Upload to App Store, each archiving into
-  /// build/<scheme> first. Install and Export are for Mac apps and pin the
+  /// .build/<scheme> first. Install and Export are for Mac apps and pin the
   /// macOS destination: a multiplatform target archives for iOS without it.
   /// They use the archive team's Developer ID Application identity when the
   /// keychain has one (checked when the action runs, so a new certificate
   /// needs no rescan): Install then installs that export, so other Macs open
   /// it, and Export notarizes it with the notarytool keychain profile in
   /// `NOTARY_PROFILE` ("notary" when unset), staples it and zips it into
-  /// build/<scheme>/Export.
+  /// .build/<scheme>/Export.
   static func distributionCommands(_ base: String, scheme: String, mac: Bool) -> [ActionKind: String] {
-    let folder = "build/\(scheme)"
+    let folder = ".build/\(scheme)"
     let archive = shellQuote("\(folder)/\(scheme).xcarchive")
     var commands: [ActionKind: String] = [
       .upload:
