@@ -32,7 +32,8 @@ fi
 # The final link. With LTO, LLVM's machine outliner moves instruction sequences repeated across functions into shared
 # ones after optimisation (a quarter less code in every app, no measurable change in instructions run), and
 # swift-record-gc (the Python below) relinks LTO's object so dead stripping also drops the Swift code that only Swift's
-# own metadata records kept (SWIFT_RECORD_GC=0 turns it off).
+# own metadata records kept (SWIFT_RECORD_GC=0 turns it off). Every Objective-C class of the target's own objects
+# stays, so the system can find a principal class by name (own_classes).
 (( ${argv[(Ie)-object_path_lto]} )) && set -- "$@" -mllvm -enable-machine-outliner=always -mllvm -machine-outliner-reruns=2
 exec python3 -I <(sed '1,/^# --- python ---$/d' $0) $real_ld "$@"
 # --- python ---
@@ -368,8 +369,38 @@ def gc(ld, args, lto, tmp):
         keep |= new
 
 
+def own_classes(args):
+    """-u for each Objective-C class the target's own objects define.
+
+    -conditional-runtime-records keeps a class's Objective-C record only while code uses the class, so dead stripping
+    drops a class the system finds by name alone (an extension's NSExtensionPrincipalClass, NSPrincipalClass, a
+    storyboard's class) and NSClassFromString returns nil: the extension fails to load. The target's own objects are
+    its bitcode or Mach-O files; the packages' pre-links come as archives (some universal), and their classes still go.
+    """
+    files = []
+    for i, a in enumerate(args[:-1]):
+        if a == '-filelist':
+            path, _, base = args[i + 1].partition(',')
+            for f in open(path).read().splitlines():
+                full = os.path.join(base, f) if base else f
+                try:
+                    with open(full, 'rb') as h:
+                        if h.read(4) in (b'BC\xc0\xde', b'\xde\xc0\x17\x0b', b'\xcf\xfa\xed\xfe'):
+                            files.append(full)
+                except OSError:
+                    pass
+    if not files:
+        return []
+    r = subprocess.run(['xcrun', 'nm', '-U', '-j', '--'] + files, capture_output=True, text=True)
+    classes = sorted({line for line in r.stdout.splitlines() if line.startswith('_OBJC_CLASS_$_')})
+    log('keeping %d Objective-C classes of the target: %s' % (len(classes), ' '.join(classes)))
+    return [arg for c in classes for arg in ('-u', c)]
+
+
 def main():
     ld, args = sys.argv[1], sys.argv[2:]
+    if '-r' not in args and '-dead_strip' in args:
+        args += own_classes(args)
     if ('-r' in args or '-dead_strip' not in args or '-object_path_lto' not in args
             or os.environ.get('SWIFT_RECORD_GC') == '0'):
         os.execv(ld, [ld] + args)
