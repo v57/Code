@@ -2,7 +2,7 @@
   "build": { "scheme": "Code", "project": "Code.xcodeproj" },
   "appearances": ["light", "dark"],
   "variables": { "DEMO": "/tmp/CodeDemo" },
-  "watch": ["Code", "Sources", "Tools/screenshots"],
+  "watch": ["App", "Sources", "Tools/screenshots"],
   "mac": { "window": [1440, 900] },
   "scenes": [
     {

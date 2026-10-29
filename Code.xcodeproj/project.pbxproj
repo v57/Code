@@ -7,20 +7,26 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		C0DE00000000000000000A05 /* CodeKit in Frameworks */ = {isa = PBXBuildFile; productRef = C0DE00000000000000000A04 /* CodeKit */; };
-		D5C0DE000000000000000003 /* UpdateKit in Frameworks */ = {isa = PBXBuildFile; productRef = D5C0DE000000000000000002 /* UpdateKit */; };
-		0F5A700F1095C24391180843 /* VaultKit in Frameworks */ = {isa = PBXBuildFile; productRef = 2C754DD20831A96E0D5C5AE0 /* VaultKit */; };
-		5A0C0DE00000000000000A01 /* VaultUI in Frameworks */ = {isa = PBXBuildFile; productRef = 5A0C0DE00000000000000A02 /* VaultUI */; };
-		DE5C0DE0000000000000DE03 /* DevScreenshots in Frameworks */ = {isa = PBXBuildFile; productRef = DE5C0DE0000000000000DE02 /* DevScreenshots */; };
-		C0C0DE000000000000000C03 /* ComponentKit in Frameworks */ = {isa = PBXBuildFile; productRef = C0C0DE000000000000000C02 /* ComponentKit */; };
-		C0DE105000000000000000F1 /* CodeActions in Frameworks */ = {isa = PBXBuildFile; productRef = C0DE105000000000000000E1 /* CodeActions */; };
-		C0DE105000000000000000F2 /* CodeHighlighting in Frameworks */ = {isa = PBXBuildFile; productRef = C0DE105000000000000000E2 /* CodeHighlighting */; };
-		C0DE105000000000000000F3 /* VaultKit in Frameworks */ = {isa = PBXBuildFile; productRef = C0DE105000000000000000E3 /* VaultKit */; };
-		5A0C0DE00000000000000A03 /* VaultUI in Frameworks */ = {isa = PBXBuildFile; productRef = 5A0C0DE00000000000000A04 /* VaultUI */; };
-		C0DE105000000000000000F4 /* ComponentKit in Frameworks */ = {isa = PBXBuildFile; productRef = C0DE105000000000000000E4 /* ComponentKit */; };
-		C0DE105000000000000000F5 /* SSHKit in Frameworks */ = {isa = PBXBuildFile; productRef = C0DE105000000000000000E5 /* SSHKit */; };
-		C0DE105000000000000000F6 /* CodeIcons in Frameworks */ = {isa = PBXBuildFile; productRef = C0DE105000000000000000E6 /* CodeIcons */; };
+		C0DE00000000000000000A05 /* CodeApp in Frameworks */ = {isa = PBXBuildFile; productRef = C0DE00000000000000000A04 /* CodeApp */; };
+		C0DE105000000000000000F1 /* CodeMobileApp in Frameworks */ = {isa = PBXBuildFile; productRef = C0DE105000000000000000E1 /* CodeMobileApp */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		C0DE00000000000000000B01 /* Exceptions for "Resources" folder in "Code" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 000000000000000100000000 /* Code */;
+		};
+		C0DE00000000000000000B02 /* Exceptions for "Resources" folder in "Code iOS" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = C0DE10500000000100000000 /* Code iOS */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileReference section */
 		000000000000000000000120 /* Code.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Code.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -30,12 +36,24 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		000000000000000000000010 /* Code */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = Code;
+			name = Code;
+			path = App/Sources/Code;
 			sourceTree = "<group>";
 		};
-		C0DE10500000000000000010 /* Code-iOS */ = {
+		C0DE10500000000000000010 /* CodeMobile */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			path = "Code-iOS";
+			name = CodeMobile;
+			path = App/Sources/CodeMobile;
+			sourceTree = "<group>";
+		};
+		C0DE00000000000000000B00 /* Resources */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				C0DE00000000000000000B01 /* Exceptions for "Resources" folder in "Code" target */,
+				C0DE00000000000000000B02 /* Exceptions for "Resources" folder in "Code iOS" target */,
+			);
+			name = Resources;
+			path = App/Resources;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -44,24 +62,13 @@
 		000000000000000130000000 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
-				C0DE00000000000000000A05 /* CodeKit in Frameworks */,
-				D5C0DE000000000000000003 /* UpdateKit in Frameworks */,
-				0F5A700F1095C24391180843 /* VaultKit in Frameworks */,
-				5A0C0DE00000000000000A01 /* VaultUI in Frameworks */,
-				DE5C0DE0000000000000DE03 /* DevScreenshots in Frameworks */,
-				C0C0DE000000000000000C03 /* ComponentKit in Frameworks */,
+				C0DE00000000000000000A05 /* CodeApp in Frameworks */,
 			);
 		};
 		C0DE10500000000130000000 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			files = (
-				C0DE105000000000000000F1 /* CodeActions in Frameworks */,
-				C0DE105000000000000000F2 /* CodeHighlighting in Frameworks */,
-				C0DE105000000000000000F6 /* CodeIcons in Frameworks */,
-				C0DE105000000000000000F3 /* VaultKit in Frameworks */,
-				5A0C0DE00000000000000A03 /* VaultUI in Frameworks */,
-				C0DE105000000000000000F4 /* ComponentKit in Frameworks */,
-				C0DE105000000000000000F5 /* SSHKit in Frameworks */,
+				C0DE105000000000000000F1 /* CodeMobileApp in Frameworks */,
 			);
 		};
 /* End PBXFrameworksBuildPhase section */
@@ -71,7 +78,8 @@
 			isa = PBXGroup;
 			children = (
 				000000000000000000000010 /* Code */,
-				C0DE10500000000000000010 /* Code-iOS */,
+				C0DE10500000000000000010 /* CodeMobile */,
+				C0DE00000000000000000B00 /* Resources */,
 				000000000000000000000020 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -100,15 +108,11 @@
 			);
 			fileSystemSynchronizedGroups = (
 				000000000000000000000010 /* Code */,
+				C0DE00000000000000000B00 /* Resources */,
 			);
 			name = Code;
 			packageProductDependencies = (
-				C0DE00000000000000000A04 /* CodeKit */,
-				D5C0DE000000000000000002 /* UpdateKit */,
-				2C754DD20831A96E0D5C5AE0 /* VaultKit */,
-				5A0C0DE00000000000000A02 /* VaultUI */,
-				DE5C0DE0000000000000DE02 /* DevScreenshots */,
-				C0C0DE000000000000000C02 /* ComponentKit */,
+				C0DE00000000000000000A04 /* CodeApp */,
 			);
 			productName = Code;
 			productReference = 000000000000000000000120 /* Code.app */;
@@ -125,17 +129,12 @@
 			buildRules = (
 			);
 			fileSystemSynchronizedGroups = (
-				C0DE10500000000000000010 /* Code-iOS */,
+				C0DE10500000000000000010 /* CodeMobile */,
+				C0DE00000000000000000B00 /* Resources */,
 			);
 			name = "Code iOS";
 			packageProductDependencies = (
-				C0DE105000000000000000E1 /* CodeActions */,
-				C0DE105000000000000000E2 /* CodeHighlighting */,
-				C0DE105000000000000000E6 /* CodeIcons */,
-				C0DE105000000000000000E3 /* VaultKit */,
-				5A0C0DE00000000000000A04 /* VaultUI */,
-				C0DE105000000000000000E4 /* ComponentKit */,
-				C0DE105000000000000000E5 /* SSHKit */,
+				C0DE105000000000000000E1 /* CodeMobileApp */,
 			);
 			productName = Code;
 			productReference = C0DE10500000000000000120 /* Code.app */;
@@ -169,12 +168,8 @@
 			mainGroup = 000000000000000000000001;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				C0DE00000000000000000A06 /* XCLocalSwiftPackageReference "App" */,
 				C0DE00000000000000000A03 /* XCLocalSwiftPackageReference "." */,
-				D5C0DE000000000000000001 /* XCRemoteSwiftPackageReference "UpdateKit" */,
-				2B6E154177CEBEF3833B42A4 /* XCRemoteSwiftPackageReference "Vault" */,
-				DE5C0DE0000000000000DE01 /* XCRemoteSwiftPackageReference "Dev" */,
-				C0C0DE000000000000000C01 /* XCRemoteSwiftPackageReference "Component" */,
-				C0DE105000000000000000D1 /* XCRemoteSwiftPackageReference "SSH" */,
 			);
 			preferredProjectObjectVersion = 90;
 			productRefGroup = 000000000000000000000020 /* Products */;
@@ -217,7 +212,7 @@
 		C0DE10500000000111000000 /* Debug configuration for PBXNativeTarget "Code iOS" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = "Code-iOS/Code-iOS.entitlements";
+				CODE_SIGN_ENTITLEMENTS = "App/Resources/Code-iOS.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = AUCR797TMH;
@@ -254,7 +249,7 @@
 		C0DE10500000000112000000 /* Release configuration for PBXNativeTarget "Code iOS" */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = "Code-iOS/Code-iOS.entitlements";
+				CODE_SIGN_ENTITLEMENTS = "App/Resources/Code-iOS.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = AUCR797TMH;
@@ -426,7 +421,7 @@
 				"ARCHS[sdk=macosx*]" = arm64;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = Code/Code.entitlements;
+				CODE_SIGN_ENTITLEMENTS = App/Resources/Code.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -435,7 +430,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = Info.plist;
+				INFOPLIST_FILE = App/Resources/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Code;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Dmitry Kozlov. MIT License.";
@@ -461,7 +456,7 @@
 				"ARCHS[sdk=macosx*]" = arm64;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = Code/Code.entitlements;
+				CODE_SIGN_ENTITLEMENTS = App/Resources/Code.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -470,7 +465,7 @@
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = Info.plist;
+				INFOPLIST_FILE = App/Resources/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = Code;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2026 Dmitry Kozlov. MIT License.";
@@ -520,115 +515,26 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
+		C0DE00000000000000000A06 /* XCLocalSwiftPackageReference "App" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = App;
+		};
 		C0DE00000000000000000A03 /* XCLocalSwiftPackageReference "." */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = .;
 		};
 /* End XCLocalSwiftPackageReference section */
 
-/* Begin XCRemoteSwiftPackageReference section */
-		C0DE105000000000000000D1 /* XCRemoteSwiftPackageReference "SSH" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/v57/SSH.git";
-			requirement = {
-				branch = main;
-				kind = branch;
-			};
-		};
-		DE5C0DE0000000000000DE01 /* XCRemoteSwiftPackageReference "Dev" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/v57/Dev.git";
-			requirement = {
-				branch = main;
-				kind = branch;
-			};
-		};
-		2B6E154177CEBEF3833B42A4 /* XCRemoteSwiftPackageReference "Vault" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/v57/Vault.git";
-			requirement = {
-				branch = main;
-				kind = branch;
-			};
-		};
-		D5C0DE000000000000000001 /* XCRemoteSwiftPackageReference "UpdateKit" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/v57/UpdateKit.git";
-			requirement = {
-				branch = main;
-				kind = branch;
-			};
-		};
-		C0C0DE000000000000000C01 /* XCRemoteSwiftPackageReference "Component" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/v57/Component.git";
-			requirement = {
-				branch = main;
-				kind = branch;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
 /* Begin XCSwiftPackageProductDependency section */
-		C0DE105000000000000000E1 /* CodeActions */ = {
+		C0DE00000000000000000A04 /* CodeApp */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = CodeActions;
+			package = C0DE00000000000000000A06 /* XCLocalSwiftPackageReference "App" */;
+			productName = CodeApp;
 		};
-		C0DE105000000000000000E2 /* CodeHighlighting */ = {
+		C0DE105000000000000000E1 /* CodeMobileApp */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = CodeHighlighting;
-		};
-		C0DE105000000000000000E6 /* CodeIcons */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = CodeIcons;
-		};
-		C0DE105000000000000000E3 /* VaultKit */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 2B6E154177CEBEF3833B42A4 /* XCRemoteSwiftPackageReference "Vault" */;
-			productName = VaultKit;
-		};
-		C0DE105000000000000000E4 /* ComponentKit */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = C0C0DE000000000000000C01 /* XCRemoteSwiftPackageReference "Component" */;
-			productName = ComponentKit;
-		};
-		C0DE105000000000000000E5 /* SSHKit */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = C0DE105000000000000000D1 /* XCRemoteSwiftPackageReference "SSH" */;
-			productName = SSHKit;
-		};
-		C0DE00000000000000000A04 /* CodeKit */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = CodeKit;
-		};
-		D5C0DE000000000000000002 /* UpdateKit */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = UpdateKit;
-		};
-		2C754DD20831A96E0D5C5AE0 /* VaultKit */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 2B6E154177CEBEF3833B42A4 /* XCRemoteSwiftPackageReference "Vault" */;
-			productName = VaultKit;
-		};
-		DE5C0DE0000000000000DE02 /* DevScreenshots */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = DE5C0DE0000000000000DE01 /* XCRemoteSwiftPackageReference "Dev" */;
-			productName = DevScreenshots;
-		};
-		C0C0DE000000000000000C02 /* ComponentKit */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = C0C0DE000000000000000C01 /* XCRemoteSwiftPackageReference "Component" */;
-			productName = ComponentKit;
-		};
-		5A0C0DE00000000000000A02 /* VaultUI */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 2B6E154177CEBEF3833B42A4 /* XCRemoteSwiftPackageReference "Vault" */;
-			productName = VaultUI;
-		};
-		5A0C0DE00000000000000A04 /* VaultUI */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = 2B6E154177CEBEF3833B42A4 /* XCRemoteSwiftPackageReference "Vault" */;
-			productName = VaultUI;
+			package = C0DE00000000000000000A06 /* XCLocalSwiftPackageReference "App" */;
+			productName = CodeMobileApp;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

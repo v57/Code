@@ -38,6 +38,8 @@ func v57(_ name: String) -> Package.Dependency {
 ///   platform-neutral).
 /// - CodeKit: all of the above, plus what connects them (an editor for a
 ///   workspace's documents with language services, issues and breakpoints).
+///
+/// The apps are the package in App/ (App/Package.swift), so the libraries carry none of their dependencies.
 let package = Package(
   name: "Code",
   platforms: [
@@ -116,50 +118,4 @@ for target in package.targets where target.type == .regular {
     target.dependencies += [.product(name: "SwiftUI", package: "SwiftUI")]
   }
 }
-#if os(Windows)
-// The app: a DLL the SwiftUI WinUI host loads (SwiftUI's Windows/scripts/build-app.ps1 -PackagePath <this package>
-// -Product CodeWinUI), built from the Xcode project's sources with its settings.
-package.dependencies += [v57("Component"), v57("Vault"), v57("UpdateKit"), v57("Dev")]
-package.targets.append(
-  .target(
-    name: "CodeApp",
-    dependencies: [
-      "CodeKit", .product(name: "SwiftUI", package: "SwiftUI"), .product(name: "ComponentKit", package: "Component"),
-      .product(name: "VaultKit", package: "Vault"), .product(name: "VaultUI", package: "Vault"),
-      .product(name: "UpdateKit", package: "UpdateKit"),
-      .product(name: "DevScreenshots", package: "Dev"),
-    ],
-    path: "Code", exclude: ["Assets.xcassets", "Code.entitlements"],
-    swiftSettings: [
-      .swiftLanguageMode(.v6), .defaultIsolation(MainActor.self), .enableUpcomingFeature("ApproachableConcurrency"),
-      // On Apple platforms `import Foundation` brings Combine (ObservableObject, @Published), URLSession and the
-      // file APIs SwiftUIPortability adds along: every file gets them here too.
-      .unsafeFlags(
-        ["Combine", "FoundationNetworking", "SwiftUIPortability"].flatMap { ["-Xfrontend", "-import-module", "-Xfrontend", $0] }),
-    ]))
-package.products.append(.library(name: "CodeWinUI", type: .dynamic, targets: ["CodeApp"]))
-#elseif os(Linux)
-// The app on SwiftUI's GTK backend: an executable built from the Xcode project's sources with its settings
-// (V57_LOCAL=1 swift build --product Code; SwiftUI's Linux/scripts/build-app stages it).
-// Not Dev's DevScreenshots: Dev's Linux app depends on this package, and SwiftPM 6.4 hangs resolving a cycle of
-// packages; the app builds without its screenshot scenes (`canImport(DevScreenshots)`).
-package.dependencies += [v57("Component"), v57("Vault"), v57("UpdateKit")]
-package.targets.append(
-  .executableTarget(
-    name: "CodeApp",
-    dependencies: [
-      "CodeKit", .product(name: "SwiftUI", package: "SwiftUI"), .product(name: "ComponentKit", package: "Component"),
-      .product(name: "VaultKit", package: "Vault"), .product(name: "VaultUI", package: "Vault"),
-      .product(name: "UpdateKit", package: "UpdateKit"),
-    ],
-    path: "Code", exclude: ["Assets.xcassets", "Code.entitlements", "AppIcon.icon"],
-    swiftSettings: [
-      .swiftLanguageMode(.v6), .defaultIsolation(MainActor.self), .enableUpcomingFeature("ApproachableConcurrency"),
-      // On Apple platforms `import Foundation` brings Combine (ObservableObject, @Published), URLSession and the
-      // file APIs SwiftUIPortability adds along: every file gets them here too.
-      .unsafeFlags(
-        ["Combine", "FoundationNetworking", "SwiftUIPortability"].flatMap { ["-Xfrontend", "-import-module", "-Xfrontend", $0] }),
-    ]))
-package.products.append(.executable(name: "Code", targets: ["CodeApp"]))
-#endif
 #endif

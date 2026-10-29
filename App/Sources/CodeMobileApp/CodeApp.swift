@@ -7,14 +7,13 @@ import VaultUI
 /// Code on iPhone and iPad: the projects on the user's other devices, and Build, Test and Clean run there over SSH
 /// with the log and issues streamed back. Nothing builds here (there's no toolchain), and the folders stay there:
 /// files are browsed and read over SFTP.
-@main
-struct CodeApp: App {
-  init() {
+public struct CodeApp: App {
+  public init() {
     // This device's key, so a Mac can let it in (the Vault app's SSH from your devices); devices are Personal's.
     try? Vault.shared.store?.publishDeviceKey()
   }
 
-  var body: some Scene {
+  public var body: some Scene {
     WindowGroup {
       AccountWindow()
         .componentKit()

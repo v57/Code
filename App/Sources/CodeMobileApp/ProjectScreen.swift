@@ -399,7 +399,7 @@ struct LogView: View {
 /// A short log starts at the top; a long one shows its end, and keeps to it as lines arrive.
 private struct FollowsEnd: ViewModifier {
   func body(content: Content) -> some View {
-    if #available(iOS 18, *) {
+    if #available(iOS 18, macOS 15, *) {
       content
         .defaultScrollAnchor(.top, for: .alignment)
         .defaultScrollAnchor(.bottom, for: .initialOffset)

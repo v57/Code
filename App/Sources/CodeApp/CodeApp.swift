@@ -6,7 +6,7 @@ import VaultKit
 
 /// Code: a folder-based code editor. Each window shows one project folder;
 /// a window without one shows the Welcome screen.
-@main struct CodeApp: App {
+public struct CodeApp: App {
   #if os(macOS)
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
   #endif
@@ -15,7 +15,7 @@ import VaultKit
   /// checks (never before), installed in place with a relaunch.
   private let updater = AppUpdater(github: "v57/Code", assetName: "Code.zip")
 
-  init() {
+  public init() {
     updater.start()
     if ScreenshotDemo.isOn { ScreenshotDemo.prepare() }
     // The shared projects get their app icons, for this app's lists and the other v57 apps': every account's
@@ -28,7 +28,7 @@ import VaultKit
     }
   }
 
-  var body: some Scene {
+  public var body: some Scene {
     WindowGroup(id: WorkspaceWindow.id, for: URL.self) { $root in
       WorkspaceWindow(root: $root)
         // Screenshots show every row the window has room for, never one still on its way.

@@ -12,8 +12,10 @@ in on the Mac, which goes on while Code is in the background (an SSH session
 can't use the login keychain otherwise).
 
 Two parts, like `../Markdown`: the libraries (this package) and thin SwiftUI
-apps (`Code.xcodeproj`: the Mac app in `Code/`, the iPhone and iPad app in
-`Code-iOS/`).
+apps (`App/`, a package of its own: the Mac app in `App/Sources/CodeApp`, the
+iPhone and iPad app in `App/Sources/CodeMobileApp`; `Code.xcodeproj` builds
+their bundles around `App/Sources/Code` and `App/Sources/CodeMobile` with
+`App/Resources`).
 
 Libraries
 
@@ -100,11 +102,12 @@ Layout
     Sources/CodeKit/            CodeKit (re-exports), CodeEditorView,
                                 ProjectServices, DebugSession, QuickHelpPopover,
                                 DocumentCompletion
-    Code/                       the app
+    App/Sources/CodeApp/        the Mac app (library CodeApp; entry point
+                                App/Sources/Code/CodeMain.swift)
       CodeApp.swift, CodeCommands.swift, AppState.swift, AppDelegate.swift
       Welcome/, Workspace/ (+ ProjectToolbar, ConsoleView), Settings/
       (+ ToolsSettingsView: Languages, Formatting, Run), DebugAutomation
-    Code-iOS/                   the iPhone and iPad app: RemoteProjects (vault
+    App/Sources/CodeMobileApp/  the iPhone and iPad app: RemoteProjects (vault
                                 projects on Hub devices, sign-in), ProjectMirror
                                 (the manifests over SFTP, for the detectors),
                                 ProjectSession, ProjectScreen, RemoteFiles,
