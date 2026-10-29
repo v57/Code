@@ -33,7 +33,8 @@ fi
 # ones after optimisation (a quarter less code in every app, no measurable change in instructions run), and
 # swift-record-gc (the Python below) relinks LTO's object so dead stripping also drops the Swift code that only Swift's
 # own metadata records kept (SWIFT_RECORD_GC=0 turns it off). Every Objective-C class of the target's own objects
-# stays, so the system can find a principal class by name (own_classes).
+# stays, so the system can find a principal class by name (own_classes), and every class in the app is in its
+# Objective-C class list, which LTO leaves out (register_classes).
 (( ${argv[(Ie)-object_path_lto]} )) && set -- "$@" -mllvm -enable-machine-outliner=always -mllvm -machine-outliner-reruns=2
 exec python3 -I <(sed '1,/^# --- python ---$/d' $0) $real_ld "$@"
 # --- python ---
@@ -56,11 +57,15 @@ becomes its own live_support atom), and a record while its type (and protocol) i
 records it links, adds the records whose conditions are live, and relinks until nothing changes. The code that stays is
 the LTO output byte for byte; only atoms nothing reaches go. Any surprise in the object leaves the link as LTO made it.
 
-SWIFT_RECORD_GC=0 turns it off; SWIFT_RECORD_GC_LOG=1 prints the rounds.
+Then, with or without that, it relinks with an __objc_classlist entry for each class LTO kept without one (see
+register_classes): the Objective-C runtime aborts on such a class as soon as KVO or a method lookup touches it.
+
+SWIFT_RECORD_GC=0 turns the record pass off; SWIFT_RECORD_GC_LOG=1 prints the rounds.
 """
 import os, shutil, struct, subprocess, sys, tempfile
 
-N_NO_DEAD_STRIP = 0x20
+N_NO_DEAD_STRIP, N_ALT_ENTRY = 0x20, 0x200
+N_SECT = 0x0e
 S_ATTR_NO_DEAD_STRIP, S_ATTR_LIVE_SUPPORT = 0x10000000, 0x08000000
 RECORDS = {b'__swift5_proto', b'__swift5_types', b'__swift5_fieldmd', b'__swift5_assocty', b'__swift5_capture'}
 ASYNC = {b'__swift_as_entry', b'__swift_as_ret', b'__swift_as_cont'}
@@ -329,6 +334,7 @@ def native_link(args, lto, tmp):
 
 
 def gc(ld, args, lto, tmp):
+    """The symbols live in the last relink (the output), or None if a relink failed."""
     o = Obj(bytearray(open(lto, 'rb').read()))
     split = split_async_tables(o)
     if split is not None:
@@ -358,15 +364,192 @@ def gc(ld, args, lto, tmp):
             struct.pack_into('<H', o.data, off, desc | N_NO_DEAD_STRIP if i in keep else desc & ~N_NO_DEAD_STRIP)
         open(lto, 'wb').write(o.data)
         if subprocess.run([ld] + relink).returncode:
-            return False
+            return None
         live = live_symbols(mapfile)
         for s in list(live):
             live |= alias.get(s, set())
         new = {i for i, c in records if c is None or (c != 'never' and c <= live)}
         log('round %d: %d of %d records kept' % (rounds, len(new), len(records)))
         if new <= keep or rounds == int(os.environ.get('SWIFT_RECORD_GC_ROUNDS', '0')):
-            return True
+            return live
         keep |= new
+
+
+def class_objects(o):
+    """Each class with static metadata in the object: its full metadata symbol → (section index, class object address).
+
+    A Swift class's full metadata (…CMf) holds its class object a few words in, which starts with its isa: a pointer to
+    its metaclass, an Objective-C one or Swift's own (…CMm)."""
+    out = {}
+    for name, (n, value) in o.defined.items():
+        if name.endswith('CMf') and o.sections[n - 1][0].startswith(b'__DATA'):
+            for off in range(0, 64, 8):
+                t = o.target(name, off)
+                if t and (t.startswith('_OBJC_METACLASS_$_') or t.endswith('CMm')):
+                    out[name] = (n, value + off)
+                    break
+    return out
+
+
+def class_list(o):
+    """The (section index, address) of each class the object's __objc_classlist entries point at."""
+    out = set()
+    for n, s in enumerate(o.sections, 1):
+        if s[1] == b'__objc_classlist':
+            for a, t, ext, sym, _ in o.relocs(n):
+                if ext and t == UNSIGNED and o.syms[sym][0] in o.defined:
+                    tn, tv = o.defined[o.syms[sym][0]]
+                    out.add((tn, tv + struct.unpack_from('<q', o.data, s[4] + a)[0]))
+    return out
+
+
+def with_class_list(o, new):
+    """A copy of the object with a local alternate entry (N_ALT_ENTRY) for each of `new`, (name, section index,
+    address), and an __objc_classlist section at the end pointing at them, as LLVM writes a class's own entry. The
+    entries must be in this object: ld reads a class list entry's class from the entry's own file."""
+    d = bytearray(o.data)
+    f = list(struct.unpack_from('<18I', d, o.dysymtab_cmd + 8))
+    ilocal, nlocal, iext, next_, iundef, nundef = f[:6]
+    if (ilocal != 0 or iext != nlocal or iundef != iext + next_ or iundef + nundef != o.nsyms
+            or any(f[6:12]) or any(f[14:])):
+        raise ValueError('unusual symbol table')
+    count = len(new)
+    # The new locals go after the old ones; the external and undefined symbols move up by `count`.
+    strtab = bytearray(d[o.stroff:o.stroff + o.strsize])
+    symtab = bytearray(d[o.symoff:o.symoff + 16 * nlocal])
+    for name, n, addr in new:
+        symtab += struct.pack('<IBBHQ', len(strtab), N_SECT, n, N_ALT_ENTRY, addr)
+        strtab += name.encode() + b'\0'
+    symtab += d[o.symoff + 16 * nlocal:o.symoff + 16 * o.nsyms]
+    for n in range(1, len(o.sections) + 1):
+        for a, t, ext, sym, e in o.relocs(n):
+            if ext and sym >= nlocal:
+                info = struct.unpack_from('<I', d, e + 4)[0]
+                struct.pack_into('<I', d, e + 4, (info & ~0xffffff) | (sym + count))
+    for k in range(f[13]):  # indirect symbols, other than INDIRECT_SYMBOL_LOCAL and _ABS
+        v = struct.unpack_from('<I', d, f[12] + 4 * k)[0]
+        if not v & 0xc0000000 and v >= nlocal:
+            struct.pack_into('<I', d, f[12] + 4 * k, v + count)
+    while len(d) % 8:
+        d.append(0)
+    symoff = len(d)
+    d += symtab
+    stroff = len(d)
+    d += strtab
+    struct.pack_into('<IIII', d, o.symtab_cmd + 8, symoff, o.nsyms + count, stroff, len(strtab))
+    struct.pack_into('<6I', d, o.dysymtab_cmd + 8, 0, nlocal + count, nlocal + count, next_, iundef + count, nundef)
+    # An 8-byte pointer to each new symbol.
+    relocs = b''.join(struct.pack('<iI', 8 * k, (nlocal + k) | 3 << 25 | 1 << 27 | UNSIGNED << 28)
+                      for k in range(count))
+    return with_section(d, b'__objc_classlist', bytes(8 * count), relocs, S_ATTR_NO_DEAD_STRIP, 3)
+
+
+def load_commands(d):
+    """The object's load commands, (cmd, offset), if they're all ones shifted() knows."""
+    ncmds, off, out = struct.unpack_from('<I', d, 16)[0], 32, []
+    for _ in range(ncmds):
+        cmd, size = struct.unpack_from('<II', d, off)
+        if cmd not in (0x2, 0xb, 0x19, 0x24, 0x25, 0x26, 0x29, 0x2d, 0x2e, 0x2f, 0x30, 0x32):
+            raise ValueError('load command 0x%x' % cmd)
+        out.append((cmd, off))
+        off += size
+    return out
+
+
+def shifted(d, pos, n):
+    """A copy of the object with n zero bytes inserted at file offset `pos` (after the load commands), the load
+    commands' file offsets moved to match."""
+    out = bytearray(d[:pos]) + bytes(n) + d[pos:]
+    def move(at, fmt='<I'):  # 0: nothing there
+        v = struct.unpack_from(fmt, out, at)[0]
+        if v and v >= pos:
+            struct.pack_into(fmt, out, at, v + n)
+    for cmd, off in load_commands(out):
+        if cmd == 0x19:
+            fileoff, filesize = struct.unpack_from('<QQ', out, off + 40)
+            if fileoff < pos < fileoff + filesize:
+                struct.pack_into('<Q', out, off + 48, filesize + n)
+            move(off + 40, '<Q')
+            for h in range(off + 72, off + 72 + 80 * struct.unpack_from('<I', out, off + 64)[0], 80):
+                if struct.unpack_from('<I', out, h + 64)[0] & 0xff not in (0x1, 0xc, 0x12):  # zerofill: no contents
+                    move(h + 48)
+                move(h + 56)
+        elif cmd == 0x2:
+            move(off + 8)
+            move(off + 16)
+        elif cmd == 0xb:
+            for field in (32, 40, 48, 56, 64, 72):
+                move(off + field)
+        elif cmd in (0x26, 0x29, 0x2e):  # linkedit data: dataoff
+            move(off + 8)
+    return out
+
+
+def with_section(d, name, contents, relocs, flags, align):
+    """A copy of the object with a __DATA section added after its segment's last one, laid out as LLVM does: its
+    header after the others (everything after the load commands moves by a multiple of every section's alignment), its
+    contents after the segment's, its relocations after the other sections'."""
+    cmds = load_commands(d)
+    segs = [off for cmd, off in cmds if cmd == 0x19]
+    if len(segs) != 1:
+        raise ValueError('%d segments' % len(segs))
+    seg = segs[0]
+    cmdsize, nsects = struct.unpack_from('<I', d, seg + 4)[0], struct.unpack_from('<I', d, seg + 64)[0]
+    headers = range(seg + 72, seg + 72 + 80 * nsects, 80)
+    step = max([8] + [1 << struct.unpack_from('<I', d, h + 52)[0] for h in headers])
+    sizeofcmds = struct.unpack_from('<I', d, 20)[0]
+    end, at = 32 + sizeofcmds, seg + cmdsize
+    d = shifted(d, end, (80 + step - 1) // step * step)
+    d[:end + 80] = d[:at] + bytes(80) + d[at:end]  # the header, filled in below
+    struct.pack_into('<I', d, seg + 4, cmdsize + 80)
+    struct.pack_into('<I', d, seg + 64, nsects + 1)
+    struct.pack_into('<I', d, 20, sizeofcmds + 80)
+    vmaddr, vmsize, fileoff, filesize = struct.unpack_from('<QQQQ', d, seg + 24)
+    pos = fileoff + filesize
+    pad = -pos % 8
+    size = (pad + len(contents) + 7) // 8 * 8
+    d = shifted(d, pos, size)
+    sectoff = pos + pad
+    d[sectoff:sectoff + len(contents)] = contents
+    ends = [struct.unpack_from('<I', d, h + 56)[0] + 8 * struct.unpack_from('<I', d, h + 60)[0] for h in headers
+            if struct.unpack_from('<I', d, h + 60)[0]]
+    reloff = max(ends) if ends else pos + size
+    d = shifted(d, reloff, len(relocs))
+    d[reloff:reloff + len(relocs)] = relocs
+    addr = (vmaddr + vmsize + (1 << align) - 1) & ~((1 << align) - 1)
+    d[at:at + 80] = struct.pack('<16s16sQQIIIIIIII', name, b'__DATA', addr, len(contents), sectoff, align, reloff,
+                                len(relocs) // 8, flags, 0, 0, 0)
+    struct.pack_into('<QQQQ', d, seg + 24, vmaddr, addr + len(contents) - vmaddr, fileoff, filesize + size)
+    return d
+
+
+def register_classes(ld, args, lto, tmp, live):
+    """Relinks with an Objective-C class list entry for each class in the output that LTO left without one.
+
+    -conditional-runtime-records makes a Swift class's __objc_classlist entry conditional on the class's …CN symbol,
+    an alias into its metadata that code doesn't use (it calls the metadata accessor), so LTO drops nearly every entry
+    while the class stays. The runtime never registers such a class, and the first KVO observer or method lookup on it
+    aborts ("no class for metaclass"): AppKit observing an NSTextView subclass in a scroll view crashed Markdown on
+    opening any file. The LTO object gets the missing entries (with_class_list). `live`: the output's symbols, or None
+    to find them with a native link."""
+    o = Obj(bytearray(open(lto, 'rb').read()))
+    relink = native_link(args, lto, tmp)
+    if live is None:
+        mapfile = os.path.join(tmp, 'classes.map')
+        if subprocess.run([ld] + relink + ['-map', mapfile]).returncode:
+            return False
+        live = live_symbols(mapfile)
+    listed = class_list(o)
+    new = []
+    for name, (n, addr) in sorted(class_objects(o).items()):
+        if name in live and (n, addr) not in listed:
+            sym = name[:-2] + 'N'
+            new.append((sym + '.classlist' if sym in o.defined else sym, n, addr))
+    log('%d classes in the class list, %d added: %s' % (len(listed), len(new), ' '.join(s for s, _, _ in new)))
+    if not new:
+        return True
+    open(lto, 'wb').write(with_class_list(o, new))
+    return subprocess.run([ld] + relink).returncode == 0
 
 
 def own_classes(args):
@@ -401,25 +584,37 @@ def main():
     ld, args = sys.argv[1], sys.argv[2:]
     if '-r' not in args and '-dead_strip' in args:
         args += own_classes(args)
-    if ('-r' in args or '-dead_strip' not in args or '-object_path_lto' not in args
-            or os.environ.get('SWIFT_RECORD_GC') == '0'):
+    if '-r' in args or '-dead_strip' not in args or '-object_path_lto' not in args:
         os.execv(ld, [ld] + args)
     lto = args[len(args) - 1 - args[::-1].index('-object_path_lto') + 1]  # the last one counts
     rc = subprocess.run([ld] + args).returncode
     if rc or not os.path.isfile(lto):
         sys.exit(rc)
     with tempfile.TemporaryDirectory(prefix='swift-record-gc.') as tmp:
-        original = os.path.join(tmp, 'lto.o')
-        shutil.copy2(lto, original)
+        live = None
+        if os.environ.get('SWIFT_RECORD_GC') != '0':
+            original = os.path.join(tmp, 'lto.o')
+            shutil.copy2(lto, original)
+            try:
+                live = gc(ld, args, lto, tmp)
+            except Exception as e:  # noqa: BLE001 — anything unexpected: keep LTO's own link
+                log('failed: %r' % e)
+            if live is None:
+                print('swift-record-gc: relink failed; linking as LTO did', file=sys.stderr)
+                shutil.copy2(original, lto)
+                rc = subprocess.run([ld] + args).returncode
+                if rc:
+                    sys.exit(rc)
+        # No way around this one: without the class list entries the app crashes, so a failure fails the link.
         try:
-            ok = gc(ld, args, lto, tmp)
-        except Exception as e:  # noqa: BLE001 — anything unexpected: keep LTO's own link
-            log('failed: %r' % e)
+            ok = register_classes(ld, args, lto, tmp, live)
+        except Exception as e:  # noqa: BLE001
+            print('swift-record-gc: registering the Objective-C classes failed: %r' % e, file=sys.stderr)
             ok = False
         if not ok:
-            print('swift-record-gc: relink failed; linking as LTO did', file=sys.stderr)
-            shutil.copy2(original, lto)
-            sys.exit(subprocess.run([ld] + args).returncode)
+            print('swift-record-gc: the classes LTO left out of the Objective-C class list could not be added',
+                  file=sys.stderr)
+            sys.exit(1)
     sys.exit(0)
 
 
