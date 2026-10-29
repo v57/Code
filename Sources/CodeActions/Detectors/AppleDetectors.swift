@@ -169,7 +169,7 @@ public struct XcodeDetector: ProjectDetector {
   /// They use the archive team's Developer ID Application identity when the
   /// keychain has one (checked when the action runs, so a new certificate
   /// needs no rescan): Install then installs that export, so other Macs open
-  /// it, and Export notarizes it with the notarytool keychain profile in
+  /// it (the archived app when the export fails), and Export notarizes it with the notarytool keychain profile in
   /// `NOTARY_PROFILE` ("notary" when unset), staples it and zips it into
   /// .build/<scheme>/Export.
   static func distributionCommands(_ base: String, scheme: String, mac: Bool) -> [ActionKind: String] {
@@ -198,7 +198,7 @@ public struct XcodeDetector: ProjectDetector {
     let archived = shellQuote("\(folder)/\(scheme).xcarchive/Products/Applications/\(scheme).app")
     // Stamped with the commit count as its build number, as releases are.
     commands[.install] =
-      "\(chooseInstalled); \(linkedMac(" " + AppInstall.buildNumber)) && if \(hasDeveloperID); then \(exportDeveloperID) && rm -rf \(installed) && ditto \(developerIDApp) \(installed); else rm -rf \(installed) && ditto \(archived) \(installed); fi"
+      "\(chooseInstalled); \(linkedMac(" " + AppInstall.buildNumber)) && if \(hasDeveloperID) && \(AppInstall.exportFallingBack(exportDeveloperID, developerID: "\(folder)/DeveloperID")) && [ -e \(developerIDApp) ]; then rm -rf \(installed) && ditto \(developerIDApp) \(installed); else rm -rf \(installed) && ditto \(archived) \(installed); fi"
     let exportFolder = shellQuote("\(folder)/Export")
     let notarizeZip = shellQuote("\(folder)/Export/notarize.zip")
     let zip = shellQuote("\(folder)/Export/\(scheme).zip")

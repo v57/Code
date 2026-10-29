@@ -310,6 +310,20 @@ import Testing
       #expect(destination.lastPathComponent == "App.app")
     }
 
+    @Test func aFailedExportFallsBackToTheArchive() async throws {
+      let fixtures = try Fixtures()
+      try fixtures.write("App/build/App/DeveloperID/App.app/Contents/Info.plist", "")
+      let command = AppInstall.exportFallingBack("echo exporting && false", developerID: "build/App/DeveloperID")
+      let lines = LinesBox()
+      let status = try await LocalExecutor().start(command, directory: fixtures.url("App"), environment: [:])
+        .run { lines.add($0.text) }
+      #expect(status == 0)
+      #expect(lines.all == ["exporting", AppInstall.exportFailed])
+      #expect(!FileManager.default.fileExists(atPath: fixtures.url("App/build/App/DeveloperID").path))
+      let mac = XcodeDetector.distributionCommands("xcodebuild -project App.xcodeproj -scheme App", scheme: "App", mac: true)
+      #expect(mac[.install]?.contains(AppInstall.exportFailed) == true)
+    }
+
     @Test func lowPriorityCommandsRunClamped() {
       let executor = LowPriorityExecutor()
       #expect(

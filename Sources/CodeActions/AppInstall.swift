@@ -6,12 +6,22 @@ import Foundation
 
 /// Installing an Xcode scheme's Mac app on this Mac, as steps: Archive (Release, stamped with the repository's
 /// commit count as its build number and linked as releases are, and exported with Developer ID when the keychain has that
-/// identity), Quit (the running copy of the installed app, asking first when the context can ask), Install
+/// identity; when the export fails, the archived app, signed for development, is installed instead), Quit (the running copy of the installed app, asking first when the context can ask), Install
 /// (replacing the copy in ~/Applications when there is one, else in /Applications) and Open (in the background,
 /// only when it was running before).
 public enum AppInstall {
   /// The folder the archive and its export go to, relative to the scheme's folder.
   static func folder(_ scheme: ActionScheme) -> String { ".build/\(XcodeDetector.plainName(scheme.name).name)" }
+
+  /// `export`, a Developer ID export into `developerID`, succeeding when it fails: the half-made export goes and the
+  /// log says the archived app is installed instead (an app whose capabilities Developer ID doesn't allow still
+  /// installs).
+  static func exportFallingBack(_ export: String, developerID: String) -> String {
+    "{ \(export) || { rm -rf \(shellQuote(developerID)) && echo \(shellQuote(exportFailed)); }; }"
+  }
+
+  static let exportFailed =
+    "note: The Developer ID export failed (see above), so the archived app, signed for development, is installed."
 
   /// What `CURRENT_PROJECT_VERSION` is set to: the commit count, 1 outside Git.
   static let buildNumber = "CURRENT_PROJECT_VERSION=$(git rev-list --count HEAD 2>/dev/null || echo 1)"
@@ -29,7 +39,7 @@ public enum AppInstall {
       let export =
         "echo '{\"method\":\"developer-id\"}' | plutil -convert xml1 -o \(shellQuote("\(folder)/DeveloperID.plist")) - && xcodebuild -exportArchive -archivePath \(shellQuote(archive)) -exportOptionsPlist \(shellQuote("\(folder)/DeveloperID.plist")) -exportPath \(shellQuote(developerID)) -allowProvisioningUpdates"
       let archiveCommand =
-        "rm -rf \(shellQuote(archive)) \(shellQuote(developerID)) && \(ReleaseTools.linked("\(base) -destination 'generic/platform=macOS' -archivePath \(shellQuote(archive)) archive \(buildNumber)")) && if \(hasDeveloperID); then \(export); fi"
+        "rm -rf \(shellQuote(archive)) \(shellQuote(developerID)) && \(ReleaseTools.linked("\(base) -destination 'generic/platform=macOS' -archivePath \(shellQuote(archive)) archive \(buildNumber)")) && if \(hasDeveloperID); then \(exportFallingBack(export, developerID: developerID)); fi"
       let plan = Plan(directory: scheme.directory, archive: archive, developerID: developerID)
       return [
         .shell("Archive", archiveCommand),
