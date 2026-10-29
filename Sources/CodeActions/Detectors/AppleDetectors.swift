@@ -181,6 +181,8 @@ public struct XcodeDetector: ProjectDetector {
     ]
     guard mac else { return commands }
     let archiveMac = "\(base) -destination 'generic/platform=macOS' -archivePath \(archive) archive"
+    // Linked as releases are (LTO and the release tools), for both the installed and the exported app.
+    let linkedMac = { (settings: String) in AppInstall.releaseLinked(archiveMac + settings, folder: folder) }
     let developerID = shellQuote("\(folder)/DeveloperID")
     let developerIDApp = shellQuote("\(folder)/DeveloperID/\(scheme).app")
     let hasDeveloperID =
@@ -196,14 +198,14 @@ public struct XcodeDetector: ProjectDetector {
     let archived = shellQuote("\(folder)/\(scheme).xcarchive/Products/Applications/\(scheme).app")
     // Stamped with the commit count as its build number, as releases are.
     commands[.install] =
-      "\(chooseInstalled); \(archiveMac) \(AppInstall.buildNumber) && if \(hasDeveloperID); then \(exportDeveloperID) && rm -rf \(installed) && ditto \(developerIDApp) \(installed); else rm -rf \(installed) && ditto \(archived) \(installed); fi"
+      "\(chooseInstalled); \(linkedMac(" " + AppInstall.buildNumber)) && if \(hasDeveloperID); then \(exportDeveloperID) && rm -rf \(installed) && ditto \(developerIDApp) \(installed); else rm -rf \(installed) && ditto \(archived) \(installed); fi"
     let exportFolder = shellQuote("\(folder)/Export")
     let notarizeZip = shellQuote("\(folder)/Export/notarize.zip")
     let zip = shellQuote("\(folder)/Export/\(scheme).zip")
     let notarize =
       "rm -rf \(exportFolder) && mkdir -p \(exportFolder) && ditto -c -k --keepParent \(developerIDApp) \(notarizeZip) && xcrun notarytool submit \(notarizeZip) --keychain-profile \"${NOTARY_PROFILE:-\(Notarization.defaultProfile)}\" --wait && xcrun stapler staple \(developerIDApp) && rm \(notarizeZip) && ditto -c -k --keepParent \(developerIDApp) \(zip) && open -R \(zip)"
     commands[.export] =
-      "\(archiveMac) && if \(hasDeveloperID); then \(exportDeveloperID) && \(notarize); else echo 'Export needs a Developer ID Application certificate for the archive team in the keychain.' && false; fi"
+      "\(linkedMac("")) && if \(hasDeveloperID); then \(exportDeveloperID) && \(notarize); else echo 'Export needs a Developer ID Application certificate for the archive team in the keychain.' && false; fi"
     return commands
   }
 

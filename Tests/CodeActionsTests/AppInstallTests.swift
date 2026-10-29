@@ -282,7 +282,21 @@ import Testing
 
     @Test func theBuildIsStampedWithTheCommitCount() {
       let mac = XcodeDetector.distributionCommands("xcodebuild -project App.xcodeproj -scheme App", scheme: "App", mac: true)
-      #expect(mac[.install]?.contains("archive CURRENT_PROJECT_VERSION=$(git rev-list --count HEAD 2>/dev/null || echo 1) &&") == true)
+      #expect(mac[.install]?.contains("archive CURRENT_PROJECT_VERSION=$(git rev-list --count HEAD 2>/dev/null || echo 1)") == true)
+    }
+
+    @Test func installAndExportAreLinkedAsReleases() throws {
+      let mac = XcodeDetector.distributionCommands("xcodebuild -project App.xcodeproj -scheme App", scheme: "App", mac: true)
+      for command in [mac[.install], mac[.export]] {
+        let command = try #require(command)
+        #expect(command.contains("SWIFT_LTO=YES ALTERNATE_LINKER_PATH=\"$PWD\"/.build/App/Release/ld-archive-prelink"))
+        #expect(command.contains("ASSETCATALOG_EXEC=\"$PWD\"/.build/App/Release/icon-slim/actool"))
+      }
+      // The tools ship with CodeActions, and run.
+      let tools = try #require(AppInstall.releaseTools)
+      for tool in ["ld-archive-prelink", "actool-icon-slim"] {
+        #expect(FileManager.default.isExecutableFile(atPath: tools.appendingPathComponent(tool).path))
+      }
     }
 
     @Test func theExportIsInstalledWhenThereIsOne() throws {

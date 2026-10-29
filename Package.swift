@@ -66,7 +66,8 @@ let package = Package(
     .target(name: "CodeProgress", swiftSettings: swiftSettings),
     .target(
       name: "CodeActions", dependencies: ["CodeProgress", .product(name: "SSHKit", package: "SSH")],
-      swiftSettings: swiftSettings),
+      // Release/: the linker and asset catalog compiler Install archives Mac apps with (copies of Dev's).
+      resources: [.copy("Release")], swiftSettings: swiftSettings),
     .target(name: "CodeLSP", swiftSettings: swiftSettings),
     .target(name: "CodeMinimap", dependencies: ["CodeHighlighting"], swiftSettings: swiftSettings),
     .target(name: "CodeFormatting", swiftSettings: swiftSettings),
