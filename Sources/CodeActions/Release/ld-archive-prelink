@@ -1,5 +1,4 @@
 #!/bin/zsh
-# A copy of Dev's Dev/Release/ld-archive-prelink for CodeActions' Install (AppInstall); change both together.
 # The linker for release archives (ALTERNATE_LINKER_PATH), so dead stripping reaches into Swift packages.
 #
 # Xcode pre-links each Swift package target into one relocatable object (`ld -r`), and everything in such an

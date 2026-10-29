@@ -287,15 +287,14 @@ import Testing
 
     @Test func installAndExportAreLinkedAsReleases() throws {
       let mac = XcodeDetector.distributionCommands("xcodebuild -project App.xcodeproj -scheme App", scheme: "App", mac: true)
+      let tool = try #require(ReleaseTools.xcodebuild).path
       for command in [mac[.install], mac[.export]] {
         let command = try #require(command)
-        #expect(command.contains("SWIFT_LTO=YES ALTERNATE_LINKER_PATH=\"$PWD\"/.build/App/Release/ld-archive-prelink"))
-        #expect(command.contains("ASSETCATALOG_EXEC=\"$PWD\"/.build/App/Release/icon-slim/actool"))
+        #expect(command.contains("then \(tool) -project App.xcodeproj -scheme App -destination 'generic/platform=macOS'"))
       }
       // The tools ship with CodeActions, and run.
-      let tools = try #require(AppInstall.releaseTools)
-      for tool in ["ld-archive-prelink", "actool-icon-slim"] {
-        #expect(FileManager.default.isExecutableFile(atPath: tools.appendingPathComponent(tool).path))
+      for name in ["xcodebuild-release", "ld-archive-prelink", "actool-icon-slim"] {
+        #expect(FileManager.default.isExecutableFile(atPath: try #require(ReleaseTools.folder).appendingPathComponent(name).path))
       }
     }
 

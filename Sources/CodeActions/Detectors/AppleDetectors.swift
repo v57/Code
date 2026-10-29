@@ -182,7 +182,7 @@ public struct XcodeDetector: ProjectDetector {
     guard mac else { return commands }
     let archiveMac = "\(base) -destination 'generic/platform=macOS' -archivePath \(archive) archive"
     // Linked as releases are (LTO and the release tools), for both the installed and the exported app.
-    let linkedMac = { (settings: String) in AppInstall.releaseLinked(archiveMac + settings, folder: folder) }
+    let linkedMac = { (settings: String) in ReleaseTools.linked(archiveMac + settings) }
     let developerID = shellQuote("\(folder)/DeveloperID")
     let developerIDApp = shellQuote("\(folder)/DeveloperID/\(scheme).app")
     let hasDeveloperID =

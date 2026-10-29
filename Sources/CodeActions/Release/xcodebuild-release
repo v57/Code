@@ -1,0 +1,23 @@
+#!/bin/zsh
+# xcodebuild for a Mac release archive, linked as the v57 apps ship: the arguments as given, plus
+#   - Swift LTO with -internalize-at-link and -conditional-runtime-records,
+#   - ld-archive-prelink (beside this script) as the linker: Xcode's per-package `ld -r` pre-links become static
+#     archives, so the final link drops unused package code, and that link runs LLVM's machine outliner and drops the
+#     Swift code only Swift's own metadata records kept,
+#   - actool-icon-slim (beside this script) as the asset catalog compiler: an Icon Composer icon's flattened
+#     fallbacks are stored as HEVC instead of lossless (Assets.car 1.7 MB -> 140 KB).
+# Apps are 35-50% smaller and run the same instructions. CodeActions' Install and Export, Dev's release.sh and the
+# apps' release scripts all archive through this script, so this folder is the one copy of these tools.
+#
+#   Usage: xcodebuild-release <xcodebuild arguments>     e.g. xcodebuild-release -project App.xcodeproj -scheme App archive
+#   RELEASE_TOOLS_WORK   where the actool copy goes (default: $TMPDIR/xcodebuild-release-<uid>)
+here=${0:A:h}
+
+# Xcode reads a tool's version under its file name (com.apple.actool.version), so the copy is named actool, and it
+# builds its helper beside itself, so it goes in a folder of ours (this one may be inside a signed app).
+work=${RELEASE_TOOLS_WORK:-${TMPDIR:-/tmp}/xcodebuild-release-$UID}
+mkdir -p $work/icon-slim && install -C -m 755 $here/actool-icon-slim $work/icon-slim/actool || exit
+
+exec xcodebuild "$@" SWIFT_LTO=YES ALTERNATE_LINKER_PATH=$here/ld-archive-prelink \
+  ASSETCATALOG_EXEC=$work/icon-slim/actool \
+  'OTHER_SWIFT_FLAGS=$(inherited) -Xfrontend -internalize-at-link -Xfrontend -conditional-runtime-records'

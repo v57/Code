@@ -16,26 +16,6 @@ public enum AppInstall {
   /// What `CURRENT_PROJECT_VERSION` is set to: the commit count, 1 outside Git.
   static let buildNumber = "CURRENT_PROJECT_VERSION=$(git rev-list --count HEAD 2>/dev/null || echo 1)"
 
-  /// `archive`, an `xcodebuild … archive` command for the Mac run in the scheme's folder, linked as the v57 release
-  /// scripts link: Swift LTO, `ld-archive-prelink` as the linker (dead stripping reaches into Swift packages, LLVM's
-  /// machine outliner runs, and code only Swift's own metadata records kept goes) and `actool-icon-slim` as the asset
-  /// catalog compiler (the icon's flattened fallbacks as HEVC). The tools are CodeActions' copies (`Release/`),
-  /// installed into `folder`; where they aren't (a command made on another machine), the archive is plain.
-  static func releaseLinked(_ archive: String, folder: String) -> String {
-    guard let tools = releaseTools?.path else { return archive }
-    let linker = shellQuote("\(folder)/Release/ld-archive-prelink")
-    let actool = shellQuote("\(folder)/Release/icon-slim/actool")
-    let settings =
-      "SWIFT_LTO=YES ALTERNATE_LINKER_PATH=\"$PWD\"/\(linker) ASSETCATALOG_EXEC=\"$PWD\"/\(actool) 'OTHER_SWIFT_FLAGS=$(inherited) -Xfrontend -internalize-at-link -Xfrontend -conditional-runtime-records'"
-    // Xcode reads a tool's version under its file name (com.apple.actool.version), so the copy is named actool.
-    let install =
-      "install -d \(shellQuote("\(folder)/Release/icon-slim")) && install -C -m 755 \(shellQuote("\(tools)/ld-archive-prelink")) \(linker) && install -C -m 755 \(shellQuote("\(tools)/actool-icon-slim")) \(actool)"
-    return "if [ -f \(shellQuote("\(tools)/ld-archive-prelink")) ]; then \(install) && \(archive) \(settings); else \(archive); fi"
-  }
-
-  /// CodeActions' copies of the release tools (Dev's `Dev/Release/`).
-  static var releaseTools: URL? { Bundle.module.url(forResource: "Release", withExtension: nil) }
-
   static func steps(_ scheme: ActionScheme) -> [ActionStep] {
     #if os(macOS)
       guard scheme.xcodeContainer != nil else { return [] }
@@ -49,7 +29,7 @@ public enum AppInstall {
       let export =
         "echo '{\"method\":\"developer-id\"}' | plutil -convert xml1 -o \(shellQuote("\(folder)/DeveloperID.plist")) - && xcodebuild -exportArchive -archivePath \(shellQuote(archive)) -exportOptionsPlist \(shellQuote("\(folder)/DeveloperID.plist")) -exportPath \(shellQuote(developerID)) -allowProvisioningUpdates"
       let archiveCommand =
-        "rm -rf \(shellQuote(archive)) \(shellQuote(developerID)) && \(releaseLinked("\(base) -destination 'generic/platform=macOS' -archivePath \(shellQuote(archive)) archive \(buildNumber)", folder: folder)) && if \(hasDeveloperID); then \(export); fi"
+        "rm -rf \(shellQuote(archive)) \(shellQuote(developerID)) && \(ReleaseTools.linked("\(base) -destination 'generic/platform=macOS' -archivePath \(shellQuote(archive)) archive \(buildNumber)")) && if \(hasDeveloperID); then \(export); fi"
       let plan = Plan(directory: scheme.directory, archive: archive, developerID: developerID)
       return [
         .shell("Archive", archiveCommand),
