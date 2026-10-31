@@ -28,7 +28,7 @@ struct EditorArea: View {
   @ViewBuilder private func content(for document: TextDocument) -> some View {
     switch document.content {
     case .loading:
-      EmptyState(systemImage: "doc.text", title: "Opening \(document.name)…", status: .working)
+      EmptyState(systemImage: "doc.text", title: "Opening \(document.name)…", status: .working).kitAppearDelay()
     case .text:
       let services = serviceSettings.settings
       // The editor fills the window's column, the toolbar, tabs, path bar and status bar floating over it: its text

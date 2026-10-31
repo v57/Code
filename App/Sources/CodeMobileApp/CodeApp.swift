@@ -153,7 +153,6 @@ struct ProjectsSidebar: View {
   @Binding var selection: RemoteProject.ID?
   @Binding var columnVisibility: NavigationSplitViewVisibility
   @State private var search = ""
-  @Environment(\.kitIdiom) private var idiom
 
   private var shown: [RemoteProject] {
     search.isEmpty ? projects : projects.filter { $0.name.localizedCaseInsensitiveContains(search) }
@@ -167,32 +166,26 @@ struct ProjectsSidebar: View {
       selection: $selection, searchText: $search, searchPrompt: "Search Projects", columnVisibility: $columnVisibility
     ) {
       VaultAccountPicker(meta: projects.count == 1 ? "1 project" : "\(projects.count) projects")
-      if projects.isEmpty {
-        // iPad: the welcome beside it says how to get some.
-        KitSection("Projects", meta: ["None yet"], systemImage: "folder", hue: .orange) {
-          EmptyState(systemImage: "desktopcomputer", title: "No Projects", message: "Projects on your other devices appear here.")
-        }
-      } else {
-        KitSection(
-          "Projects",
-          meta: [projects.count == 1 ? "1 project" : "\(projects.count) projects", "on your devices"],
-          systemImage: "folder", hue: .orange
-        ) {
-          ForEach(shown) { project in
-            SidebarRow(value: project.id, project.name, subtitle: project.targets.map(\.name).joined(separator: ", ")) {
-              ProjectTile(project: project)
-            } trailing: {
-              // iPhone: a row pushes its project.
-              if idiom == .phone { PushChevron() }
-            }
+      KitSection(
+        "Projects",
+        meta: projects.isEmpty
+          ? ["None yet"] : [projects.count == 1 ? "1 project" : "\(projects.count) projects", "on your devices"],
+        systemImage: "folder", hue: .orange
+      ) {
+        ForEach(shown) { project in
+          // iPhone: a row pushes its project.
+          SidebarRow(value: project.id, project.name, subtitle: project.targets.map(\.name).joined(separator: ", ")) {
+            ProjectTile(project: project)
           }
-          if shown.isEmpty {
-            EmptyState(systemImage: "magnifyingglass", title: "No Results", message: "Nothing matches “\(search)”.")
-          }
+          .pushes()
         }
-        // Many projects: the card's title stays in view while they scroll past.
-        .kitSticky()
       }
+      // None yet (on iPad the welcome beside it says how to get some), or none matches the search.
+      .emptyState(
+        projects.isEmpty ? "Projects on your other devices appear here." : "Nothing matches “\(search)”.",
+        systemImage: projects.isEmpty ? "desktopcomputer" : "magnifyingglass")
+      // Many projects: the card's title stays in view while they scroll past.
+      .kitSticky()
     } bottomBar: {
       EmptyView()
     }

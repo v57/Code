@@ -111,8 +111,8 @@ struct FormattingSettingsView: View {
               disabled = EditorSettings.idsText(ids)
             }),
           installCommand: formatter.installCommand, toolID: formatter.id, systemImage: "text.alignleft",
-          hue: .orange)
-        HStack(spacing: 8) {
+          hue: .orange
+        ) {
           if !formatter.configFiles.isEmpty {
             Toggle("Only with a config file", isOn: requiresConfigBinding(formatter))
               .toggleStyle(.kitCheckbox)
@@ -124,10 +124,6 @@ struct FormattingSettingsView: View {
             .kitField(mono: true)
             .frame(width: 220)
         }
-        .controlSize(.small)
-        .padding(.leading, 48)
-        .padding(.trailing, 12)
-        .padding(.bottom, 8)
       }
     }
     .disabled(!formatOnSave)
@@ -193,8 +189,9 @@ struct RunSettingsView: View {
   }
 }
 
-/// A tool's row: what it is for, where it is installed (or Install while it isn't), and its switch.
-private struct ToolRow: View {
+/// A tool's row: what it is for, where it is installed (or Install while it isn't), and its switch; `controls`
+/// adds a line of small controls under it (a formatter's config-file check and custom command).
+private struct ToolRow<Controls: View>: View {
   let name: String
   let detail: String
   let source: String
@@ -204,11 +201,23 @@ private struct ToolRow: View {
   let toolID: String
   let systemImage: String
   let hue: Hue
+  @ViewBuilder var controls: Controls
   private var tools: ToolsModel { .shared }
 
   var body: some View {
+    Group {
+      if Controls.self == EmptyView.self {
+        row
+      } else {
+        row.detail { controls }
+      }
+    }
+    .help(path ?? source)
+  }
+
+  private var row: FormRow<some View, EmptyView> {
     let running = tools.installer.running[toolID]
-    FormRow(name, help: running ?? help, systemImage: systemImage, hue: path == nil ? .gray : hue) {
+    return FormRow(name, help: running ?? help, systemImage: systemImage, hue: path == nil ? .gray : hue) {
       HStack(spacing: 8) {
         if running != nil {
           LiveIcon(systemImage: "arrow.down", status: .working, size: 20)
@@ -220,12 +229,23 @@ private struct ToolRow: View {
         Toggle(name, isOn: $isOn).kitLabelsHidden()
       }
     }
-    .help(path ?? source)
   }
 
   /// "Swift, C · /usr/bin/sourcekit-lsp", or where it comes from while it isn't installed.
   private var help: String {
     if let path { return "\(detail) · \(path)" }
     return installCommand == nil && !source.isEmpty ? "\(detail) · \(source)" : "\(detail) · Not installed"
+  }
+}
+
+extension ToolRow where Controls == EmptyView {
+  init(
+    name: String, detail: String, source: String, path: String?, isOn: Binding<Bool>, installCommand: String?,
+    toolID: String, systemImage: String, hue: Hue
+  ) {
+    self.init(
+      name: name, detail: detail, source: source, path: path, isOn: isOn, installCommand: installCommand,
+      toolID: toolID, systemImage: systemImage, hue: hue
+    ) { EmptyView() }
   }
 }

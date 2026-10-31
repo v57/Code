@@ -75,9 +75,8 @@ struct RemoteFolderView: View {
     SidebarRow(entry.name) {
       FileIconView(FileIcon(fileName: entry.name, isDirectory: entry.isDirectory), size: 17)
         .foregroundStyle(entry.isDirectory ? AnyShapeStyle(Hue.blue.fill) : AnyShapeStyle(.kitSecondary))
-    } trailing: {
-      PushChevron()
     }
+    .pushes()
     .action { pushed = entry }
   }
 
@@ -91,17 +90,6 @@ struct RemoteFolderView: View {
     let parts = path.split(separator: "/", omittingEmptySubsequences: true)
     guard parts.count > 2, parts[0] == "Users" || parts[0] == "home" else { return path }
     return "~/" + parts.dropFirst(2).joined(separator: "/")
-  }
-}
-
-/// The chevron at the end of a row that pushes a screen.
-struct PushChevron: View {
-  var body: some View {
-    Image(systemName: "chevron.right")
-      .kitFont(.callout)
-      .fontWeight(.semibold)
-      .foregroundStyle(.kitTertiary)
-      .accessibilityHidden(true)
   }
 }
 
@@ -124,7 +112,7 @@ struct RemoteFileView: View {
       if let text {
         ScrollView([.vertical, .horizontal]) {
           Text(text)
-            .font(.system(size: idiom == .phone ? 12 : 13, design: .monospaced))
+            .kitFont(.code)
             .lineSpacing(idiom == .phone ? 2 : 3)
             .textSelection(.enabled)
             .padding(.horizontal, idiom == .phone ? 14 : 16)

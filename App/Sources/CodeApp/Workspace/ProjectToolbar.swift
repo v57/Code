@@ -175,11 +175,7 @@ private struct SchemeTools: View {
         }
         .kitMenu(isPresented: model.isPresented(.scheme)) { schemeItems }
         .kitHelp("Choose a scheme")
-        Image(systemName: "chevron.right")
-          .kitFont(.caption)
-          .imageScale(.small)
-          .fontWeight(.semibold)
-          .foregroundStyle(.kitTertiary)
+        ToolSeparator()
         Button {
           model.openMenu = .destination
         } label: {

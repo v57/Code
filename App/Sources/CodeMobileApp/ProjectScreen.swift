@@ -258,11 +258,7 @@ struct SchemeTools: View {
           }
         }
       }
-      Image(systemName: "chevron.right")
-        .kitFont(.caption)
-        .imageScale(.small)
-        .fontWeight(.semibold)
-        .foregroundStyle(.kitTertiary)
+      ToolSeparator()
       Button {
         showsDevices = true
       } label: {

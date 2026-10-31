@@ -25,7 +25,7 @@ private struct CodeStatusBar: ViewModifier {
       if let document = workspace.selectedDocument, document.content == .text {
         Button(position) { model.isGoToLinePresented = true }
           .buttonStyle(.kitPlain)
-          .help("Go to Line (⌘L)")  // kitHelp draws under the view: off the window here
+          .kitHelp("Go to Line", shortcut: "⌘L")
       }
     }
   }
@@ -56,7 +56,7 @@ private struct CodeStatusBar: ViewModifier {
       Text("Couldn’t save: \(message)")
         .foregroundStyle(Hue.red.text)
     } else if let activity = model.services.languageServers.activity {
-      Text(activity).truncationMode(.middle).help(activity)
+      Text(activity).truncationMode(.middle).kitHelp(activity)
     } else if workspace.index.isIndexing {
       Text("Indexing…")
     }
