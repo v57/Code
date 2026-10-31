@@ -170,8 +170,7 @@ struct ProjectsSidebar: View {
       if projects.isEmpty {
         // iPad: the welcome beside it says how to get some.
         KitSection("Projects", meta: ["None yet"], systemImage: "folder", hue: .orange) {
-          Text("Projects on your other devices appear here.")
-            .kitFont(.caption).foregroundStyle(.kitSecondary).padding(10)
+          EmptyState(systemImage: "desktopcomputer", title: "No Projects", message: "Projects on your other devices appear here.")
         }
       } else {
         KitSection(
@@ -184,15 +183,11 @@ struct ProjectsSidebar: View {
               ProjectTile(project: project)
             } trailing: {
               // iPhone: a row pushes its project.
-              if idiom == .phone {
-                Image(systemName: "chevron.right")
-                  .font(.system(size: 12, weight: .semibold))
-                  .foregroundStyle(.kitTertiary)
-              }
+              if idiom == .phone { PushChevron() }
             }
           }
           if shown.isEmpty {
-            Text("Nothing matches “\(search)”.").kitFont(.caption).foregroundStyle(.kitSecondary).padding(10)
+            EmptyState(systemImage: "magnifyingglass", title: "No Results", message: "Nothing matches “\(search)”.")
           }
         }
         // Many projects: the card's title stays in view while they scroll past.

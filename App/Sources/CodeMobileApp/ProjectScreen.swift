@@ -1,4 +1,5 @@
 import CodeActions
+import CodeActionsUI
 import CodeIcons
 import ComponentKit
 import SSHKit
@@ -180,19 +181,10 @@ struct ActionTools: View {
   var body: some View {
     ToolGroup(iconOnly: true) {
       ForEach([ActionKind.build, .test, .clean], id: \.self) { kind in
-        Button(kind.title, systemImage: ActionTools.symbol(kind)) { controller.perform(kind) }
+        Button(kind.title, systemImage: kind.symbolName) { controller.perform(kind) }
           .disabled(!controller.canPerform(kind) || controller.selectedDestination == nil || controller.isRunning)
       }
       if controller.isRunning { StopButton(controller: controller) }
-    }
-  }
-
-  static func symbol(_ kind: ActionKind) -> String {
-    switch kind {
-    case .build: "hammer"
-    case .test: "testtube.2"
-    case .clean: "trash"
-    default: "terminal"
     }
   }
 }
@@ -222,7 +214,7 @@ private struct PhoneActionBar: ViewModifier {
     if let controller {
       content.kitBottomBar(searchText: nil) {
         ForEach([ActionKind.build, .test, .clean], id: \.self) { kind in
-          Button(kind.title, systemImage: ActionTools.symbol(kind)) { controller.perform(kind) }
+          Button(kind.title, systemImage: kind.symbolName) { controller.perform(kind) }
             .disabled(!controller.canPerform(kind) || controller.selectedDestination == nil || controller.isRunning)
         }
         if controller.isRunning { StopButton(controller: controller).labelStyle(.iconOnly) }
@@ -242,6 +234,8 @@ struct SchemeTools: View {
   @State private var showsDevices = false
   /// The Mac whose login password Login Keychain asks for, having none saved.
   @State private var passwordTarget: SSHExecutor.Target?
+  @State private var asksPassword = false
+  @State private var password = ""
 
   var body: some View {
     ToolGroup {
@@ -265,7 +259,9 @@ struct SchemeTools: View {
         }
       }
       Image(systemName: "chevron.right")
-        .font(.system(size: 9, weight: .semibold))
+        .kitFont(.caption)
+        .imageScale(.small)
+        .fontWeight(.semibold)
         .foregroundStyle(.kitTertiary)
       Button {
         showsDevices = true
@@ -306,11 +302,21 @@ struct SchemeTools: View {
       }
     }
     .lineLimit(1)
-    .kitSheet(item: $passwordTarget) { target in
-      LoginPasswordSheet(target: target) { password in
-        try RemoteProjects.setLoginPassword(password, for: target)
-        session.setSigning(.loginKeychain, for: target)
-      }
+    // Login Keychain's password: the Mac user's own, saved in the vault (iCloud Keychain) for the host, which Code
+    // sends to unlock the login keychain before each signed build there.
+    .kitPrompt(
+      "Login Keychain", isPresented: $asksPassword, text: $password, message: passwordTarget?.name,
+      systemImage: RemoteSigning.loginKeychain.symbolName, hue: .indigo,
+      field: .secure(
+        placeholder: "Mac password",
+        help: passwordTarget.flatMap { $0.user.isEmpty ? nil : "\($0.user) on \($0.name)" }),
+      footnote:
+        "An SSH session can’t use the login keychain until it’s unlocked. Code unlocks it with this password before each build, and keeps it in iCloud Keychain.",
+      confirm: "Save"
+    ) { password in
+      guard let target = passwordTarget else { return }
+      try RemoteProjects.setLoginPassword(password, for: target)
+      session.setSigning(.loginKeychain, for: target)
     }
   }
 
@@ -323,48 +329,9 @@ struct SchemeTools: View {
         session.setSigning(signing, for: target)
       } else {
         passwordTarget = target
+        password = ""
+        asksPassword = true
       }
-    }
-  }
-}
-
-/// Login Keychain's password: the Mac user's own, saved in the vault (iCloud Keychain) for the host, which Code
-/// sends to unlock the login keychain before each signed build there.
-struct LoginPasswordSheet: View {
-  let target: SSHExecutor.Target
-  let save: (String) throws -> Void
-  @State private var password = ""
-  @State private var error: String?
-  @Environment(\.kitDismiss) private var dismiss
-
-  var body: some View {
-    KitSheet(
-      title: "Login Keychain", meta: target.name, systemImage: RemoteSigning.loginKeychain.symbolName, hue: .indigo
-    ) {
-      FormCard(
-        footer:
-          "An SSH session can’t use the login keychain until it’s unlocked. Code unlocks it with this password before each build, and keeps it in iCloud Keychain."
-      ) {
-        FormRow(
-          "Password", help: target.user.isEmpty ? nil : "\(target.user) on \(target.name)",
-          systemImage: "ellipsis.rectangle", hue: .indigo,
-          field: SecureField("Mac password", text: $password).textContentType(.password))
-      }
-    } footer: {
-      if let error { SheetStatus(error, systemImage: "exclamationmark.triangle", hue: .red) }
-      Button("Cancel") { dismiss() }
-        .keyboardShortcut(.cancelAction)
-      Button("Save") {
-        do {
-          try save(password)
-          dismiss()
-        } catch {
-          self.error = ProjectSession.describe(error)
-        }
-      }
-      .buttonStyle(.kitPrimary)
-      .keyboardShortcut(.defaultAction)
-      .disabled(password.isEmpty)
     }
   }
 }
@@ -374,7 +341,7 @@ struct LogView: View {
   let controller: ActionController
 
   var body: some View {
-    let runs = RunLog.runs(from: controller)
+    let runs = ActionRuns.runs(from: controller)
     if runs.isEmpty {
       EmptyState(
         systemImage: "terminal", title: "No Output",
@@ -391,21 +358,7 @@ struct LogView: View {
         }
         .padding(.bottom, KitMetrics.gutter)
       }
-      .modifier(FollowsEnd())
-    }
-  }
-}
-
-/// A short log starts at the top; a long one shows its end, and keeps to it as lines arrive.
-private struct FollowsEnd: ViewModifier {
-  func body(content: Content) -> some View {
-    if #available(iOS 18, macOS 15, *) {
-      content
-        .defaultScrollAnchor(.top, for: .alignment)
-        .defaultScrollAnchor(.bottom, for: .initialOffset)
-        .defaultScrollAnchor(.bottom, for: .sizeChanges)
-    } else {
-      content.defaultScrollAnchor(.bottom)
+      .kitFollowsEnd()
     }
   }
 }
@@ -441,16 +394,15 @@ struct IssuesView: View {
   }
 }
 
+/// An issue: its severity on the kit's row tile, the whole message (it wraps), and its file:line.
 struct IssueRow: View {
   let issue: BuildIssue
-  @Environment(\.kitIdiom) private var idiom
 
   var body: some View {
-    HStack(alignment: .firstTextBaseline, spacing: 10) {
-      Image(systemName: issue.severity == .error ? "xmark.octagon" : "exclamationmark.triangle")
-        .font(.system(size: idiom.isTouch ? 15 : 13, weight: .medium))
-        .foregroundStyle(issue.severity == .error ? Hue.red.fill : Hue.orange.fill)
-        .frame(width: 20)
+    HStack(alignment: .top, spacing: 10) {
+      RowTile(
+        systemImage: issue.severity == .error ? "xmark.octagon" : "exclamationmark.triangle",
+        hue: issue.severity == .error ? .red : .orange)
       VStack(alignment: .leading, spacing: 2) {
         Text(issue.message)
           .kitFont(.body)

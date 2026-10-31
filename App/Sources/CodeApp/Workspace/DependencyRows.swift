@@ -90,28 +90,26 @@ private struct PackageDependencyRow: View {
   @Environment(WindowModel.self) private var model
 
   var body: some View {
-    let icon = Image(systemName: "shippingbox.fill")
-      .font(.system(size: 12))
-      .foregroundStyle(Hue.brown.fill)
-      .frame(width: 17, height: 14)
+    let icon = RowTile(systemImage: "shippingbox.fill", hue: .brown)
     let detail = Text(dependency.detail).lineLimit(1)
     if let location = dependency.location {
       SidebarRow(value: NavigatorItem.file(location), dependency.name, icon: { icon }, trailing: { detail })
         .onDoubleClick { model.dependencyFolderExpansion(location).wrappedValue.toggle() }
-        .help(help)
+        .kitHelp(dependency.name, meta: help)
         .kitContextMenu { FileMenu(url: location) }
     } else {
       SidebarRow(dependency.name, icon: { icon }, trailing: { detail })
-        .help(help)
+        .kitHelp(dependency.name, meta: help)
         .opacity(0.6)
     }
   }
 
+  /// "Swift package · github.com/apple/swift-syntax · ~/Library/…": what it is, where from, where it is.
   private var help: String {
-    var lines = [dependency.ecosystem.displayName + ": " + dependency.name]
-    if let source = dependency.source, source != dependency.name { lines.append(source) }
-    lines.append(dependency.location?.abbreviatedPath ?? "Not downloaded yet")
-    return lines.joined(separator: "\n")
+    var parts = [dependency.ecosystem.displayName]
+    if let source = dependency.source, source != dependency.name { parts.append(source) }
+    parts.append(dependency.location?.abbreviatedPath ?? "Not downloaded yet")
+    return parts.joined(separator: " · ")
   }
 }
 
@@ -127,7 +125,7 @@ private struct DependencyEntryRow: View {
     }
     .onDoubleClick { model.activateNavigatorItem(url) }
     .id(url)
-    .help(url.abbreviatedPath)
+    .kitHelp(url.lastPathComponent, meta: url.abbreviatedPath)
     .kitContextMenu { FileMenu(url: url) }
   }
 }

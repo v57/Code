@@ -56,16 +56,13 @@ struct DetachedEditorWindow: View {
     model.workspace.detachedDocuments.first { $0.id == documentID }
   }
 
-  /// Toggles whether the window stays above other apps, shown in the accent
-  /// color while on.
+  /// Toggles whether the window stays above other apps: the kit's tool, drawn on while on.
   private var alwaysOnTopButton: some View {
-    Button {
-      toggleAlwaysOnTop()
-    } label: {
-      Label("Always on Top", systemImage: "interface.window.on.rectangle.dashed")
-        .foregroundStyle(isAlwaysOnTop ? AnyShapeStyle(Hue.accent.fill) : AnyShapeStyle(.kitLabel))
+    ToolGroup(iconOnly: true) {
+      Button("Always on Top", systemImage: "interface.window.on.rectangle.dashed") { toggleAlwaysOnTop() }
+        .kitToolOn(isAlwaysOnTop)
+        .kitHelp("Keep window above other apps", meta: isAlwaysOnTop ? "On" : nil)
     }
-    .help(isAlwaysOnTop ? "Keep window above other apps (on)" : "Keep window above other apps")
   }
 
   private func toggleAlwaysOnTop() {

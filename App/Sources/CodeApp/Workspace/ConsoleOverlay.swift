@@ -40,7 +40,7 @@ extension View {
   }
 }
 
-/// The console's card: the panel ground on a floating card, with its float shadow.
+/// The console on the kit overlays' card (the panel ground, its hairline and float shadow).
 private struct ConsoleOverlay: View {
   static let width: CGFloat = 720
   static let height: CGFloat = 420
@@ -48,11 +48,8 @@ private struct ConsoleOverlay: View {
   @Environment(WindowModel.self) private var model
 
   var body: some View {
-    let shape = RoundedRectangle(cornerRadius: KitMetrics.radiusOverlay, style: .continuous)
     ConsoleView(placement: .overlay)
-      .background(.kitPanel)
-      .clipShape(shape)
-      .kitSurface(.floating, cornerRadius: KitMetrics.radiusOverlay)
+      .kitOverlayCard()
       .onExitCommand { model.hideConsole() }
   }
 }

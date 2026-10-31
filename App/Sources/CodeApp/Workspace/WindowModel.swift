@@ -5,18 +5,10 @@ import SwiftUI
 /// The state of one project window around its workspace: overlays, prompts,
 /// the sidebar selection and the caret position for the status bar.
 @MainActor @Observable final class WindowModel {
-  enum Prompt: Identifiable {
+  /// New File and New Folder: the name they ask for, in a folder.
+  enum Prompt {
     case newFile(in: URL)
     case newFolder(in: URL)
-    case rename(URL)
-
-    var id: String {
-      switch self {
-      case .newFile(let url): return "file:" + url.path
-      case .newFolder(let url): return "folder:" + url.path
-      case .rename(let url): return "rename:" + url.path
-      }
-    }
   }
 
   let workspace: Workspace
@@ -44,9 +36,14 @@ import SwiftUI
   var notarizationSetup: NotarizationSetupRequest?
   @ObservationIgnored private var installObserver: NSObjectProtocol?
   var isGoToLinePresented = false
-  var prompt: Prompt?
+  /// The last prompt asked, kept while its sheet closes.
+  private(set) var prompt: Prompt?
+  var isPromptPresented = false
   /// The text field of the current prompt.
   var promptText = ""
+  /// The navigator row whose name is a field (Rename), and that field's text.
+  var renaming: URL?
+  var renameText = ""
   var trashCandidate: URL?
   /// Shows another project folder in this window (the sidebar's Projects card), or brings forward the window it is
   /// open in. Set by the window.
@@ -230,28 +227,34 @@ import SwiftUI
   }
 
   func ask(_ prompt: Prompt) {
-    switch prompt {
-    case .rename(let url): promptText = url.lastPathComponent
-    default: promptText = ""
-    }
+    promptText = ""
     self.prompt = prompt
+    isPromptPresented = true
   }
 
-  /// Runs the current prompt with `promptText`.
-  func commitPrompt() {
-    guard let prompt else { return }
-    self.prompt = nil
-    let name = promptText.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !name.isEmpty else { return }
+  /// Runs the current prompt with `name`.
+  func commitPrompt(_ name: String) {
+    guard let prompt, !name.isEmpty else { return }
     switch prompt {
     case .newFile(let folder):
       if let url = workspace.createFile(named: name, in: folder) { sidebarSelection = url }
     case .newFolder(let folder):
       if let url = workspace.createFolder(named: name, in: folder) { sidebarSelection = url }
-    case .rename(let url):
-      if let newURL = workspace.rename(url, to: name), sidebarSelection == url {
-        sidebarSelection = newURL
-      }
+    }
+  }
+
+  /// Turns the navigator row of `url` into a field holding its name (with its extension).
+  func rename(_ url: URL) {
+    renameText = url.lastPathComponent
+    renaming = url
+  }
+
+  /// Renames `url` to what its row's field holds.
+  func commitRename(_ url: URL) {
+    let name = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !name.isEmpty, name != url.lastPathComponent else { return }
+    if let newURL = workspace.rename(url, to: name), sidebarSelection == url {
+      sidebarSelection = newURL
     }
   }
 

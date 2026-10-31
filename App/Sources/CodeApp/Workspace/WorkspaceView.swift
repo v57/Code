@@ -46,9 +46,11 @@ struct WorkspaceView: View {
       }
     #endif
     .focusedSceneValue(\.windowModel, model)
-    .kitSheet(item: $model.prompt) { prompt in
-      PromptSheet(prompt: prompt)
-    }
+    .kitPrompt(
+      promptTitle, isPresented: $model.isPromptPresented, text: $model.promptText, message: promptMessage,
+      systemImage: promptSymbol, field: KitPromptField(help: "Use “/” to create folders along the way."),
+      confirm: "Create"
+    ) { model.commitPrompt($0) }
     .kitSheet(item: $model.notarizationSetup) { request in
       NotarizationSheet(request: request)
     }
@@ -94,61 +96,25 @@ struct WorkspaceView: View {
     let actions = model.services.actions
     return actions.runningKind == .run && actions.stepTitle == "Run"
   }
-}
 
-/// New File, New Folder and Rename as a kit sheet: the name in a form row, Cancel and the action.
-private struct PromptSheet: View {
-  let prompt: WindowModel.Prompt
-  @Environment(WindowModel.self) private var model
-  @Environment(Workspace.self) private var workspace
+  // MARK: - New File and New Folder
 
-  var body: some View {
-    @Bindable var model = model
-    KitSheet(title: title, meta: message, systemImage: systemImage) {
-      FormCard {
-        FormRow(
-          "Name", help: "Use “/” to create folders along the way.", systemImage: "character.cursor.ibeam",
-          field: TextField("Name", text: $model.promptText).onSubmit { model.commitPrompt() })
-      }
-    } footer: {
-      Button("Cancel") { model.prompt = nil }
-        .keyboardShortcut(.cancelAction)
-      Button(action) { model.commitPrompt() }
-        .buttonStyle(.kitPrimary)
-        .keyboardShortcut(.defaultAction)
-        .disabled(model.promptText.trimmingCharacters(in: .whitespaces).isEmpty)
-    }
-    .componentKit()
+  private var promptTitle: String {
+    if case .newFolder? = model.prompt { return "New Folder" }
+    return "New File"
   }
 
-  private var title: String {
-    switch prompt {
-    case .newFile: return "New File"
-    case .newFolder: return "New Folder"
-    case .rename(let url): return "Rename “\(url.lastPathComponent)”"
-    }
+  private var promptSymbol: String {
+    if case .newFolder? = model.prompt { return "folder.badge.plus" }
+    return "doc.badge.plus"
   }
 
-  private var systemImage: String {
-    switch prompt {
-    case .newFile: return "doc.badge.plus"
-    case .newFolder: return "folder.badge.plus"
-    case .rename: return "pencil"
-    }
-  }
-
-  private var action: String {
-    if case .rename = prompt { return "Rename" }
-    return "Create"
-  }
-
-  private var message: String? {
-    switch prompt {
-    case .newFile(let folder), .newFolder(let folder):
-      let location = folder == workspace.root ? workspace.name : workspace.tree.relativePath(of: folder)
-      return "In \(location)."
-    case .rename(let url):
-      return "In \(url.deletingLastPathComponent() == workspace.root ? workspace.name : workspace.tree.relativePath(of: url.deletingLastPathComponent()))."
+  /// "In Sources/App."
+  private var promptMessage: String? {
+    switch model.prompt {
+    case .newFile(let folder)?, .newFolder(let folder)?:
+      return "In \(folder == workspace.root ? workspace.name : workspace.tree.relativePath(of: folder))."
+    case nil: return nil
     }
   }
 }

@@ -31,7 +31,7 @@ private struct RunTools: View {
       Button(actions.canPerform(.run) ? "Run" : "Build", systemImage: "play.fill") {
         model.perform(actions.canPerform(.run) ? .run : .build)
       }
-      .help(actions.canPerform(.run) ? "Run (⌘R)" : "Build (⌘B)")
+      .kitHelp(actions.canPerform(.run) ? "Run" : "Build", shortcut: actions.canPerform(.run) ? "⌘R" : "⌘B")
       .disabled(actions.selectedScheme == nil)
       .kitContextMenu {
         Button("Run") { model.perform(.run) }
@@ -45,7 +45,7 @@ private struct RunTools: View {
           .disabled(!actions.canPerform(.clean))
       }
       Button("Stop", systemImage: "stop.fill") { actions.stop() }
-        .help("Stop (⌘.)")
+        .kitHelp("Stop", shortcut: "⌘.")
         .disabled(!actions.isRunning)
     }
   }
@@ -68,13 +68,13 @@ private struct ProjectTitle: View {
       )
       .contentShape(Rectangle())
     }
-    .buttonStyle(.plain)
+    .buttonStyle(.kitPlain)
     .accessibilityHint(model.isConsoleVisible ? "Hides the console" : "Shows the console")
     .consoleAnchor()
     .frame(minWidth: 120, idealWidth: 280, maxWidth: 420, alignment: .leading)
     // A finished build, test or run plays the kit's success or failure.
     .status(showsStatus ? workStatus : .idle)
-    .help(showsStatus ? status : model.workspace.name)
+    .kitHelp(model.workspace.name, shortcut: "⇧⌘Y", meta: showsStatus ? status : nil)
   }
 
   private var workStatus: WorkStatus {
@@ -161,7 +161,7 @@ private struct SchemeTools: View {
               }
             }
           }
-          .help("Show Issues (⌘5)")
+          .kitHelp("Show Issues", shortcut: "⌘5")
           .kitMenu(isPresented: $model.isIssuesPresented) { IssuesMenu(services: services) }
         }
       }
@@ -174,9 +174,11 @@ private struct SchemeTools: View {
             systemImage: actions.selectedScheme?.toolchain.symbolName ?? "square.dashed")
         }
         .kitMenu(isPresented: model.isPresented(.scheme)) { schemeItems }
-        .help("Choose a scheme")
+        .kitHelp("Choose a scheme")
         Image(systemName: "chevron.right")
-          .font(.system(size: 9, weight: .semibold))
+          .kitFont(.caption)
+          .imageScale(.small)
+          .fontWeight(.semibold)
           .foregroundStyle(.kitTertiary)
         Button {
           model.openMenu = .destination
@@ -186,7 +188,7 @@ private struct SchemeTools: View {
             systemImage: actions.selectedDestination?.symbolName ?? "questionmark.app.dashed")
         }
         .kitMenu(isPresented: model.isPresented(.destination)) { destinationItems }
-        .help("Choose where to run")
+        .kitHelp("Choose where to run")
       }
     }
     // Other machines that have this project: the devices on the account's Hubs, kept current as the vault changes.

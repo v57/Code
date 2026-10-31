@@ -96,14 +96,12 @@ struct FindNavigatorView: View {
 
   var body: some View {
     @Bindable var find = model.find
-    HStack(spacing: 6) {
-      FindOptionMenu(
-        title: find.mode.title, selection: $find.mode,
-        options: [SearchQuery.Mode.containing, .matchingWord, .regularExpression].map { ($0.title, $0) })
-      FindOptionMenu(
-        title: find.isCaseSensitive ? "Matching Case" : "Ignoring Case", selection: $find.isCaseSensitive,
-        options: [("Ignoring Case", false), ("Matching Case", true)])
+    // Side by side while they fit the sidebar, else one under the other.
+    ViewThatFits(in: .horizontal) {
+      HStack(spacing: 6) { findOptions(find) }
+      VStack(alignment: .leading, spacing: 6) { findOptions(find) }
     }
+    .frame(maxWidth: .infinity, alignment: .leading)
     KitSection("Results", meta: summary(find), systemImage: "magnifyingglass", status: status(find)) {
       ForEach(find.results) { file in
         FileResultRow(file: file, isExpanded: isExpanded(file.path))
@@ -119,6 +117,15 @@ struct FindNavigatorView: View {
     .onChange(of: selection) { _, selection in
       if let selection { open(selection) }
     }
+  }
+
+  /// Containing, Matching Word or Regular Expression; Ignoring or Matching Case.
+  @ViewBuilder private func findOptions(_ find: ProjectFind) -> some View {
+    @Bindable var find = find
+    KitPicker(
+      "Find", selection: $find.mode,
+      options: [SearchQuery.Mode.containing, .matchingWord, .regularExpression].map { ($0.title, $0) })
+    KitPicker("Case", selection: $find.isCaseSensitive, options: [("Ignoring Case", false), ("Matching Case", true)])
   }
 
   /// "13 matches · 3 files", or why there are none.
@@ -177,20 +184,6 @@ extension SearchQuery.Mode {
   }
 }
 
-/// One of Find's options as the kit's pop-up button.
-private struct FindOptionMenu<Value: Hashable>: View {
-  let title: String
-  @Binding var selection: Value
-  let options: [(String, Value)]
-
-  var body: some View {
-    KitMenuButton(title) {
-      KitMenuOptions(selection: $selection, options: options)
-    }
-    .accessibilityValue(title)
-  }
-}
-
 /// A file with matches: its icon and name, its folder, the number of matches.
 private struct FileResultRow: View {
   let file: FileSearchResult
@@ -210,7 +203,7 @@ private struct FileResultRow: View {
         Count(file.matches.count)
       }
     }
-    .help(file.path)
+    .kitHelp(file.path)
   }
 }
 
@@ -222,15 +215,15 @@ private struct MatchRow: View {
 
   var body: some View {
     SidebarRow(value: NavigatorItem.match(selection), match.preview) { EmptyView() }
-      .title(Text(attributed).font(.system(size: 11.5, design: .monospaced)))
+      .title(Text(attributed).font(KitFont.mono.font))
       .kitRowIndent(1)
-      .help("Line \(match.line): \(match.preview)")
+      .kitHelp("Line \(match.line)", meta: match.preview)
   }
 
   private var attributed: AttributedString {
     var text = AttributedString(match.preview)
     if let range = Range(match.range, in: text) {
-      text[range].font = .system(size: 11.5, weight: .bold, design: .monospaced)
+      text[range].font = KitFont.mono.font.bold()
       text[range].backgroundColor = Hue.yellow.soft(0.4).resolve(in: environment)
     }
     return text

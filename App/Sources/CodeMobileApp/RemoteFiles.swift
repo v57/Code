@@ -15,28 +15,22 @@ struct RemoteFolderView: View {
   var isRoot = false
   @State private var entries: [SFTPFileInfo]?
   @State private var error: String?
+  /// The file or folder a row pushed.
+  @State private var pushed: SFTPFileInfo?
 
   var body: some View {
     Group {
-      if let entries {
+      if let entries, entries.isEmpty {
+        EmptyState(systemImage: "folder", title: "Empty Folder", message: "\(title) has nothing to show here.")
+      } else if let entries {
         ScrollView {
           KitSection(
             "Files", meta: [entries.count == 1 ? "1 item" : "\(entries.count) items", "over SFTP"],
             systemImage: "folder", hue: .blue
           ) {
             ForEach(entries, id: \.path) { entry in
-              NavigationLink {
-                if entry.isDirectory {
-                  RemoteFolderView(session: session, path: entry.path, title: entry.name)
-                } else {
-                  RemoteFileView(session: session, entry: entry)
-                }
-              } label: {
-                FileRow(entry: entry)
-              }
-              .buttonStyle(.plain)
+              fileRow(entry)
             }
-            if entries.isEmpty { Text("Empty.").kitFont(.caption).foregroundStyle(.kitSecondary).padding(10) }
           }
           .padding(.horizontal, KitMetrics.gutter + 4)
           .padding(.top, 4)
@@ -55,6 +49,13 @@ struct RemoteFolderView: View {
       KitTitle(title, meta: meta, systemImage: "folder", hue: .blue)
     }) {}
     .navigationBarBackButtonHidden(true)
+    .navigationDestination(item: $pushed) { entry in
+      if entry.isDirectory {
+        RemoteFolderView(session: session, path: entry.path, title: entry.name)
+      } else {
+        RemoteFileView(session: session, entry: entry)
+      }
+    }
     .task {
       do {
         let listed = try await session.fileClient().list(path)
@@ -67,6 +68,17 @@ struct RemoteFolderView: View {
         self.error = ProjectSession.describe(error)
       }
     }
+  }
+
+  /// A file or folder in the card: the kit's row with its icon (CodeIcons) and name; a tap pushes it.
+  private func fileRow(_ entry: SFTPFileInfo) -> some View {
+    SidebarRow(entry.name) {
+      FileIconView(FileIcon(fileName: entry.name, isDirectory: entry.isDirectory), size: 17)
+        .foregroundStyle(entry.isDirectory ? AnyShapeStyle(Hue.blue.fill) : AnyShapeStyle(.kitSecondary))
+    } trailing: {
+      PushChevron()
+    }
+    .action { pushed = entry }
   }
 
   private var meta: [String] {
@@ -82,26 +94,14 @@ struct RemoteFolderView: View {
   }
 }
 
-/// A file or folder in the card: its icon (CodeIcons), its name and a chevron, 44pt tall.
-private struct FileRow: View {
-  let entry: SFTPFileInfo
-
+/// The chevron at the end of a row that pushes a screen.
+struct PushChevron: View {
   var body: some View {
-    HStack(spacing: 12) {
-      FileIconView(FileIcon(fileName: entry.name, isDirectory: entry.isDirectory), size: 17)
-        .foregroundStyle(entry.isDirectory ? AnyShapeStyle(Hue.blue.fill) : AnyShapeStyle(.kitSecondary))
-      Text(entry.name)
-        .kitFont(.body)
-        .lineLimit(1)
-        .truncationMode(.middle)
-      Spacer(minLength: 0)
-      Image(systemName: "chevron.right")
-        .font(.system(size: 12, weight: .semibold))
-        .foregroundStyle(.kitTertiary)
-    }
-    .padding(.horizontal, 10)
-    .frame(minHeight: 44)
-    .contentShape(Rectangle())
+    Image(systemName: "chevron.right")
+      .kitFont(.callout)
+      .fontWeight(.semibold)
+      .foregroundStyle(.kitTertiary)
+      .accessibilityHidden(true)
   }
 }
 
@@ -112,6 +112,8 @@ struct RemoteFileView: View {
   @Environment(\.colorScheme) private var colorScheme
   @Environment(\.kitIdiom) private var idiom
   @State private var text: AttributedString?
+  /// A file that isn't text: the kit's preview (a picture, a PDF, or its kind and size).
+  @State private var data: Data?
   @State private var error: String?
 
   /// Bigger files aren't opened here.
@@ -128,6 +130,8 @@ struct RemoteFileView: View {
             .padding(.horizontal, idiom == .phone ? 14 : 16)
             .padding(.vertical, 12)
         }
+      } else if let data {
+        KitFilePreview(name: entry.name, data: data)
       } else if let error {
         EmptyState(systemImage: "doc", title: "Couldn’t Open \(entry.name)", message: error, status: .failed(nil))
       } else {
@@ -155,7 +159,7 @@ struct RemoteFileView: View {
       do {
         let data = try await session.fileClient().read(entry.path)
         guard let code = String(data: data, encoding: .utf8) else {
-          error = "It isn’t text."
+          self.data = data
           return
         }
         text = Self.highlighted(code, name: entry.name, dark: colorScheme == .dark)
@@ -189,23 +193,12 @@ struct RemoteFileView: View {
   }
 }
 
-/// A file's icon on the title's tile: CodeIcons' glyph in its colour, on that colour's soft fill.
+/// A file's icon on the title's tile: CodeIcons' glyph in its colour, on the kit's soft tile.
 private struct FileTitleIcon: View {
   let name: String
 
   var body: some View {
     let icon = FileIcon(fileName: name)
-    let hue: Hue = icon.symbol == "swift" ? .orange : .gray
-    FileIconView(icon, size: 16)
-      .frame(width: 32, height: 32)
-      .background(hue.soft(0.16), in: RoundedRectangle(cornerRadius: KitMetrics.radius, style: .continuous))
-  }
-}
-
-extension Color {
-  /// 0xRRGGBB.
-  init(rgb: UInt32) {
-    self.init(
-      red: Double((rgb >> 16) & 0xFF) / 255, green: Double((rgb >> 8) & 0xFF) / 255, blue: Double(rgb & 0xFF) / 255)
+    Tile(hue: icon.symbol == "swift" ? .orange : .gray, size: 32) { FileIconView(icon, size: 16) }
   }
 }

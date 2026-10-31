@@ -35,12 +35,12 @@ struct SidebarView: View {
         }
       } bottomBar: {
         Button("Open Folder…", systemImage: "folder") { AppState.shared.chooseFolder() }
-          .help("Open Folder… (⌘O)")
+          .kitHelp("Open Folder…", shortcut: "⌘O")
         Button(
           workspace.visibility.showsHiddenFiles ? "Hide Hidden Files" : "Show Hidden Files",
           systemImage: workspace.visibility.showsHiddenFiles ? "eye.slash" : "eye"
         ) { workspace.visibility.showsHiddenFiles.toggle() }
-        .help(workspace.visibility.showsHiddenFiles ? "Hide Hidden Files (\(Keycaps.label("⇧⌘.")))" : "Show Hidden Files (\(Keycaps.label("⇧⌘.")))")
+        .kitHelp(workspace.visibility.showsHiddenFiles ? "Hide Hidden Files" : "Show Hidden Files", shortcut: "⇧⌘.")
       }
       .onReturn(activateSelection)
       .kitRowDensity(.compact)
@@ -104,7 +104,7 @@ struct SidebarView: View {
         .buttonStyle(.kitIcon)
         .controlSize(.small)
         .kitMenu(isPresented: model.isPresented(.project)) { FileMenu(url: nil) }
-        .help("Project")
+        .kitHelp("Project")
     }
     // A long tree keeps the project's title in view while its rows scroll past.
     .kitSticky()
@@ -233,6 +233,7 @@ struct FileTreeRow: View {
   @AppStorage(EditorSettings.showExtensions) private var showExtensions = false
 
   var body: some View {
+    @Bindable var model = model
     let isHidden = node.isHidden
     SidebarRow(value: NavigatorItem.file(node.url), FileName.display(node.url, showExtensions: showExtensions)) {
       HStack(spacing: 2) {
@@ -250,20 +251,21 @@ struct FileTreeRow: View {
         if case .gitIgnore(let line) = workspace.tree.ruleReason(for: node) {
           Chip(".gitignore")
             .controlSize(.small)
-            .help("Matches .gitignore: \(line)")
+            .kitHelp("Matches .gitignore", meta: line)
         }
       } else if let reason = node.hiddenReason {
         Image(systemName: "eye.slash")
-          .font(.system(size: 10))
-          .foregroundStyle(.kitSecondary)
-          .help(reason.description)
+          .kitFont(.caption)
+          .imageScale(.small)
+          .kitHelp("Hidden", meta: reason.description)
           .accessibilityLabel("Hidden")
       }
     }
     .onDoubleClick { model.activateNavigatorItem(node.url) }
     .opacity(isHidden ? 0.6 : 1)
     .id(node.url)
-    .help(help)
+    .kitHelp(help)
+    .kitRename(isRenaming: isRenaming, text: $model.renameText) { model.commitRename(node.url) }
     .kitContextMenu { FileMenu(url: node.url) }
     .draggable(node.url)
   }
@@ -273,6 +275,12 @@ struct FileTreeRow: View {
     if let reason = node.hiddenReason { return path + " — " + reason.description }
     if node.isInHiddenFolder { return path + " — In a hidden folder" }
     return path
+  }
+
+  private var isRenaming: Binding<Bool> {
+    Binding(
+      get: { model.renaming == node.url },
+      set: { if !$0, model.renaming == node.url { model.renaming = nil } })
   }
 
   private var isVisible: Binding<Bool> {
@@ -328,7 +336,7 @@ struct FileMenu: View {
       Button("Copy Path") { copy(node.url.path) }
       Button("Copy Relative Path") { copy(workspace.tree.relativePath(of: node.url)) }
       Divider()
-      Button("Rename…") { model.ask(.rename(node.url)) }
+      Button("Rename") { model.rename(node.url) }
       Button("Move to Trash", role: .destructive) { model.trashCandidate = node.url }
       Divider()
       if !node.isInHiddenFolder {

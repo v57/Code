@@ -73,22 +73,18 @@ import SwiftUI
   /// Shows an Open panel and opens the chosen folders and files, each in
   /// its project's window.
   func chooseFolder() {
-    #if os(macOS)
-      let panel = NSOpenPanel()
-      panel.canChooseDirectories = true
-      panel.canChooseFiles = true
-      panel.allowsMultipleSelection = true
-      panel.prompt = "Open"
-      panel.message = "Choose a folder to open as a project."
-      guard panel.runModal() == .OK else { return }
-      for url in panel.urls { open(url) }
-    #else
-      Task {
+    Task {
+      #if os(macOS)
+        let urls = await KitDesktop.chooseFiles(
+          prompt: "Open", message: "Choose a folder to open as a project.", canChooseFolders: true,
+          allowsMultipleSelection: true)
+      #else
+        // Off the Mac it asks for folders only.
         let urls = await KitDesktop.chooseFolders(
           prompt: "Open", message: "Choose a folder to open as a project.", allowsMultipleSelection: true)
-        for url in urls { open(url) }
-      }
-    #endif
+      #endif
+      for url in urls { open(url) }
+    }
   }
 
   func takePendingFiles(for folder: URL) -> [URL] {

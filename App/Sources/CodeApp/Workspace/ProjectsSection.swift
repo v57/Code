@@ -14,31 +14,13 @@ struct ProjectsSection: View {
   @Environment(WindowModel.self) private var model
   @Environment(\.vault) private var vault
   @AppStorage("sidebar.projectsExpanded") private var isExpanded = false
-  @AppStorage("welcome.collapsedGroups") private var collapsedGroups = CollapsedGroups()
+  @AppStorage("welcome.collapsedGroups") private var collapsedGroups = KitIDSet()
   /// The projects and groups removed from Code's lists (vault ids).
-  @AppStorage(RemovedProjects.key) private var removed = CollapsedGroups()
+  @AppStorage(RemovedProjects.key) private var removed = KitIDSet()
   @State private var confirmsRemoveAll = false
-
-  /// A row: a group or a project, and how many groups it is in.
-  private struct Row: Identifiable {
-    let node: VaultProjectTree.Node
-    let depth: Int
-    var id: String { node.id }
-  }
 
   /// The vault's projects whose folders are on this Mac.
   private func tree(_ vault: Vault) -> VaultProjectTree { vault.codeProjectTree(removed: removed.ids) }
-
-  /// The tree top to bottom, without what closed groups hold.
-  private func rows(_ tree: VaultProjectTree) -> [Row] {
-    func rows(_ nodes: [VaultProjectTree.Node], depth: Int) -> [Row] {
-      nodes.flatMap { node in
-        let isOpen = node.group != nil && !collapsedGroups.ids.contains(node.id)
-        return [Row(node: node, depth: depth)] + (isOpen ? rows(node.children, depth: depth + 1) : [])
-      }
-    }
-    return rows(tree.roots, depth: 0)
-  }
 
   var body: some View {
     if let vault { section(vault) }
@@ -54,14 +36,14 @@ struct ProjectsSection: View {
         systemImage: "square.stack.3d.up",
         hue: .indigo, isExpanded: $isExpanded
       ) {
-        ForEach(rows(tree)) { row in
-          Group {
-            switch row.node {
-            case .group(let group, _): groupRow(group, projects: row.node.projects.count)
-            case .project(let project): projectRow(project)
-            }
+        KitOutline(
+          tree.roots, children: { $0.group == nil ? nil : $0.children },
+          collapsed: $collapsedGroups.animation(.kit).ids
+        ) { node in
+          switch node {
+          case .group(let group, _): groupRow(group, projects: node.projects.count)
+          case .project(let project): projectRow(project)
           }
-          .kitRowIndent(row.depth)
         }
       }
       .headerMenu {
@@ -94,7 +76,7 @@ struct ProjectsSection: View {
     }
     .isCurrent(folder == workspace.root)
     .action { if let folder { open(folder) } }
-    .help(project.localPath ?? project.name)
+    .kitHelp(project.name, meta: project.localPath)
     .kitContextMenu {
       if let folder {
         Button("Open in New Window", systemImage: "macwindow.badge.plus") { AppState.shared.open(folder) }
@@ -108,14 +90,10 @@ struct ProjectsSection: View {
     }
   }
 
-  /// A group, laid out like Git's: the kit's disclosure, a folder tile, the name over its note or project count.
+  /// A group, laid out like Git's: the outline's disclosure, a folder tile, the name over its note or project count;
+  /// a click opens or closes it.
   private func groupRow(_ group: VaultProjectGroup, projects count: Int) -> some View {
-    let isCollapsed = collapsedGroups.ids.contains(group.id)
-    let toggle = {
-      withAnimation(.kit) {
-        if isCollapsed { collapsedGroups.ids.remove(group.id) } else { collapsedGroups.ids.insert(group.id) }
-      }
-    }
+    let isCollapsed = collapsedGroups.contains(group.id)
     return SidebarRow(
       group.name,
       subtitle: group.note.flatMap { $0.isEmpty ? nil : $0 } ?? (count == 1 ? "1 project" : "\(count) projects")
@@ -126,9 +104,7 @@ struct ProjectsSection: View {
     } trailing: {
       EmptyView()
     }
-    .disclosure(isExpanded: .init(get: { !isCollapsed }, set: { if $0 == isCollapsed { toggle() } }))
-    .action(toggle)
-    .help(group.localPath ?? group.name)
+    .kitHelp(group.name, meta: group.localPath)
     .kitContextMenu {
       if let folder = group.localURL {
         Button("Show in \(KitDesktop.fileManagerName)", systemImage: "folder") { KitDesktop.reveal([folder]) }

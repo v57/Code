@@ -17,10 +17,10 @@ struct TabBar: View {
       // The strip keeps the gutter before itself; it isn't there for a single tab.
       ToolGroup(iconOnly: true) {
         Button("Go Back", systemImage: "chevron.left") { services.goBack() }
-          .help("Go Back (⌃⌘←)")
+          .kitHelp("Go Back", shortcut: "⌃⌘←")
           .disabled(!services.canGoBack)
         Button("Go Forward", systemImage: "chevron.right") { services.goForward() }
-          .help("Go Forward (⌃⌘→)")
+          .kitHelp("Go Forward", shortcut: "⌃⌘→")
           .disabled(!services.canGoForward)
       }
       .padding([.leading, .bottom], KitMetrics.gutter)

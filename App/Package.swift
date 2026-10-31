@@ -50,7 +50,8 @@ let package = Package(
     .target(
       name: "CodeMobileApp",
       dependencies: [
-        .product(name: "CodeActions", package: kits), .product(name: "CodeHighlighting", package: kits),
+        .product(name: "CodeActions", package: kits), .product(name: "CodeActionsUI", package: kits),
+        .product(name: "CodeHighlighting", package: kits),
         .product(name: "CodeIcons", package: kits), .product(name: "ComponentKit", package: "Component"),
         .product(name: "VaultKit", package: "Vault"), .product(name: "VaultUI", package: "Vault"),
         .product(name: "SSHKit", package: "SSH"),

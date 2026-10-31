@@ -26,7 +26,8 @@
   /// `select:<path>` (selects a navigator row, as a click does),
   /// `folder:<relative path>:on|off` (expands or collapses a tree folder),
   /// `focus` (the editor takes the keyboard), `menu:project|scheme|destination|off` (opens a kit menu),
-  /// `navigator:on|off`, `size:<width>x<height>` (the window's content size).
+  /// `navigator:on|off`, `size:<width>x<height>` (the window's content size), `newfile[:folder]` (New File or
+  /// New Folder's prompt), `rename:<path>` (renames a navigator row in place).
   ///
   /// Launched with `-DebugAutomationName <name>`, the app listens for that
   /// name instead, so other Debug instances ignore the commands.
@@ -138,7 +139,7 @@
           let group = vaults.allAccounts.compactMap(vaults.vault(for:)).lazy
             .compactMap({ $0.localProjectTree.groups.first(where: { $0.name == String(argument[..<colon]) }) }).first
         {
-          var collapsed = CollapsedGroups(rawValue: UserDefaults.standard.string(forKey: "welcome.collapsedGroups") ?? "")
+          var collapsed = KitIDSet(rawValue: UserDefaults.standard.string(forKey: "welcome.collapsedGroups") ?? "")
           if argument[argument.index(after: colon)...] == "off" { collapsed.ids.insert(group.id) } else { collapsed.ids.remove(group.id) }
           withAnimation(.kit) { UserDefaults.standard.set(collapsed.rawValue, forKey: "welcome.collapsedGroups") }
         }
@@ -211,6 +212,8 @@
       case "dependency":
         model.expandedDependencyFolders.insert(URL(fileURLWithPath: argument))
       case "select": model.sidebarSelection = URL(fileURLWithPath: argument)
+      case "newfile": model.ask(argument == "folder" ? .newFolder(in: model.targetFolder) : .newFile(in: model.targetFolder))
+      case "rename": model.rename(URL(fileURLWithPath: argument))
       case "folder":
         if let colon = argument.lastIndex(of: ":"),
           let node = model.workspace.tree.node(

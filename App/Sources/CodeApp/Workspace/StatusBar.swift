@@ -16,24 +16,18 @@ private struct CodeStatusBar: ViewModifier {
   @Environment(WindowModel.self) private var model
 
   func body(content: Content) -> some View {
-    content.safeAreaInset(edge: .bottom, spacing: 0) {
-      if hasContent {
-        StatusBar(systemImage: icon.systemImage, hue: icon.hue, status: icon.status) {
-          leading
-            .padding(.trailing, 4)
-          if let document = workspace.selectedDocument, document.isSaving {
-            Text("Formatting…")
-          }
-          if let document = workspace.selectedDocument, document.content == .text {
-            Button(position) { model.isGoToLinePresented = true }
-              .buttonStyle(.plain)
-              .help("Go to Line (⌘L)")
-          }
-        }
-        .transition(.opacity)
+    content.kitStatusBar(isPresented: hasContent, systemImage: icon.systemImage, hue: icon.hue, status: icon.status) {
+      leading
+        .padding(.trailing, 4)
+      if let document = workspace.selectedDocument, document.isSaving {
+        Text("Formatting…")
+      }
+      if let document = workspace.selectedDocument, document.content == .text {
+        Button(position) { model.isGoToLinePresented = true }
+          .buttonStyle(.kitPlain)
+          .help("Go to Line (⌘L)")  // kitHelp draws under the view: off the window here
       }
     }
-    .animation(.kit, value: hasContent)
   }
 
   /// A message, work going on, or a text document's caret.

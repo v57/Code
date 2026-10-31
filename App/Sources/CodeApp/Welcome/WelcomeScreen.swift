@@ -18,30 +18,12 @@ struct WelcomeScreen: View {
   private var recents: RecentProjects { AppState.shared.recents }
 
   /// The groups closed in the Projects list (vault group ids).
-  @AppStorage("welcome.collapsedGroups") private var collapsedGroups = CollapsedGroups()
+  @AppStorage("welcome.collapsedGroups") private var collapsedGroups = KitIDSet()
   /// The projects and groups removed from Code's lists (vault ids).
-  @AppStorage(RemovedProjects.key) private var removed = CollapsedGroups()
+  @AppStorage(RemovedProjects.key) private var removed = KitIDSet()
 
   /// The projects the vault shares that are on this Mac, in their groups.
   private var projectTree: VaultProjectTree { vault.codeProjectTree(removed: removed.ids) }
-
-  /// A row of the Projects list: a group or a project, and how many groups it is in.
-  private struct ProjectRow: Identifiable {
-    let node: VaultProjectTree.Node
-    let depth: Int
-    var id: String { node.id }
-  }
-
-  /// The tree top to bottom, without what closed groups hold.
-  private var projectRows: [ProjectRow] {
-    func rows(_ nodes: [VaultProjectTree.Node], depth: Int) -> [ProjectRow] {
-      nodes.flatMap { node in
-        let isOpen = node.group != nil && !collapsedGroups.ids.contains(node.id)
-        return [ProjectRow(node: node, depth: depth)] + (isOpen ? rows(node.children, depth: depth + 1) : [])
-      }
-    }
-    return rows(projectTree.roots, depth: 0)
-  }
 
   var body: some View {
     let projectCount = projectTree.roots.flatMap(\.projects).count
@@ -66,15 +48,15 @@ struct WelcomeScreen: View {
         item(folder, isRecent: true)
       }
     } projects: {
-      ForEach(projectRows) { row in
-        Group {
-          switch row.node {
-          case .group(let group, _): groupItem(group, projects: row.node.projects.count)
-          case .project(let project):
-            if let folder = project.localURL { item(folder, isRecent: false, project: project.id) }
-          }
+      KitOutline(
+        projectTree.roots, children: { $0.group == nil ? nil : $0.children },
+        collapsed: $collapsedGroups.animation(.kit).ids
+      ) { node in
+        switch node {
+        case .group(let group, _): groupItem(group, projects: node.projects.count)
+        case .project(let project):
+          if let folder = project.localURL { item(folder, isRecent: false, project: project.id) }
         }
-        .padding(.leading, CGFloat(row.depth) * 20)
       }
     }
     .kitPane(.content)
@@ -96,31 +78,15 @@ struct WelcomeScreen: View {
       }
   }
 
-  /// A group: its name and how many projects it holds, a chevron that opens or closes it. Return and a double click
-  /// open or close it too, as they open a project.
+  /// A group: its name and how many projects it holds; the outline trails it with the chevron that opens or closes
+  /// it. Return and a double click open or close it too, as they open a project.
   private func groupItem(_ group: VaultProjectGroup, projects count: Int) -> some View {
-    let isOpen = !collapsedGroups.ids.contains(group.id)
-    let toggle = {
-      withAnimation(.kit) {
-        if isOpen { collapsedGroups.ids.insert(group.id) } else { collapsedGroups.ids.remove(group.id) }
-      }
-    }
+    let isOpen = !collapsedGroups.contains(group.id)
     return RecentItem(
       group.name, subtitle: group.note.flatMap { $0.isEmpty ? nil : $0 } ?? (count == 1 ? "1 project" : "\(count) projects"),
-      systemImage: isOpen ? "folder.fill" : "folder", id: "group:\(group.id)", action: toggle
-    )
-    .overlay(alignment: .trailing) {
-      Button(action: toggle) {
-        Image(systemName: "chevron.right")
-          .font(.system(size: 11, weight: .semibold))
-          .foregroundStyle(.kitSecondary)
-          .rotationEffect(.degrees(isOpen ? 90 : 0))
-          .frame(width: 28, height: 28)
-          .contentShape(Rectangle())
-      }
-      .buttonStyle(.plain)
-      .padding(.trailing, 8)
-      .accessibilityLabel(isOpen ? "Collapse \(group.name)" : "Expand \(group.name)")
+      systemImage: isOpen ? "folder.fill" : "folder", id: "group:\(group.id)"
+    ) {
+      withAnimation(.kit) { collapsedGroups.toggle(group.id) }
     }
     .kitContextMenu {
       if let folder = group.localURL {
@@ -131,21 +97,8 @@ struct WelcomeScreen: View {
   }
 }
 
-/// The ids of the closed groups, kept in one defaults string.
-struct CollapsedGroups: RawRepresentable {
-  var ids: Set<String>
-
-  init() { ids = [] }
-
-  init(rawValue: String) {
-    ids = Set(rawValue.split(separator: "\n").map(String.init))
-  }
-
-  var rawValue: String { ids.sorted().joined(separator: "\n") }
-}
-
 /// The vault's projects and groups removed from Code's lists (Projects in the sidebar and on Welcome), kept as
-/// `CollapsedGroups` under `key`: Code's own, Git and the other apps keep them. A group's projects go with it, and
+/// a `KitIDSet` under `key`: Code's own, Git and the other apps keep them. A group's projects go with it, and
 /// opening a removed project brings it back (`restore`).
 enum RemovedProjects {
   static let key = "projects.removed"
@@ -153,7 +106,7 @@ enum RemovedProjects {
   /// Brings back the project at `folder` and the groups it is in, in any account's vault, if they were removed.
   static func restore(_ folder: URL) {
     let defaults = UserDefaults.standard
-    var removed = CollapsedGroups(rawValue: defaults.string(forKey: key) ?? "")
+    var removed = KitIDSet(rawValue: defaults.string(forKey: key) ?? "")
     guard !removed.ids.isEmpty else { return }
     let path = folder.standardizedFileURL.path
     let vaults = Vaults.shared
