@@ -1,35 +1,39 @@
-import CodeKit
+import CodeActions
 import ComponentKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// What opened the Notarization sheet: an Export waiting for it, or
-/// Product › Notarization Settings.
-struct NotarizationSetupRequest: Identifiable {
-  let id = UUID()
-  var exportsWhenDone = false
-}
-
-/// The notarytool keychain profile Export passes as `NOTARY_PROFILE`, saved
-/// once the Notarization sheet checked it; nil until then.
-enum NotarySettings {
-  private static let key = "notarization.profile"
-
-  static var profile: String? {
-    get { UserDefaults.standard.string(forKey: key) }
-    set { UserDefaults.standard.set(newValue, forKey: key) }
-  }
-}
-
-/// Sets up what Product › Export needs: a Developer ID Application
-/// certificate, and a notarytool keychain profile, either an existing one
-/// (checked with notarytool) or a new one saved from an app-specific password
-/// or an App Store Connect API key. The credentials go straight to notarytool,
-/// which keeps them in the keychain; the app stores only the profile name.
-struct NotarizationSetupView: View {
-  let request: NotarizationSetupRequest
-  @Environment(WindowModel.self) private var model
+/// The Notarization sheet: sets up what an Xcode scheme's Export (`ActionKind.needsNotarization`) needs, a Developer ID
+/// Application certificate and a notarytool keychain profile, either an existing one (checked with notarytool) or a
+/// new one saved from an app-specific password or an App Store Connect API key. The credentials go straight to
+/// notarytool, which keeps them in the keychain; the app keeps only the profile's name, which `onDone` hands back.
+///
+/// Present it with `.kitSheet(item:)`; it closes itself (`kitDismiss`) before calling `onDone`.
+///
+/// ```swift
+/// .kitSheet(item: $model.notarizationSetup) { request in
+///   NotarizationSetupView(profile: settings.notaryProfile, exportsWhenDone: request.exportsWhenDone) { profile in
+///     settings.notaryProfile = profile
+///     if request.exportsWhenDone { model.perform(.export) }
+///   }
+/// }
+/// ```
+public struct NotarizationSetupView: View {
+  let savedProfile: String?
+  let exportsWhenDone: Bool
+  let onDone: (String) -> Void
   @Environment(\.kitDismiss) private var dismiss
+  @Environment(\.openURL) private var openURL
+
+  /// - Parameters:
+  ///   - profile: the profile name saved before, or nil for notarytool's default (`Notarization.defaultProfile`).
+  ///   - exportsWhenDone: an Export waits for the sheet: its primary button says Export instead of Done.
+  ///   - onDone: the checked profile's name, once the sheet has closed.
+  public init(profile: String?, exportsWhenDone: Bool = false, onDone: @escaping (String) -> Void) {
+    self.savedProfile = profile
+    self.exportsWhenDone = exportsWhenDone
+    self.onDone = onDone
+  }
 
   private enum Mode: Hashable { case existing, new }
   private enum Method: Hashable { case appleID, apiKey }
@@ -70,34 +74,29 @@ struct NotarizationSetupView: View {
     }
   }
 
-  var body: some View {
+  public var body: some View {
     KitSheet(
       title: "Notarization", meta: "What Export needs: a Developer ID certificate and a notary profile.",
       systemImage: "checkmark.seal", width: 500
     ) {
-      ScrollView {
-        VStack(spacing: 18) {
-          developerIDSection
-          profileSection
-          if mode == .new {
-            newProfileSection
-          }
-        }
-        .padding(.vertical, 4)
+      developerIDSection
+      profileSection
+      if mode == .new {
+        newProfileSection
       }
-      .frame(height: 440)
     } footer: {
       SheetStatus(footerStatus.text, systemImage: "checkmark.seal", status: footerStatus.status)
       Button("Cancel") { dismiss() }
         .keyboardShortcut(.cancelAction)
-      Button(request.exportsWhenDone ? "Export" : "Done") { finish() }
+      Button(exportsWhenDone ? "Export" : "Done") { finish() }
         .buttonStyle(.kitPrimary)
         .keyboardShortcut(.defaultAction)
         .disabled(!hasDeveloperID || !profileIsValid)
     }
-    .componentKit()
+    .animation(.kit, value: mode)
+    .animation(.kit, value: method)
     .task {
-      let saved = NotarySettings.profile ?? Notarization.defaultProfile
+      let saved = savedProfile ?? Notarization.defaultProfile
       profile = saved
       newProfile = saved
       await loadIdentities()
@@ -224,7 +223,8 @@ struct NotarizationSetupView: View {
   private var newProfileSection: some View {
     FormCard(
       "New profile",
-      footer: "notarytool checks the credentials with Apple, then keeps them in your keychain. Code doesn't store them."
+      footer:
+        "notarytool checks the credentials with Apple, then keeps them in your keychain. Only the profile's name is saved here."
     ) {
       FormRow("Profile name", systemImage: "person.badge.key", field: TextField("Profile name", text: $newProfile))
       FormRow("Sign in with", systemImage: "key", hue: .gray) {
@@ -241,8 +241,9 @@ struct NotarizationSetupView: View {
         FormRow(
           "App-specific password", systemImage: "lock",
           field: SecureField("App-specific password", text: $password))
-        FormRow("Create an app-specific password", systemImage: "link", hue: .gray) {
-          Link("Open…", destination: URL(string: "https://account.apple.com/account/manage")!)
+        FormRow("Create an app-specific password", help: "On account.apple.com", systemImage: "link", hue: .gray) {
+          Button("Open…") { open("https://account.apple.com/account/manage") }
+            .buttonStyle(.kit)
         }
       case .apiKey:
         FormRow("Key file", help: keyURL?.lastPathComponent ?? "None", systemImage: "doc", hue: .gray) {
@@ -252,8 +253,9 @@ struct NotarizationSetupView: View {
         FormRow("Key ID", systemImage: "key", field: TextField("Key ID", text: $keyID))
         FormRow(
           "Issuer ID", help: "Team keys", systemImage: "building.2", field: TextField("Issuer ID", text: $issuerID))
-        FormRow("Create an API key in App Store Connect", systemImage: "link", hue: .gray) {
-          Link("Open…", destination: URL(string: "https://appstoreconnect.apple.com/access/integrations/api")!)
+        FormRow("Create an API key", help: "In App Store Connect", systemImage: "link", hue: .gray) {
+          Button("Open…") { open("https://appstoreconnect.apple.com/access/integrations/api") }
+            .buttonStyle(.kit)
         }
       }
       FormRow(
@@ -271,6 +273,10 @@ struct NotarizationSetupView: View {
   }
 
   // MARK: - Actions
+
+  private func open(_ address: String) {
+    if let url = URL(string: address) { openURL(url) }
+  }
 
   private func loadIdentities() async {
     identities = nil
@@ -301,7 +307,10 @@ struct NotarizationSetupView: View {
         name, appleID: trimmed(appleID), teamID: trimmed(teamID), password: password
       )
     case .apiKey:
-      guard let keyURL else { saving = false; return }
+      guard let keyURL else {
+        saving = false
+        return
+      }
       let scoped = keyURL.startAccessingSecurityScopedResource()
       result = await Notarization.storeAPIKeyProfile(
         name, path: keyURL.path, keyID: trimmed(keyID), issuerID: trimmed(issuerID)
@@ -323,9 +332,9 @@ struct NotarizationSetupView: View {
   }
 
   private func finish() {
-    NotarySettings.profile = trimmed(profile)
+    let name = trimmed(profile)
     dismiss()
-    if request.exportsWhenDone { model.perform(.export) }
+    onDone(name)
   }
 
   private func trimmed(_ text: String) -> String {

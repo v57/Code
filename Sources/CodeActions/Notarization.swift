@@ -93,8 +93,7 @@ public enum Notarization {
       return profileStatus(exitCode: result.exitCode, output: result.output)
     }
 
-    /// Saves an API-key profile. Apple ID profiles need a terminal for the
-    /// password prompt, so the app saves those itself.
+    /// Saves an API-key profile (an Apple ID profile is `storeAppleIDProfile`).
     public static func storeAPIKeyProfile(_ profile: String, path: String, keyID: String, issuerID: String?) async -> (exitCode: Int32, output: String) {
       await run("/usr/bin/xcrun", storeArguments(profile: profile, credentials: .apiKey(path: path, keyID: keyID, issuerID: issuerID)))
     }

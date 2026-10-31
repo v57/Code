@@ -50,7 +50,7 @@ struct WorkspaceView: View {
       PromptSheet(prompt: prompt)
     }
     .kitSheet(item: $model.notarizationSetup) { request in
-      NotarizationSetupView(request: request)
+      NotarizationSheet(request: request)
     }
     .kitConfirmation(
       "Move “\(model.trashCandidate?.lastPathComponent ?? "")” to the Trash?",

@@ -42,9 +42,9 @@ let package = Package(
     .target(
       name: "CodeApp",
       dependencies: [
-        .product(name: "CodeKit", package: kits), .product(name: "ComponentKit", package: "Component"),
-        .product(name: "VaultKit", package: "Vault"), .product(name: "VaultUI", package: "Vault"),
-        .product(name: "UpdateKit", package: "UpdateKit"),
+        .product(name: "CodeKit", package: kits), .product(name: "CodeActionsUI", package: kits),
+        .product(name: "ComponentKit", package: "Component"), .product(name: "VaultKit", package: "Vault"),
+        .product(name: "VaultUI", package: "Vault"), .product(name: "UpdateKit", package: "UpdateKit"),
       ],
       swiftSettings: appSettings),
     .target(

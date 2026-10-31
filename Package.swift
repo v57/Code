@@ -22,6 +22,8 @@ func v57(_ name: String) -> Package.Dependency {
 ///   (Mac, simulators, devices, Android), and running build/run/test with
 ///   progress and the build log's issues (macOS), or on another machine
 ///   over SSH (SSHKit's in-process client on iPhone and iPad).
+/// - CodeActionsUI: the actions' sheets drawn with ComponentKit, for every
+///   app that runs CodeActions (Code, Shell): the Notarization sheet.
 /// - CodeProgress: progress of operations made of stages (builds, downloads
 ///   and installs, batches), estimated from how long each stage took before,
 ///   by the resource it waits on and the size of its work (platform-neutral).
@@ -52,6 +54,7 @@ let package = Package(
     .library(name: "CodeWorkspace", targets: ["CodeWorkspace"]),
     .library(name: "CodeEditor", targets: ["CodeEditor"]),
     .library(name: "CodeActions", targets: ["CodeActions"]),
+    .library(name: "CodeActionsUI", targets: ["CodeActionsUI"]),
     .library(name: "CodeLSP", targets: ["CodeLSP"]),
     .library(name: "CodeMinimap", targets: ["CodeMinimap"]),
     .library(name: "CodeFormatting", targets: ["CodeFormatting"]),
@@ -59,8 +62,8 @@ let package = Package(
     .library(name: "CodeIcons", targets: ["CodeIcons"]),
     .library(name: "CodeProgress", targets: ["CodeProgress"]),
   ],
-  // SSHKit: remote actions over SSH, in-process (../SSH).
-  dependencies: [v57("SSH")],
+  // SSHKit: remote actions over SSH, in-process (../SSH). ComponentKit: CodeActionsUI's sheets (../Component).
+  dependencies: [v57("SSH"), v57("Component")],
   targets: [
     .target(name: "CodeHighlighting", swiftSettings: swiftSettings),
     .target(name: "CodeWorkspace", dependencies: ["CodeHighlighting"], swiftSettings: swiftSettings),
@@ -70,6 +73,9 @@ let package = Package(
       name: "CodeActions", dependencies: ["CodeProgress", .product(name: "SSHKit", package: "SSH")],
       // Release/: the linker and asset catalog compiler Install archives Mac apps with (copies of Dev's).
       resources: [.copy("Release")], swiftSettings: swiftSettings),
+    .target(
+      name: "CodeActionsUI", dependencies: ["CodeActions", .product(name: "ComponentKit", package: "Component")],
+      swiftSettings: swiftSettings),
     .target(name: "CodeLSP", swiftSettings: swiftSettings),
     .target(name: "CodeMinimap", dependencies: ["CodeHighlighting"], swiftSettings: swiftSettings),
     .target(name: "CodeFormatting", swiftSettings: swiftSettings),
@@ -114,7 +120,7 @@ for target in package.targets where target.type == .regular {
     .product(name: "SwiftUIPortability", package: "SwiftUI"), .product(name: "os", package: "SwiftUI"),
     .product(name: "CryptoKit", package: "SwiftUI"),
   ]
-  if ["CodeIcons", "CodeKit"].contains(target.name) {
+  if ["CodeIcons", "CodeKit", "CodeActionsUI"].contains(target.name) {
     target.dependencies += [.product(name: "SwiftUI", package: "SwiftUI")]
   }
 }
