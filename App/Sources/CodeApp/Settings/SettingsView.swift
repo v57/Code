@@ -27,7 +27,6 @@ struct SettingsView: View {
     }
     .toggleStyle(.kitSwitch)
     .frame(width: 680, height: 560)
-    .modifier(SettingsWindowTitle())
   }
 }
 
@@ -129,19 +128,6 @@ private struct FilesSettingsView: View {
       FormRow("Hide files listed in .gitignore", systemImage: "eye.slash", hue: .gray) {
         Toggle("Hide files listed in .gitignore", isOn: $hidesIgnoredFiles).kitLabelsHidden()
       }
-    }
-  }
-}
-
-/// No system title: the kit's settings window titles its panes.
-private struct SettingsWindowTitle: ViewModifier {
-  func body(content: Content) -> some View {
-    if #available(macOS 15.0, *) {
-      content
-        .toolbar(removing: .title)
-        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
-    } else {
-      content
     }
   }
 }
