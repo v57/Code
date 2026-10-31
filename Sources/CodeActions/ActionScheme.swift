@@ -46,6 +46,20 @@ public enum ActionKind: String, CaseIterable, Codable, Sendable {
     }
   }
 
+  /// An SF Symbol for the action's button and its run block.
+  public var symbolName: String {
+    switch self {
+    case .run: return "play.fill"
+    case .build: return "hammer"
+    case .test: return "testtube.2"
+    case .clean: return "trash"
+    case .lint: return "checklist"
+    case .install: return "arrow.down.app"
+    case .export: return "square.and.arrow.up"
+    case .upload: return "icloud.and.arrow.up"
+    }
+  }
+
   /// Install, Export and Upload: one-shot actions that ship the app.
   public var isDistribution: Bool { [.install, .export, .upload].contains(self) }
 
