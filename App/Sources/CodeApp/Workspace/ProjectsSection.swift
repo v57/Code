@@ -15,6 +15,9 @@ struct ProjectsSection: View {
   @Environment(\.vault) private var vault
   @AppStorage("sidebar.projectsExpanded") private var isExpanded = false
   @AppStorage("welcome.collapsedGroups") private var collapsedGroups = CollapsedGroups()
+  /// The projects and groups removed from Code's lists (vault ids).
+  @AppStorage(RemovedProjects.key) private var removed = CollapsedGroups()
+  @State private var confirmsRemoveAll = false
 
   /// A row: a group or a project, and how many groups it is in.
   private struct Row: Identifiable {
@@ -24,11 +27,7 @@ struct ProjectsSection: View {
   }
 
   /// The vault's projects whose folders are on this Mac.
-  private func tree(_ vault: Vault) -> VaultProjectTree {
-    vault.localProjectTree.filter { project in
-      project.localPath.map { FileManager.default.fileExists(atPath: $0) } ?? false
-    }
-  }
+  private func tree(_ vault: Vault) -> VaultProjectTree { vault.codeProjectTree(removed: removed.ids) }
 
   /// The tree top to bottom, without what closed groups hold.
   private func rows(_ tree: VaultProjectTree) -> [Row] {
@@ -65,8 +64,18 @@ struct ProjectsSection: View {
           .kitRowIndent(row.depth)
         }
       }
+      .headerMenu {
+        Button("Remove All Projects from List", systemImage: "minus.circle") { confirmsRemoveAll = true }
+      }
       // Opened with many projects, its title stays in view while they scroll past.
       .kitSticky()
+      .kitConfirmation(
+        count == 1 ? "Remove 1 project from the list?" : "Remove all \(count) projects from the list?", isPresented: $confirmsRemoveAll,
+        message: "They stay in Git and the other apps, and on disk. Opening one brings it back.",
+        systemImage: "minus.circle", confirm: "Remove All"
+      ) {
+        withAnimation(.kit) { removed.ids.formUnion(tree.projects().map(\.id)) }
+      }
     }
   }
 
@@ -91,6 +100,10 @@ struct ProjectsSection: View {
         Button("Open in New Window", systemImage: "macwindow.badge.plus") { AppState.shared.open(folder) }
           .disabled(folder == workspace.root)
         Button("Show in \(KitDesktop.fileManagerName)", systemImage: "folder") { KitDesktop.reveal([folder]) }
+        Divider()
+      }
+      Button("Remove from List", systemImage: "minus.circle") {
+        withAnimation(.kit) { _ = removed.ids.insert(project.id) }
       }
     }
   }
@@ -119,6 +132,10 @@ struct ProjectsSection: View {
     .kitContextMenu {
       if let folder = group.localURL {
         Button("Show in \(KitDesktop.fileManagerName)", systemImage: "folder") { KitDesktop.reveal([folder]) }
+        Divider()
+      }
+      Button("Remove Group from List", systemImage: "minus.circle") {
+        withAnimation(.kit) { _ = removed.ids.insert(group.id) }
       }
     }
   }

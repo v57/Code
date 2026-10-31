@@ -157,6 +157,7 @@ struct WorkspaceWindow: View {
     model.switchProject = { [self] in switchProject(to: $0) }
     AppState.shared.register(model, window: window)
     AppState.shared.recents.add(root)
+    RemovedProjects.restore(root)
     for file in AppState.shared.takePendingFiles(for: root) {
       workspace.tree.reveal(file)
       workspace.open(file)

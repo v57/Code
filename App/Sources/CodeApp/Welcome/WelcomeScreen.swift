@@ -19,13 +19,11 @@ struct WelcomeScreen: View {
 
   /// The groups closed in the Projects list (vault group ids).
   @AppStorage("welcome.collapsedGroups") private var collapsedGroups = CollapsedGroups()
+  /// The projects and groups removed from Code's lists (vault ids).
+  @AppStorage(RemovedProjects.key) private var removed = CollapsedGroups()
 
   /// The projects the vault shares that are on this Mac, in their groups.
-  private var projectTree: VaultProjectTree {
-    vault.localProjectTree.filter { project in
-      project.localPath.map { FileManager.default.fileExists(atPath: $0) } ?? false
-    }
-  }
+  private var projectTree: VaultProjectTree { vault.codeProjectTree(removed: removed.ids) }
 
   /// A row of the Projects list: a group or a project, and how many groups it is in.
   private struct ProjectRow: Identifiable {
@@ -73,7 +71,7 @@ struct WelcomeScreen: View {
           switch row.node {
           case .group(let group, _): groupItem(group, projects: row.node.projects.count)
           case .project(let project):
-            if let folder = project.localURL { item(folder, isRecent: false) }
+            if let folder = project.localURL { item(folder, isRecent: false, project: project.id) }
           }
         }
         .padding(.leading, CGFloat(row.depth) * 20)
@@ -83,7 +81,7 @@ struct WelcomeScreen: View {
     .navigationTitle("Code")
   }
 
-  private func item(_ folder: URL, isRecent: Bool) -> some View {
+  private func item(_ folder: URL, isRecent: Bool, project: String? = nil) -> some View {
     let path = folder.standardizedFileURL.path
     let icon = vault.localProjects.first { $0.localPath == path }?.icon.flatMap(Image.init(data:))
     return RecentItem(folder.lastPathComponent, subtitle: folder.abbreviatedPath, image: icon) { open(folder) }
@@ -91,6 +89,9 @@ struct WelcomeScreen: View {
         Button("Show in \(KitDesktop.fileManagerName)") { KitDesktop.reveal([folder]) }
         if isRecent {
           Button("Remove from Recents") { recents.remove(folder) }
+        }
+        if let project {
+          Button("Remove from List") { withAnimation(.kit) { _ = removed.ids.insert(project) } }
         }
       }
   }
@@ -125,6 +126,7 @@ struct WelcomeScreen: View {
       if let folder = group.localURL {
         Button("Show in \(KitDesktop.fileManagerName)") { KitDesktop.reveal([folder]) }
       }
+      Button("Remove Group from List") { withAnimation(.kit) { _ = removed.ids.insert(group.id) } }
     }
   }
 }
@@ -140,4 +142,39 @@ struct CollapsedGroups: RawRepresentable {
   }
 
   var rawValue: String { ids.sorted().joined(separator: "\n") }
+}
+
+/// The vault's projects and groups removed from Code's lists (Projects in the sidebar and on Welcome), kept as
+/// `CollapsedGroups` under `key`: Code's own, Git and the other apps keep them. A group's projects go with it, and
+/// opening a removed project brings it back (`restore`).
+enum RemovedProjects {
+  static let key = "projects.removed"
+
+  /// Brings back the project at `folder` and the groups it is in, in any account's vault, if they were removed.
+  static func restore(_ folder: URL) {
+    let defaults = UserDefaults.standard
+    var removed = CollapsedGroups(rawValue: defaults.string(forKey: key) ?? "")
+    guard !removed.ids.isEmpty else { return }
+    let path = folder.standardizedFileURL.path
+    let vaults = Vaults.shared
+    for vault in (vaults.accounts + [.personal]).compactMap(vaults.vault(for:)) {
+      guard let project = vault.localProjects.first(where: {
+          $0.localPath.map { URL(fileURLWithPath: $0).standardizedFileURL.path } == path
+        }) else { continue }
+      removed.ids.subtract([project.id] + vault.localProjectTree.ancestors(of: project.id).map(\.id))
+    }
+    defaults.set(removed.rawValue, forKey: key)
+  }
+}
+
+extension Vault {
+  /// The projects the vault shares whose folders are on this Mac, in their groups, without those removed from Code's
+  /// lists (`removed`: project and group ids, `RemovedProjects`).
+  func codeProjectTree(removed: Set<String>) -> VaultProjectTree {
+    let tree = localProjectTree
+    return tree.filter { project in
+      guard project.localPath.map({ FileManager.default.fileExists(atPath: $0) }) ?? false else { return false }
+      return !removed.contains(project.id) && !tree.ancestors(of: project.id).contains { removed.contains($0.id) }
+    }
+  }
 }
