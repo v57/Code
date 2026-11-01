@@ -6,7 +6,8 @@ import VaultKit
 /// Where else this project's Build, Test and Clean can run: the user's other devices that have this project
 /// (`Vault.otherPlaces`), reached over SSH through one of the user's Hubs at their Hub Network address, or straight to
 /// a Mac that lets the user's devices in (Settings ▸ Remote), in the project's folder there (`path.<device>`), with the
-/// host key the device signed or published. The vault is the window's account's; the hosts are Personal's.
+/// host key the device signed or published, trying the device's other addresses when one doesn't answer. The vault is
+/// the window's account's; the hosts are Personal's.
 enum RemoteDestinations {
   @MainActor static func targets(for root: URL, vault: Vault) -> [SSHExecutor.Target] {
     let here = root.standardizedFileURL.path
@@ -18,7 +19,8 @@ enum RemoteDestinations {
     return vault.otherPlaces(of: project).compactMap { place in
       guard let host = place.host else { return nil }
       return SSHExecutor.Target(
-        id: host.id, name: host.displayName, host: host.hostname, port: host.port, user: host.user,
+        id: host.id, name: host.displayName, host: host.hostname, fallbackHosts: place.fallbackAddresses, port: host.port,
+        user: host.user,
         hostKey: host.hub?.hostKey ?? host.device?.hostKey, directory: place.path,
         detail: host.isViaHub ? "via Hub" : "SSH", signing: signing(of: host))
     }

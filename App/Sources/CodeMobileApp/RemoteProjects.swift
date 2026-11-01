@@ -36,7 +36,8 @@ struct RemoteProject: Identifiable, Hashable {
     vault.otherPlaces(of: project).compactMap { place in
       guard let host = place.host else { return nil }
       return SSHExecutor.Target(
-        id: host.id, name: host.displayName, host: host.hostname, port: host.port, user: host.user,
+        id: host.id, name: host.displayName, host: host.hostname, fallbackHosts: place.fallbackAddresses, port: host.port,
+        user: host.user,
         hostKey: host.hub?.hostKey ?? host.device?.hostKey, directory: place.path,
         detail: host.isViaHub ? "via Hub" : "SSH", signing: signing(of: host))
     }

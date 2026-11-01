@@ -74,6 +74,9 @@ public struct SSHExecutor: ActionExecutor {
     public var id: String
     public var name: String
     public var host: String
+    /// The machine's other addresses, tried in order when `host` doesn't answer (its Bonjour name, its Hub Network
+    /// address), by the in-process client. Optional so targets saved before it still decode.
+    public var fallbackHosts: [String]?
     public var port: Int
     public var user: String
     /// The OpenSSH host key line to pin ("ecdsa-sha2-nistp256 AAAA…"), when one is known for sure.
@@ -86,12 +89,13 @@ public struct SSHExecutor: ActionExecutor {
     public var signing: RemoteSigning?
 
     public init(
-      id: String, name: String, host: String, port: Int = 22, user: String = "", hostKey: String? = nil,
-      directory: String, detail: String? = nil, signing: RemoteSigning? = nil
+      id: String, name: String, host: String, fallbackHosts: [String] = [], port: Int = 22, user: String = "",
+      hostKey: String? = nil, directory: String, detail: String? = nil, signing: RemoteSigning? = nil
     ) {
       self.id = id
       self.name = name
       self.host = host
+      self.fallbackHosts = fallbackHosts.isEmpty ? nil : fallbackHosts
       self.port = port
       self.user = user
       self.hostKey = hostKey
@@ -143,6 +147,7 @@ public struct SSHExecutor: ActionExecutor {
   public func server(from login: SSHServer) -> SSHServer {
     var server = login
     server.host = target.host
+    server.fallbackHosts = target.fallbackHosts ?? []
     server.port = target.port
     if !target.user.isEmpty { server.user = target.user }
     if let hostKey = target.hostKey, let fingerprint = Self.fingerprint(ofHostKey: hostKey) {
