@@ -101,6 +101,9 @@ struct EditorArea: View {
       .fixedSize(horizontal: false, vertical: true)
       KeyHints([("⇧⌘O", "Open Quickly"), ("⌘N", "New File"), ("⌘O", "Open Folder")])
     }
-    .frame(maxWidth: .infinity, maxHeight: .infinity)
+    // No floor of its own: the split view sizes the window's content to its columns' minimums, which it measures at
+    // the column's narrowest width, where the fixed-size name and message wrap to many lines (a long project name
+    // made the column taller than the window: everything sat 17pt too high and the sidebar's bottom bar was cut off).
+    .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
   }
 }
