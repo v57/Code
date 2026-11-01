@@ -1,5 +1,6 @@
 import CodeKit
 import Foundation
+import VaultKit
 // Dev's screenshot capture.
 import DevScreenshots
 #if os(Windows)
@@ -13,6 +14,7 @@ import DevScreenshots
 ///   --screenshot-demo        the demo
 ///   --open <folder>          opens a project in the first window (without one, the window shows Welcome)
 ///   --recent <folder>        a recent project for the Welcome window (repeatable)
+///   --add-folder <folder>    adds the Git repositories in the folder to the demo's vault, in groups as Git adds them
 ///   --do <command>           a DebugAutomation command once the project is up (repeatable, in order):
 ///                            `open:<path>:<line>`, `quickopen:<query>`, `find:<query>`, `console:on`, …
 ///
@@ -40,9 +42,11 @@ enum ScreenshotDemo {
     return defaults
   }()
 
-  /// Before anything opens the vault: a fresh, empty store of the demo's own. Then the screenshot capture, which
-  /// waits for each scene to load.
+  /// Before anything opens the vault: a fresh store of the demo's own (with the `--add-folder` projects), and secrets
+  /// and keys in memory, so the demo never touches the keychain. Then the screenshot capture, which waits for each
+  /// scene to load.
   @MainActor static func prepare() {
+    VaultSecrets.useInMemoryStore()
     let vault = FileManager.default.temporaryDirectory.appendingPathComponent("CodeScreenshotDemo/Vault")
     try? FileManager.default.removeItem(at: vault)
     try? FileManager.default.createDirectory(at: vault, withIntermediateDirectories: true)
@@ -53,6 +57,14 @@ enum ScreenshotDemo {
     #else
       setenv("VAULT_DIRECTORY", vault.path, 1)
     #endif
+    if let store = Vaults.shared.vault(for: .personal)?.store {
+      for folder in values("--add-folder") {
+        let root = URL(fileURLWithPath: folder, isDirectory: true)
+        let found = VaultProjectDiscovery.scan(root)
+        for repository in found.repositories { _ = try? store.addProject(path: repository.path) }
+        try? store.arrangeProjects(found.repositories.map(\.path), roots: [root.path])
+      }
+    }
     #if DEBUG
       Screenshots.prepare(waitsForReady: true) { scene in await show(scene.arguments) }
     #endif

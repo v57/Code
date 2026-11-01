@@ -90,25 +90,50 @@ struct SidebarView: View {
   // MARK: - Project
 
   @ViewBuilder private var projectContent: some View {
-    if !model.isChoosingVisibleFiles { ProjectsSection() }
-    if model.isChoosingVisibleFiles { ChooseVisibleFilesCard() }
+    if model.isChoosingVisibleFiles {
+      ChooseVisibleFilesCard()
+      treeSection
+    } else {
+      // The shared projects list, the open project's tree in its section (folded away until it's wanted); a folder
+      // that isn't a vault project keeps its own section under the list.
+      ProjectsSection(meta: projectMeta) {
+        fileTree
+      } accessory: {
+        projectMenuButton
+      } fallback: {
+        treeSection
+      }
+      PackageDependenciesSection()
+    }
+  }
+
+  /// The project's tree on a card of its own, named after the project: a folder outside the vault's projects, or
+  /// while choosing visible files.
+  private var treeSection: some View {
     KitSection(
       workspace.name, meta: projectMeta, systemImage: "folder", hue: .red, isExpanded: $isRootExpanded
     ) {
-      KitOutline(treeItems, children: \.children, expanded: expandedFolders) { item in
-        FileTreeRow(node: item.node)
-      }
+      fileTree
     } accessory: {
-      Button("Project", systemImage: "ellipsis") { model.openMenu = .project }
-        .labelStyle(.iconOnly)
-        .buttonStyle(.kitIcon)
-        .controlSize(.small)
-        .kitMenu(isPresented: model.isPresented(.project)) { FileMenu(url: nil) }
-        .kitHelp("Project")
+      projectMenuButton
     }
     // A long tree keeps the project's title in view while its rows scroll past.
     .kitSticky()
-    if !model.isChoosingVisibleFiles { PackageDependenciesSection() }
+  }
+
+  private var fileTree: some View {
+    KitOutline(treeItems, children: \.children, expanded: expandedFolders) { item in
+      FileTreeRow(node: item.node)
+    }
+  }
+
+  private var projectMenuButton: some View {
+    Button("Project", systemImage: "ellipsis") { model.openMenu = .project }
+      .labelStyle(.iconOnly)
+      .buttonStyle(.kitIcon)
+      .controlSize(.small)
+      .kitMenu(isPresented: model.isPresented(.project)) { FileMenu(url: nil) }
+      .kitHelp("Project")
   }
 
   /// "Swift package · ~/Developer": the project's kind (from its scheme) and where it is.
