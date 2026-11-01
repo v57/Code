@@ -136,7 +136,7 @@ struct ProjectsWelcome: View {
       ForEach(projects) { project in
         RecentItem(
           project.name, subtitle: project.targets.map(\.name).joined(separator: ", "),
-          image: project.icon.flatMap(Image.init(data:))
+          imageData: project.icon
         ) { selection = project.id }
       }
     }
@@ -205,10 +205,6 @@ struct ProjectTile: View {
   var size: CGFloat = 32
 
   var body: some View {
-    if let icon = project.icon.flatMap(Image.init(data:)) {
-      Avatar(name: project.name, image: icon, kind: .thing, size: size)
-    } else {
-      Avatar(name: project.name, kind: .thing, size: size)
-    }
+    Avatar(name: project.name, imageData: project.icon, kind: .thing, size: size)
   }
 }

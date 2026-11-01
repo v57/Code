@@ -93,8 +93,8 @@ struct WelcomeScreen: View {
 
   private func item(_ folder: URL, isRecent: Bool, project: String? = nil) -> some View {
     let path = folder.standardizedFileURL.path
-    let icon = vault.localProjects.first { $0.localPath == path }?.icon.flatMap(Image.init(data:))
-    return RecentItem(folder.lastPathComponent, subtitle: folder.abbreviatedPath, image: icon) { open(folder) }
+    let icon = vault.localProjects.first { $0.localPath == path }?.icon
+    return RecentItem(folder.lastPathComponent, subtitle: folder.abbreviatedPath, imageData: icon) { open(folder) }
       .kitContextMenu {
         Button("Show in \(KitDesktop.fileManagerName)") { KitDesktop.reveal([folder]) }
         if isRecent {
