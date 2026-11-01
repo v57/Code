@@ -7,8 +7,9 @@ import VaultUI
 /// version, Open…, and the recent projects (click selects, double-click or Return opens) or the projects the v57 apps
 /// share (added in Git and the others, through the vault) in the vault's groups, live as they change. A group opens
 /// and closes from its chevron, a double click or Return; which are closed is Code's own. A folder can also be
-/// dropped on the window. The account picker heads the actions (with more than one account): both lists are the
-/// window's account's.
+/// dropped on the window: a project opens, a folder of repositories (`~/Developer`) offers them as projects instead,
+/// with its databases and other folders (VaultUI's `VaultImportSheet`), or opens as one project from the sheet. The
+/// account picker heads the actions (with more than one account): both lists are the window's account's.
 struct WelcomeScreen: View {
   /// The window's account's vault.
   let vault: Vault
@@ -21,6 +22,9 @@ struct WelcomeScreen: View {
   @AppStorage("welcome.collapsedGroups") private var collapsedGroups = KitIDSet()
   /// The projects and groups removed from Code's lists (vault ids).
   @AppStorage(RemovedProjects.key) private var removed = KitIDSet()
+  /// What a dropped folder of repositories holds that the vault doesn't have, and the folder.
+  @State private var importOffer: VaultImportOffer?
+  @State private var dropped: URL?
 
   /// The projects the vault shares that are on this Mac, in their groups.
   private var projectTree: VaultProjectTree { vault.codeProjectTree(removed: removed.ids) }
@@ -34,7 +38,7 @@ struct WelcomeScreen: View {
       source: $source,
       onDrop: { urls in
         guard let url = urls.first else { return false }
-        open(url)
+        Task { await drop(url) }
         return true
       }
     ) {
@@ -61,6 +65,30 @@ struct WelcomeScreen: View {
     }
     .kitPane(.content)
     .navigationTitle("Code")
+    #if DEBUG && os(macOS)
+      .onReceive(NotificationCenter.default.publisher(for: DebugAutomation.welcomeDrop)) { note in
+        if let url = note.object as? URL { Task { await drop(url) } }
+      }
+    #endif
+    .kitSheet(item: $importOffer) { offer in
+      VaultImportSheet(
+        offer, vault: vault, app: "Code",
+        alternative: dropped.map { folder in .init("Open as One Project") { open(folder) } }
+      ) { _ in
+        // The new projects are in the Projects list, in the groups the drop made.
+        withAnimation(.kit) { source = .projects }
+      }
+    }
+  }
+
+  /// Opens a dropped project; a folder that holds repositories without being one is offered as projects instead
+  /// (and opens when there is nothing to offer).
+  private func drop(_ url: URL) async {
+    guard let found = await VaultProjectDiscovery.scan([url]).first else { return }
+    let holdsRepositories = !found.repositories.isEmpty && found.repositories != [found.root]
+    guard holdsRepositories, let offer = VaultImportOffer([found], store: vault.store) else { return open(url) }
+    dropped = url
+    importOffer = offer
   }
 
   private func item(_ folder: URL, isRecent: Bool, project: String? = nil) -> some View {

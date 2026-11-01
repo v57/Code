@@ -27,12 +27,15 @@
   /// `folder:<relative path>:on|off` (expands or collapses a tree folder),
   /// `focus` (the editor takes the keyboard), `menu:project|scheme|destination|off` (opens a kit menu),
   /// `navigator:on|off`, `size:<width>x<height>` (the window's content size), `newfile[:folder]` (New File or
-  /// New Folder's prompt), `rename:<path>` (renames a navigator row in place).
+  /// New Folder's prompt), `rename:<path>` (renames a navigator row in place), `drop:<path>` (Welcome takes the
+  /// folder as if it was dropped on it).
   ///
   /// Launched with `-DebugAutomationName <name>`, the app listens for that
   /// name instead, so other Debug instances ignore the commands.
   @MainActor enum DebugAutomation {
     private static var observer: NSObjectProtocol?
+    /// `drop:<path>`: Welcome takes the folder as if it was dropped on it (`WelcomeScreen`).
+    static let welcomeDrop = Notification.Name("dev.v57.code.debug.welcomeDrop")
 
     static func start() {
       guard observer == nil else { return }
@@ -50,6 +53,11 @@
         let name = String(command.dropFirst("window:".count))
         AppState.shared.debugModel =
           AppState.shared.debugModels.compactMap(\.model).first { $0.workspace.name == name }
+        return
+      }
+      if command.hasPrefix("drop:") {
+        NotificationCenter.default.post(
+          name: welcomeDrop, object: URL(fileURLWithPath: String(command.dropFirst("drop:".count))))
         return
       }
       guard let model = AppState.shared.debugModel else { return }
