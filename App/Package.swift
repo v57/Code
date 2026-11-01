@@ -45,6 +45,7 @@ let package = Package(
         .product(name: "CodeKit", package: kits), .product(name: "CodeActionsUI", package: kits),
         .product(name: "ComponentKit", package: "Component"), .product(name: "VaultKit", package: "Vault"),
         .product(name: "VaultUI", package: "Vault"), .product(name: "UpdateKit", package: "UpdateKit"),
+        .product(name: "SSHKit", package: "SSH"),
       ],
       swiftSettings: appSettings),
     .target(

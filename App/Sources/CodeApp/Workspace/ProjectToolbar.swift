@@ -129,7 +129,7 @@ private struct ProjectTitle: View {
 /// The issue counts (they open the issue list), then "Scheme › Destination": two of the kit's menus in one tool group.
 private struct SchemeTools: View {
   let model: WindowModel
-  /// The window's account's vault, whose Hub devices are the remote destinations.
+  /// The window's account's vault, whose projects on the user's other devices are the remote destinations.
   @Environment(\.vault) private var vault
 
   private var remoteTargets: [SSHExecutor.Target] {
@@ -187,11 +187,18 @@ private struct SchemeTools: View {
         .kitHelp("Choose where to run")
       }
     }
-    // Other machines that have this project: the devices on the account's Hubs, kept current as the vault changes.
+    // Other machines that have this project: the user's devices via Hub or that let them in, kept current as the vault
+    // changes.
     .onChange(of: remoteTargets, initial: true) { _, targets in
       actions.remoteTargets = targets
       actions.remoteLoginPassword = { [vault] target in
         vault.flatMap { RemoteDestinations.loginPassword(for: target, vault: $0) }
+      }
+      actions.remoteLogin = { [vault] target in
+        try vault.flatMap { try RemoteDestinations.login(for: target, vault: $0) }
+      }
+      actions.didMeetHostKey = { [vault] target, fingerprint in
+        vault.map { RemoteDestinations.trust(fingerprint, for: target, vault: $0) }
       }
     }
   }
