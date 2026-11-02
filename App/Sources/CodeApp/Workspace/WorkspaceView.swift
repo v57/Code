@@ -18,7 +18,7 @@ struct WorkspaceView: View {
     @Bindable var model = model
     NavigationSplitView(columnVisibility: navigatorVisibility) {
       SidebarView()
-        .navigationSplitViewColumnWidth(min: 200, ideal: KitMetrics.sidebarWidth, max: 420)
+        .kitSidebarColumn()
         .toolbar(removing: .sidebarToggle)
     } detail: {
       EditorArea()

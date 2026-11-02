@@ -97,7 +97,7 @@ struct ProjectsView: View {
     NavigationSplitView(columnVisibility: $columnVisibility, preferredCompactColumn: $compactColumn) {
       sidebar
         .toolbar(removing: .sidebarToggle)
-        .navigationSplitViewColumnWidth(min: 260, ideal: 300, max: 360)
+        .kitSidebarColumn()
     } detail: {
       NavigationStack {
         if let project = projects.first(where: { $0.id == selection }) {
