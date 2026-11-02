@@ -9,7 +9,9 @@ import VaultUI
 /// files are browsed and read over SFTP.
 public struct CodeApp: App {
   public init() {
-    // This device's key, so a Mac can let it in (the Vault app's SSH from your devices); devices are Personal's.
+    // The devices and their projects sync on their own, and this device's key goes out, so a Mac can let it in (the
+    // Vault app's SSH from your devices); devices are Personal's.
+    Vault.shared.startSync()
     try? Vault.shared.store?.publishDeviceKey()
   }
 
