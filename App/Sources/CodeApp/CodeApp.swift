@@ -21,6 +21,8 @@ public struct CodeApp: App {
     // The shared projects get their app icons, for this app's lists and the other v57 apps': every account's
     // (a window looks again at the account it shows, so one made later gets them too).
     if !ScreenshotDemo.isOn {
+      // The devices and their projects sync on their own, whichever v57 apps this Mac runs.
+      Vault.shared.startSync()
       let vaults = Vaults.shared
       for account in vaults.allAccounts {
         if let vault = vaults.vault(for: account) { ProjectAccounts.findIcons(in: vault) }
