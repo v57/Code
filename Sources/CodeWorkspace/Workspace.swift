@@ -437,15 +437,21 @@ import Observation
     if manifestChanged { reloadDependencies(after: .seconds(1)) }
   }
 
+  /// The container (`ProjectContainer.fileName`) the dependencies are those of: the one the project builds from.
+  public var dependencyContainer: String? {
+    didSet { if dependencyContainer != oldValue { reloadDependencies() } }
+  }
+
   /// Finds the project's package dependencies again, off the main thread
   /// (after `delay`, so an install writing many manifests scans once).
   public func reloadDependencies(after delay: Duration = .zero) {
     dependencyScan?.cancel()
     let root = root
+    let container = dependencyContainer
     dependencyScan = Task { [weak self] in
       if delay > .zero { try? await Task.sleep(for: delay) }
       guard !Task.isCancelled else { return }
-      let found = await Task.detached(priority: .utility) { DependencyScanner.scan(root) }.value
+      let found = await Task.detached(priority: .utility) { DependencyScanner.scan(root, container: container) }.value
       guard !Task.isCancelled, let self else { return }
       if self.checkoutsWatcher == nil, found.contains(where: { $0.ecosystem == .swift }) {
         self.watchPackageCheckouts()

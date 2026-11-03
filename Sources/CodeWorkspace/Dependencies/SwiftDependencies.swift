@@ -1,35 +1,45 @@
+import CodeFolders
 import Foundation
 
 extension DependencyScanner {
-  /// Swift packages, as Xcode lists them: local packages a Package.swift
-  /// or an Xcode project refers to, and every package in the
-  /// Package.resolved files (dependencies of dependencies too). Checkouts
-  /// are in `.build/checkouts` (SwiftPM) or in the project's DerivedData
-  /// (Xcode).
+  /// Swift packages of the folder's container, as Xcode lists them: the local packages it refers to, and every package
+  /// in its Package.resolved (dependencies of dependencies too). A workspace's local packages override the remote ones
+  /// of the same name its projects ask for, which is what a `-Local` workspace is for; it has no Package.resolved of its
+  /// own until Xcode resolved it there, so its projects' stand in. Checkouts are in `.build/checkouts` (SwiftPM) or in the
+  /// project's DerivedData (Xcode).
   static func swiftPackages(_ folder: DependencyFolder) -> [PackageDependency] {
-    let entries = folder.children(folder.root)
-    let projects = entries.filter { $0.hasSuffix(".xcodeproj") }
-    let workspaces = entries.filter { $0.hasSuffix(".xcworkspace") }
-    let hasManifest = entries.contains("Package.swift")
-    guard hasManifest || !projects.isEmpty || !workspaces.isEmpty else { return [] }
+    let containers = ProjectContainer.list(entries: folder.children(folder.root), in: folder.root)
+    guard let container = ProjectContainer.effective(picked: folder.container, in: containers) else { return [] }
+    let name = container.fileName
 
-    var found: [PackageDependency] = []
     var localPaths: [String] = []
-    if hasManifest, let manifest = folder.read("Package.swift") {
-      localPaths += localPackagePaths(inManifest: manifest)
-    }
     var resolvedFiles: [URL] = []
-    if hasManifest { resolvedFiles.append(folder.url("Package.resolved")) }
-    for project in projects {
+    func addProject(_ project: String) {
       if let text = folder.read(project + "/project.pbxproj") {
-        localPaths += localPackagePaths(inProject: text)
+        let base = (project as NSString).deletingLastPathComponent
+        localPaths += localPackagePaths(inProject: text).map { base.isEmpty ? $0 : base + "/" + $0 }
       }
       resolvedFiles.append(folder.url(project + "/project.xcworkspace/xcshareddata/swiftpm/Package.resolved"))
     }
-    for workspace in workspaces {
-      resolvedFiles.append(folder.url(workspace + "/xcshareddata/swiftpm/Package.resolved"))
+    switch container.kind {
+    case .package:
+      if let manifest = folder.read(name) { localPaths += localPackagePaths(inManifest: manifest) }
+      resolvedFiles.append(folder.url("Package.resolved"))
+    case .project:
+      addProject(name)
+    case .workspace:
+      for reference in workspaceReferences(folder.read(name + "/contents.xcworkspacedata") ?? "") {
+        if reference.hasSuffix(".xcodeproj") {
+          addProject(reference)
+        } else if DependencyFolder.read(folder.resolve(reference).appendingPathComponent("Package.swift")) != nil {
+          localPaths.append(reference)
+        }
+      }
+      let own = folder.url(name + "/xcshareddata/swiftpm/Package.resolved")
+      if DependencyFolder.read(own) != nil { resolvedFiles = [own] }
     }
 
+    var found: [PackageDependency] = []
     for path in localPaths {
       let location = folder.resolve(path)
       let manifest = DependencyFolder.read(location.appendingPathComponent("Package.swift"))
@@ -38,16 +48,18 @@ extension DependencyScanner {
         PackageDependency(
           name: name, isLocal: true, ecosystem: .swift, location: folder.folder(location), source: path))
     }
+    let overridden = Set(found.flatMap { [$0.name, URL(fileURLWithPath: $0.source ?? "").lastPathComponent] }.map { $0.lowercased() })
 
     let checkouts =
       [folder.url(".build/checkouts")]
       + derivedDataFolders(
-        folder, for: [folder.root] + (projects + workspaces).map(folder.url)
+        folder, for: [folder.root, folder.url(name)]
       ).map { $0.appendingPathComponent("SourcePackages/checkouts") }
     for file in resolvedFiles {
       guard let text = DependencyFolder.read(file) else { continue }
       for pin in resolvedPins(text) {
         let directory = checkoutName(pin.location)
+        guard !overridden.contains(directory.lowercased()) else { continue }
         let location = checkouts.lazy.map { $0.appendingPathComponent(directory) }.first(where: folder.isDirectory)
         found.append(
           PackageDependency(
@@ -55,6 +67,11 @@ extension DependencyScanner {
       }
     }
     return found
+  }
+
+  /// What a workspace lists, as paths from its folder (absolute ones stay absolute): its projects and packages.
+  static func workspaceReferences(_ contents: String) -> [String] {
+    contents.matches(#"location = "(group|container|absolute):([^"]*)""#).map { $0[1] }
   }
 
   /// `.package(path: "../X")` and `.package(name: "X", path: "../X")`,

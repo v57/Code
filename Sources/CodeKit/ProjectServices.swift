@@ -110,6 +110,11 @@
       actions = ActionController(root: workspace.root)
       languageServers = LanguageServerManager(workspace: workspace.root)
       actions.excludedNames = Self.unscannedFolders
+      workspace.dependencyContainer = actions.pickedContainer(in: workspace.root)
+      actions.didSelectContainer = { [weak workspace] container in
+        // The navigator's Package Dependencies are those of the root's container.
+        if container.directory.path == workspace?.root.path { workspace?.dependencyContainer = container.fileName }
+      }
       breakpointsActive = !defaults.bool(forKey: key("breakpointsInactive"))
       loadBreakpoints()
       applySettings(previous: nil)

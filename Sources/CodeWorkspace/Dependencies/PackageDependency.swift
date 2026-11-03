@@ -70,12 +70,14 @@ public enum DependencyScanner {
     manifestNames.contains(name) || name.hasSuffix(".csproj") || name.hasSuffix(".fsproj")
   }
 
-  /// The dependencies of the project at `root`, sorted by name.
+  /// The dependencies of the project at `root`, sorted by name. Its Swift packages are those of `container`, the
+  /// `ProjectContainer.fileName` the project builds from (the default one when nil or gone).
   public static func scan(
-    _ root: URL, home: URL = URL(fileURLWithPath: NSHomeDirectory()),
+    _ root: URL, container: String? = nil, home: URL = URL(fileURLWithPath: NSHomeDirectory()),
     environment: [String: String] = ProcessInfo.processInfo.environment
   ) -> [PackageDependency] {
-    let folder = DependencyFolder(root: root.standardizedFileURL, home: home, environment: environment)
+    let folder = DependencyFolder(
+      root: root.standardizedFileURL, container: container, home: home, environment: environment)
     var found: [PackageDependency] = []
     found += swiftPackages(folder)
     found += nodePackages(folder)
@@ -89,8 +91,7 @@ public enum DependencyScanner {
     found += elixirPackages(folder)
     found += nugetPackages(folder)
     found += javaPackages(folder)
-    // The same package from two manifests (Package.swift and an Xcode
-    // project) counts once.
+    // The same package from two manifests counts once.
     var seen = Set<String>()
     return found.filter { seen.insert($0.id).inserted }
       .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
@@ -100,6 +101,8 @@ public enum DependencyScanner {
 /// A project folder and the places package managers keep downloads.
 struct DependencyFolder {
   let root: URL
+  /// The container picked for the root's Swift packages.
+  var container: String?
   let home: URL
   let environment: [String: String]
 

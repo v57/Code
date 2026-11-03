@@ -26,8 +26,8 @@ private final class Fixture {
     try contents.write(to: url, atomically: true, encoding: .utf8)
   }
 
-  func scan(_ environment: [String: String] = [:]) -> [PackageDependency] {
-    DependencyScanner.scan(root, home: home, environment: environment)
+  func scan(_ environment: [String: String] = [:], container: String? = nil) -> [PackageDependency] {
+    DependencyScanner.scan(root, container: container, home: home, environment: environment)
   }
 }
 
@@ -46,22 +46,66 @@ private func summary(_ dependencies: [PackageDependency]) -> [String] {
       """#)
     try fixture.file("../Kit/Package.swift", #"let package = Package(\#n  name: "KitPackage")"#)
     try fixture.file(
-      "App.xcodeproj/project.pbxproj",
-      """
-      A /* XCLocalSwiftPackageReference "." */ = {
-        isa = XCLocalSwiftPackageReference;
-        relativePath = .;
-      };
-      """)
-    try fixture.file(
       "Package.resolved",
       #"{"pins": [{"identity": "swift-markdown", "location": "https://github.com/apple/swift-markdown.git", "state": {"version": "0.8.0"}}, {"identity": "dev", "location": "https://example.com/Dev", "state": {"branch": "main", "revision": "abcdef123"}}], "version": 3}"#
     )
     try fixture.file(".build/checkouts/swift-markdown/Package.swift")
     let found = fixture.scan()
-    #expect(summary(found) == ["App local", "Dev main", "KitPackage local", "swift-markdown 0.8.0"])
+    #expect(summary(found) == ["Dev main", "KitPackage local", "swift-markdown 0.8.0"])
     #expect(found.first { $0.name == "swift-markdown" }?.location?.lastPathComponent == "swift-markdown")
     #expect(found.first { $0.name == "Dev" }?.location == nil)
+  }
+
+  /// A folder like Markdown's and Vault's: a -Local workspace, the project it holds and a package.
+  private func containerFixture() throws -> Fixture {
+    let fixture = try Fixture()
+    try fixture.file("Package.swift", #"let package = Package(name: "App", dependencies: [.package(path: "../PackageOnly")])"#)
+    try fixture.file("../PackageOnly/Package.swift", #"let package = Package(name: "PackageOnly")"#)
+    try fixture.file("../Kit/Package.swift", #"let package = Package(name: "Kit")"#)
+    try fixture.file(
+      "Package.resolved",
+      #"{"pins": [{"location": "https://github.com/v57/FromPackage.git", "state": {"branch": "main"}}], "version": 3}"#)
+    try fixture.file(
+      "App.xcodeproj/project.pbxproj",
+      """
+      A /* XCLocalSwiftPackageReference "Local" */ = {
+        isa = XCLocalSwiftPackageReference;
+        relativePath = Local;
+      };
+      """)
+    try fixture.file("Local/Package.swift", #"let package = Package(name: "Local")"#)
+    try fixture.file(
+      "App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved",
+      #"{"pins": [{"location": "https://github.com/v57/Kit.git", "state": {"branch": "main"}}, {"location": "https://github.com/v57/Other.git", "state": {"branch": "main"}}], "version": 3}"#)
+    try fixture.file(
+      "App-Local.xcworkspace/contents.xcworkspacedata",
+      """
+      <Workspace version = "1.0">
+         <FileRef location = "group:App.xcodeproj"></FileRef>
+         <FileRef location = "group:../Kit"></FileRef>
+         <FileRef location = "group:../NotAPackage"></FileRef>
+      </Workspace>
+      """)
+    return fixture
+  }
+
+  @Test func dependenciesFollowTheContainer() throws {
+    let fixture = try containerFixture()
+    // By default the workspace: its local packages, its project's, and no remote copy of what it overrides.
+    #expect(summary(fixture.scan()) == ["Kit local", "Local local", "Other main"])
+    #expect(summary(fixture.scan(container: "App-Local.xcworkspace")) == ["Kit local", "Local local", "Other main"])
+    #expect(summary(fixture.scan(container: "App.xcodeproj")) == ["Kit main", "Local local", "Other main"])
+    #expect(summary(fixture.scan(container: "Package.swift")) == ["FromPackage main", "PackageOnly local"])
+    // A pick that's gone falls back to the default.
+    #expect(summary(fixture.scan(container: "Gone.xcodeproj")) == ["Kit local", "Local local", "Other main"])
+  }
+
+  @Test func aWorkspacesOwnResolvedFileWins() throws {
+    let fixture = try containerFixture()
+    try fixture.file(
+      "App-Local.xcworkspace/xcshareddata/swiftpm/Package.resolved",
+      #"{"pins": [{"location": "https://github.com/v57/Resolved.git", "state": {"branch": "main"}}], "version": 3}"#)
+    #expect(summary(fixture.scan()) == ["Kit local", "Local local", "Resolved main"])
   }
 
   @Test func xcodeCheckoutsInDerivedData() throws {
