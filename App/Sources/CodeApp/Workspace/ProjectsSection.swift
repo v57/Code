@@ -48,7 +48,18 @@ struct ProjectsSection<FileTree: View, Accessory: View, Fallback: View>: View {
     }
     .title("Projects", meta: [account].compactMap { $0 })
     .projectHeader(meta: { _ in meta }, accessory: { _ in accessory() })
+    .trailing { project in
+      if let folder = project.localURL, AppState.shared.isRunningInBackground(folder) {
+        Image(systemName: "play.fill")
+          .font(.caption2)
+          .foregroundStyle(Hue.green.fill)
+          .kitHelp("Running", meta: "Show the project to see or stop it")
+      }
+    }
     .rowMenu { project in
+      if let folder = project.localURL, AppState.shared.isRunningInBackground(folder) {
+        Button("Stop", systemImage: "stop.fill") { AppState.shared.stopBackgroundProject(folder) }
+      }
       if let folder = project.localURL {
         Button("Open in New Window", systemImage: "macwindow.badge.plus") { AppState.shared.open(folder) }
           .disabled(folder.standardizedFileURL == root)

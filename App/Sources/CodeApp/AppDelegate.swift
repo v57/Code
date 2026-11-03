@@ -25,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
   func applicationWillTerminate(_ notification: Notification) {
     AppState.shared.flushAll()
+    AppState.shared.stopBackgroundProjects()
   }
 
   func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {

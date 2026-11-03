@@ -47,7 +47,8 @@ struct WorkspaceWindow: View {
           WorkspaceView()
             .environment(model)
             .environment(model.workspace)
-            // Another project is a new view: the old one's disappearing saves and closes its project.
+            // Another project is a new view: the old one's disappearing saves its project and, unless it still runs
+            // something (`AppState.keepInBackground`), closes it.
             .id(model.workspace.root)
         } else {
           WelcomeScreen(vault: vault) { open($0) }
@@ -145,15 +146,22 @@ struct WorkspaceWindow: View {
       #endif
       return
     }
-    // The project this window showed until now (the Projects card switched it).
-    if let previous = model?.workspace { AppState.shared.unregister(previous) }
+    // The project this window showed until now (the Projects card switched it): what it runs goes on, to see and
+    // stop when it is shown again.
+    if let previous = model {
+      AppState.shared.unregister(previous.workspace)
+      if previous.services.actions.isRunning { AppState.shared.keepInBackground(previous) }
+    }
     let account = ProjectAccounts.account(of: root, preferring: accountID)
     modelAccountID = account
     accountID = account
-    let workspace = Workspace(
-      root: root, hidesIgnoredFiles: EditorSettings.storedHidesIgnoredFiles,
-      defaults: ScreenshotDemo.isOn ? ScreenshotDemo.defaults : .standard)
-    let model = WindowModel(workspace: workspace)
+    let model =
+      AppState.shared.takeBackgroundProject(root)
+      ?? WindowModel(
+        workspace: Workspace(
+          root: root, hidesIgnoredFiles: EditorSettings.storedHidesIgnoredFiles,
+          defaults: ScreenshotDemo.isOn ? ScreenshotDemo.defaults : .standard))
+    let workspace = model.workspace
     model.switchProject = { [self] in switchProject(to: $0) }
     AppState.shared.register(model, window: window)
     AppState.shared.recents.add(root)

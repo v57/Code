@@ -22,6 +22,8 @@ import SwiftUI
   /// Files to open once their folder's window is up, by folder.
   @ObservationIgnored private var pendingFiles: [URL: [URL]] = [:]
   @ObservationIgnored private var workspaces: [ObjectIdentifier: WeakWorkspace] = [:]
+  /// Projects no window shows that still run something, by folder.
+  private var backgroundProjects: [URL: WindowModel] = [:]
   /// The windows of documents opened in their own window, by document.
   @ObservationIgnored private var detachedWindows: [UUID: WindowReference] = [:]
 
@@ -111,6 +113,45 @@ import SwiftUI
   /// The model of the window showing `folder`.
   func model(for folder: URL) -> WindowModel? {
     entry(for: folder)?.model
+  }
+
+  // MARK: - Projects running in the background
+
+  /// Keeps a project alive after its window switched to another one while an action runs: its process, log and
+  /// language servers go on until the action ends or a window shows the project again (`takeBackgroundProject`).
+  func keepInBackground(_ model: WindowModel) {
+    model.isInBackground = true
+    backgroundProjects[model.workspace.root] = model
+  }
+
+  /// A kept project, for the window about to show its folder.
+  func takeBackgroundProject(_ folder: URL) -> WindowModel? {
+    let model = backgroundProjects.removeValue(forKey: folder.standardizedFileURL)
+    model?.isInBackground = false
+    return model
+  }
+
+  /// The kept project's action ended with no window showing it: nothing is left to keep it for.
+  func backgroundProjectFinished(_ model: WindowModel) {
+    backgroundProjects.removeValue(forKey: model.workspace.root)
+    model.isInBackground = false
+    model.services.shutDown()
+  }
+
+  /// Whether `folder` runs something with no window showing it (the Projects card marks it).
+  func isRunningInBackground(_ folder: URL) -> Bool {
+    backgroundProjects[folder.standardizedFileURL] != nil
+  }
+
+  /// Stops what `folder` runs in the background (the Projects card's menu); its project then leaves.
+  func stopBackgroundProject(_ folder: URL) {
+    backgroundProjects[folder.standardizedFileURL]?.services.actions.stop()
+  }
+
+  /// Quitting: nothing outlives the app.
+  func stopBackgroundProjects() {
+    for model in backgroundProjects.values { model.services.shutDown() }
+    backgroundProjects = [:]
   }
 
   /// Some window shows a project.

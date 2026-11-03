@@ -81,7 +81,8 @@ struct WorkspaceView: View {
       model.closeConsoleWindow()
       workspace.flushAll()
       workspace.saveSession()
-      model.services.shutDown()
+      // The window switched to another project while this one runs: it goes on without the view.
+      if !model.isInBackground { model.services.shutDown() }
     }
   }
 
