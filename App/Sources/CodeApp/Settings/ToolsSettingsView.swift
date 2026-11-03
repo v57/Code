@@ -16,6 +16,8 @@ extension Notification.Name {
   let installer = ToolInstaller()
   /// Tool commands found on the PATH, by command name.
   private(set) var paths: [String: String] = [:]
+  /// Whether `paths` is known yet, so a row doesn't offer Install for a tool that is only still being looked for.
+  private(set) var hasFoundTools = false
   private(set) var environment: [String: String]?
   private(set) var adb: String?
 
@@ -32,6 +34,7 @@ extension Notification.Name {
         return found
       }.value
       paths = found
+      hasFoundTools = true
       adb = await Task.detached { ShellEnvironment.shared.adb }.value
     }
   }
@@ -189,8 +192,8 @@ struct RunSettingsView: View {
   }
 }
 
-/// A tool's row: what it is for, where it is installed (or Install while it isn't), and its switch; `controls`
-/// adds a line of small controls under it (a formatter's config-file check and custom command).
+/// A tool's row: what it is for and where it is installed, with its switch and `controls`, a line of small controls
+/// under it (a formatter's config-file check and custom command); only Install while it isn't installed.
 private struct ToolRow<Controls: View>: View {
   let name: String
   let detail: String
@@ -206,7 +209,7 @@ private struct ToolRow<Controls: View>: View {
 
   var body: some View {
     Group {
-      if Controls.self == EmptyView.self {
+      if Controls.self == EmptyView.self || path == nil {
         row
       } else {
         row.detail { controls }
@@ -218,15 +221,19 @@ private struct ToolRow<Controls: View>: View {
   private var row: FormRow<some View, EmptyView> {
     let running = tools.installer.running[toolID]
     return FormRow(name, help: running ?? help, systemImage: systemImage, hue: path == nil ? .gray : hue) {
-      HStack(spacing: 8) {
-        if running != nil {
-          LiveIcon(systemImage: "arrow.down", status: .working, size: 20)
-        } else if path == nil, let installCommand {
-          Button("Install") { tools.install(id: toolID, command: installCommand) }
-            .buttonStyle(.kit)
-            .help(installCommand)
-        }
+      if running != nil {
+        LiveIcon(systemImage: "arrow.down", status: .working, size: 20)
+      } else if path != nil {
         Toggle(name, isOn: $isOn).kitLabelsHidden()
+      } else if !tools.hasFoundTools {
+        LiveIcon(systemImage: "magnifyingglass", status: .working, size: 20)
+      } else if let installCommand {
+        Button("Install") { tools.install(id: toolID, command: installCommand) }
+          .buttonStyle(.kit)
+          .help(installCommand)
+      } else {
+        // Comes with Xcode or an SDK: nothing to install from here, and nothing to switch.
+        Chip("Not installed", style: .quiet)
       }
     }
   }
