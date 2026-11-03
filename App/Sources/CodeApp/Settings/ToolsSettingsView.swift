@@ -64,11 +64,10 @@ struct LanguagesSettingsView: View {
       }
     }
     FormCard("Servers") {
-      ForEach(LanguageServerCatalog.all) { server in
+      ForEach(LanguageServerCatalog.all.installedFirst { tools.paths[$0.command] != nil }) { server in
         ToolRow(
           name: server.name, detail: server.languages, source: server.install.summary,
-          path: server.install == .xcode && tools.paths[server.command] == nil
-            ? nil : tools.paths[server.command],
+          path: tools.paths[server.command],
           isOn: Binding(
             get: { !EditorSettings.ids(from: disabled).contains(server.id) },
             set: { on in
@@ -101,11 +100,11 @@ struct FormattingSettingsView: View {
       }
     }
     FormCard("Formatters") {
-      ForEach(FormatterCatalog.all) { formatter in
+      ForEach(FormatterCatalog.all.installedFirst { path(of: $0) != nil }) { formatter in
         ToolRow(
           name: formatter.name, detail: formatter.languages,
           source: formatter.installCommand ?? "",
-          path: customCommand(formatter.id) ?? tools.paths[formatter.command],
+          path: path(of: formatter),
           isOn: Binding(
             get: { !EditorSettings.ids(from: disabled).contains(formatter.id) },
             set: { on in
@@ -131,6 +130,10 @@ struct FormattingSettingsView: View {
     }
     .disabled(!formatOnSave)
     .onAppear { tools.refresh() }
+  }
+
+  private func path(of formatter: FormatterConfiguration) -> String? {
+    customCommand(formatter.id) ?? tools.paths[formatter.command]
   }
 
   private func customCommand(_ id: String) -> String? {
@@ -189,6 +192,13 @@ struct RunSettingsView: View {
         systemImage: "iphone", hue: tools.adb == nil ? .gray : .green)
     }
     .onAppear { tools.refresh() }
+  }
+}
+
+extension Array {
+  /// The installed tools, then the others, each group in the catalog's order.
+  fileprivate func installedFirst(_ isInstalled: (Element) -> Bool) -> [Element] {
+    filter(isInstalled) + filter { !isInstalled($0) }
   }
 }
 
