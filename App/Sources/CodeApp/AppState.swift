@@ -22,6 +22,10 @@ import SwiftUI
   /// Files to open once their folder's window is up, by folder.
   @ObservationIgnored private var pendingFiles: [URL: [URL]] = [:]
   @ObservationIgnored private var workspaces: [ObjectIdentifier: WeakWorkspace] = [:]
+  /// The first window's launch project was decided.
+  @ObservationIgnored private var hasOpenedLaunchProject = false
+  /// A folder or file was opened from outside (Finder, the Dock, the command line): it wins over the last project.
+  @ObservationIgnored var didOpenFolder = false
   /// Projects no window shows that still run something, by folder.
   private var backgroundProjects: [URL: WindowModel] = [:]
   /// The windows of documents opened in their own window, by document.
@@ -44,10 +48,19 @@ import SwiftUI
     return isDirectory.boolValue ? (url, nil) : (url.deletingLastPathComponent(), url)
   }
 
+  /// The project the first window opens at launch: the last one opened that still exists, unless the app was launched
+  /// to open something else (`didOpenFolder`) or this has been asked before. Nil shows the Welcome window.
+  func takeLaunchProject() -> URL? {
+    defer { hasOpenedLaunchProject = true }
+    guard !hasOpenedLaunchProject, !didOpenFolder, !ScreenshotDemo.isOn else { return nil }
+    return recents.existing.first
+  }
+
   /// Opens a folder in its window, focusing the window when the folder is
   /// already open. A file opens its folder, then the file.
   func open(_ url: URL) {
     guard let (folder, file) = Self.target(of: url) else { return }
+    didOpenFolder = true
     if let file {
       if let workspace = workspace(for: folder) {
         workspace.tree.reveal(file)

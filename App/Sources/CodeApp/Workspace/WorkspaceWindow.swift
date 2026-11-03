@@ -1,4 +1,5 @@
 import CodeKit
+import ComponentKit
 import SwiftUI
 import VaultKit
 import VaultUI
@@ -11,6 +12,9 @@ import VaultUI
 /// hands them to an existing window instead of making a new one each. A
 /// Welcome window takes the folder itself; a project window opens files of
 /// its own folder and passes anything else on to that folder's window.
+///
+/// The first window at launch opens the last project (`AppState.takeLaunchProject`), once the open events of the launch
+/// had their turn; it shows Welcome only when no recent project still exists.
 ///
 /// A window shows one account's vault (`VaultAccountScope`): Welcome picks it (the picker heads its actions), and a
 /// project takes the account its folder belongs to, so a project opened from another account's list, from Finder or
@@ -72,6 +76,11 @@ struct WorkspaceWindow: View {
     }
     .onChange(of: root, initial: true) { _, root in makeModel(root) }
     // The project's account was deleted (the scope fell back to Personal): its project leaves with it.
+    // After the launch's open events: `onOpenURL` runs before this looks, so a folder opened from Finder wins.
+    .task {
+      await Task.yield()
+      if model == nil, root == nil, let folder = AppState.shared.takeLaunchProject() { open(folder) }
+    }
     .onChange(of: accountID) { _, account in
       if model != nil, let modelAccountID, account != modelAccountID { root = nil }
     }
@@ -86,6 +95,7 @@ struct WorkspaceWindow: View {
     guard url.isFileURL, let (folder, file) = AppState.target(of: url) else { return }
     // The folder this window shows, or is about to (`root` is set before the
     // workspace exists).
+    AppState.shared.didOpenFolder = true
     if let current = model?.workspace.root ?? root?.standardizedFileURL {
       guard folder == current || folder.path.hasPrefix(current.path + "/") else {
         AppState.shared.open(url)  // another project: its own window
@@ -206,8 +216,8 @@ struct WorkspaceWindow: View {
 #else
 
 /// Records its window in a `WindowReference`, keeps the window out of
-/// state restoration (Code launches to the Welcome screen, never reopening
-/// the projects of the last session), and styles it for what it shows:
+/// state restoration (Code opens the last project itself, `AppState.takeLaunchProject`, not every window of the last
+/// session), and styles it for what it shows:
 /// Welcome runs its ground under a clear title bar (it has no toolbar); a
 /// project gets the title bar back.
 private struct WindowReader: NSViewRepresentable {
