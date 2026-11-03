@@ -50,10 +50,10 @@ import SwiftUI
   /// Shows another project folder in this window (the sidebar's Projects card), or brings forward the window it is
   /// open in. Set by the window.
   @ObservationIgnored var switchProject: (URL) -> Void = { AppState.shared.open($0) }
-  var sidebarSelection: URL?
-  /// The navigator (sidebar) column, toggled with ⌘0.
   /// The window switched to another project while an action runs: the services stay up (`AppState.keepInBackground`).
   @ObservationIgnored var isInBackground = false
+  var sidebarSelection: URL?
+  /// The navigator (sidebar) column, toggled with ⌘0.
   var isNavigatorVisible = true
 
   /// Shows or hides the navigator, sliding as the sidebar's own button does (a bare change snaps it).
@@ -103,11 +103,11 @@ import SwiftUI
         self?.showConsole()
       }
     }
-  }
-
     services.actions.addFinishHandler { [weak self] _, _ in
       if let self, self.isInBackground { AppState.shared.backgroundProjectFinished(self) }
     }
+  }
+
   // MARK: - Console
 
   /// The toolbar title's click and ⇧⌘Y: shows or hides the console under the title, or brings its own window

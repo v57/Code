@@ -42,14 +42,6 @@ import Testing
     #expect(ProjectScanner.scan(root: root).contains { $0.name == "tool" })
   }
 
-  @Test func swiftAndClangDiagnostics() {
-    let found = issues([
-      "/tmp/project/Sources/A.swift:12:5: error: cannot find 'x' in scope",
-      "Sources/B.swift:3:1: warning: variable 'y' was never used",
-      "/tmp/project/Tests/ATests.swift:7: error: -[ATests testA] : XCTAssertEqual failed",
-    ])
-    #expect(found.count == 3)
-    #expect(found[0].severity == .error)
   @Test func broadFoldersAreNotWalked() throws {
     let home = URL(fileURLWithPath: NSHomeDirectory())
     #expect(FolderScope.isBroad(home))
@@ -61,6 +53,14 @@ import Testing
     #expect(!FolderScope.isBroad(URL(fileURLWithPath: "/a/bc"), home: URL(fileURLWithPath: "/a/b")))
   }
 
+  @Test func swiftAndClangDiagnostics() {
+    let found = issues([
+      "/tmp/project/Sources/A.swift:12:5: error: cannot find 'x' in scope",
+      "Sources/B.swift:3:1: warning: variable 'y' was never used",
+      "/tmp/project/Tests/ATests.swift:7: error: -[ATests testA] : XCTAssertEqual failed",
+    ])
+    #expect(found.count == 3)
+    #expect(found[0].severity == .error)
     #expect(found[0].url?.path == "/tmp/project/Sources/A.swift")
     #expect(found[0].line == 12 && found[0].column == 5)
     #expect(found[0].message == "cannot find 'x' in scope")
