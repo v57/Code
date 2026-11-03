@@ -54,6 +54,10 @@ private struct EditorSettingsView: View {
 
   /// Installed fixed-pitch font families.
   private let monospacedFamilies = KitFont.monospacedFamilies()
+  private let editor = EditorConfigurationReader()
+  private var configuration: EditorConfiguration { editor.configuration }
+
+  private func height(lines: Int) -> CGFloat { EditorPreview.height(lines: lines, configuration: configuration) }
 
   var body: some View {
     FormCard("Appearance") {
@@ -63,54 +67,89 @@ private struct EditorSettingsView: View {
           options: EditorTheme.families.map { ("\($0.name) (Match System)", $0.id) }
             + EditorTheme.all.map { ($0.name, $0.id) })
       }
+      .preview(height: height(lines: 4)) {
+        EditorPreview(text: PreviewSample.code, configuration: configuration, currentLine: 1)
+      }
       FormRow("Font", help: "Installed fixed-pitch fonts", systemImage: "textformat", hue: .blue) {
         KitPicker(
           "Font", selection: $fontName, options: [("Theme Font (SF Mono)", "")] + monospacedFamilies.map { ($0, $0) })
       }
+      .preview(height: height(lines: 1)) { EditorPreview(text: PreviewSample.oneLine, configuration: configuration) }
       FormRow("Font size", help: "\(Keycaps.label("⌘+")) and \(Keycaps.label("⌘−")) change it too", systemImage: "textformat.size", hue: .blue) {
         KitStepper(
           "Font size", value: $fontSize,
           in: Double(EditorConfiguration.fontSizes.lowerBound)...Double(EditorConfiguration.fontSizes.upperBound),
           unit: "pt")
       }
+      .preview(height: height(lines: 1)) { EditorPreview(text: PreviewSample.oneLine, configuration: configuration) }
     }
     FormCard("Editing") {
       FormRow("Tab width", systemImage: "arrow.right.to.line", hue: .gray) {
         KitPicker("Tab width", selection: $tabWidth, options: [2, 3, 4, 8].map { ("\($0) spaces", $0) })
       }
+      .preview(height: height(lines: 3)) { EditorPreview(text: PreviewSample.indented, configuration: configuration) }
       FormRow("Insert spaces when pressing Tab", systemImage: "keyboard", hue: .gray) {
         Toggle("Insert spaces when pressing Tab", isOn: $insertSpaces).kitLabelsHidden()
+      }
+      .preview(height: height(lines: 2)) {
+        EditorPreview(
+          text: PreviewSample.tabKey(insertSpaces: insertSpaces, tabWidth: tabWidth), configuration: configuration)
       }
       FormRow("Close brackets and quotes", help: "As you type the opening one", systemImage: "curlybraces", hue: .gray) {
         Toggle("Automatically close brackets and quotes", isOn: $autoCloseDelimiters).kitLabelsHidden()
       }
+      .preview(height: height(lines: 2)) {
+        EditorPreview(text: PreviewSample.closing(isOn: autoCloseDelimiters), configuration: configuration)
+      }
       FormRow("Trim trailing whitespace", help: "When saving", systemImage: "scissors", hue: .gray) {
         Toggle("Trim trailing whitespace when saving", isOn: $trimTrailingWhitespace).kitLabelsHidden()
+      }
+      .preview(height: height(lines: 2)) {
+        EditorPreview(text: PreviewSample.trimming(isOn: trimTrailingWhitespace), configuration: configuration)
       }
       FormRow("Suggest completions", help: "While typing", systemImage: "text.badge.plus", hue: .gray) {
         Toggle("Suggest completions while typing", isOn: $suggestsCompletions).kitLabelsHidden()
       }
+      .preview(height: 96) { CompletionPreview(isOn: suggestsCompletions, configuration: configuration) }
     }
     FormCard("Display") {
       FormRow("Wrap lines", systemImage: "arrow.turn.down.left", hue: .indigo) {
         Toggle("Wrap lines", isOn: $wrapLines).kitLabelsHidden()
       }
+      .preview(height: height(lines: 4)) { EditorPreview(text: PreviewSample.longLine, configuration: configuration) }
       FormRow("Line numbers", systemImage: "list.number", hue: .indigo) {
         Toggle("Show line numbers", isOn: $showLineNumbers).kitLabelsHidden()
       }
+      .preview(height: height(lines: 3)) { EditorPreview(text: PreviewSample.currentLine, configuration: configuration) }
       FormRow("Highlight current line", systemImage: "highlighter", hue: .indigo) {
         Toggle("Highlight current line", isOn: $highlightCurrentLine).kitLabelsHidden()
       }
+      .preview(height: height(lines: 3)) {
+        EditorPreview(text: PreviewSample.currentLine, configuration: configuration, currentLine: 1)
+      }
       FormRow("Minimap", systemImage: "sidebar.right", hue: .indigo) {
         Toggle("Show minimap", isOn: $showsMinimap).kitLabelsHidden()
+      }
+      .preview(height: 96) {
+        EditorPreview(text: PreviewSample.file, configuration: configuration, showsMinimap: showsMinimap)
       }
     }
     FormCard("Issues") {
       FormRow("Show issues in the editor", systemImage: "exclamationmark.triangle", hue: .orange) {
         Toggle("Show issues in the editor", isOn: $showsInlineIssues).kitLabelsHidden()
       }
+      .preview(height: height(lines: 3)) {
+        EditorPreview(
+          text: PreviewSample.issues, configuration: configuration,
+          annotations: showsInlineIssues ? PreviewSample.issueAnnotations : [], showsMessages: false)
+      }
       FormRow("Show issue messages", help: "At the end of their lines", systemImage: "text.bubble", hue: .orange) {
         Toggle("Show issue messages at the end of lines", isOn: $showsIssueMessages).kitLabelsHidden()
+      }
+      .preview(height: height(lines: 3)) {
+        EditorPreview(
+          text: PreviewSample.issues, configuration: configuration,
+          annotations: showsInlineIssues ? PreviewSample.issueAnnotations : [], showsMessages: showsIssueMessages)
       }
       .disabled(!showsInlineIssues)
     }
@@ -126,6 +165,10 @@ private struct FilesSettingsView: View {
       FormRow("Show file extensions", help: "In the navigator, tabs and path bar", systemImage: "doc.text", hue: .teal) {
         Toggle("Show file extensions", isOn: $showExtensions).kitLabelsHidden()
       }
+      .preview(height: 36) {
+        FilesPreview(
+          files: [("Trip.swift", false), ("README.md", false), ("Package.swift", false)], showsExtensions: showExtensions)
+      }
     }
     FormCard(
       footer:
@@ -133,6 +176,10 @@ private struct FilesSettingsView: View {
     ) {
       FormRow("Hide files listed in .gitignore", systemImage: "eye.slash", hue: .gray) {
         Toggle("Hide files listed in .gitignore", isOn: $hidesIgnoredFiles).kitLabelsHidden()
+      }
+      .preview(height: 36) {
+        FilesPreview(
+          files: [("Sources", true), ("Package.swift", false)] + (hidesIgnoredFiles ? [] : [(".build", true), (".DS_Store", false)]))
       }
     }
   }

@@ -53,6 +53,7 @@ struct LanguagesSettingsView: View {
   @AppStorage(EditorSettings.languageServersEnabled) private var enabled = true
   @AppStorage(EditorSettings.disabledLanguageServers) private var disabled = ""
   private let tools = ToolsModel.shared
+  private let editor = EditorConfigurationReader()
 
   var body: some View {
     FormCard(
@@ -61,6 +62,11 @@ struct LanguagesSettingsView: View {
     ) {
       FormRow("Language servers", help: "For definitions and issues", systemImage: "curlybraces", hue: .purple) {
         Toggle("Use language servers for definitions and issues", isOn: $enabled).kitLabelsHidden()
+      }
+      .preview(height: EditorPreview.height(lines: 3, configuration: editor.configuration)) {
+        EditorPreview(
+          text: PreviewSample.issues, configuration: editor.configuration,
+          annotations: enabled ? PreviewSample.issueAnnotations : [])
       }
     }
     FormCard("Servers") {
@@ -89,6 +95,7 @@ struct FormattingSettingsView: View {
   @AppStorage(EditorSettings.formatterRequiresConfig) private var requiresConfig = "{}"
   @AppStorage(EditorSettings.formatterCommands) private var commands = "{}"
   private let tools = ToolsModel.shared
+  private let editor = EditorConfigurationReader()
 
   var body: some View {
     FormCard(
@@ -97,6 +104,9 @@ struct FormattingSettingsView: View {
     ) {
       FormRow("Format when saving", help: "Before the file is written (⌘S)", systemImage: "text.alignleft", hue: .orange) {
         Toggle("Format when saving (⌘S)", isOn: $formatOnSave).kitLabelsHidden()
+      }
+      .preview(height: EditorPreview.height(lines: 2, configuration: editor.configuration)) {
+        EditorPreview(text: PreviewSample.formatting(isOn: formatOnSave), configuration: editor.configuration)
       }
     }
     FormCard("Formatters") {
@@ -170,6 +180,7 @@ struct RunSettingsView: View {
   @AppStorage(EditorSettings.actionsEnabled) private var actionsEnabled = true
   @AppStorage(EditorSettings.breakpointsEnabled) private var breakpointsEnabled = true
   private let tools = ToolsModel.shared
+  private let editor = EditorConfigurationReader()
 
   var body: some View {
     FormCard(
@@ -179,11 +190,16 @@ struct RunSettingsView: View {
       FormRow("Run, Build and Test", help: "In the toolbar", systemImage: "play.fill", hue: .green) {
         Toggle("Show Run, Build and Test in the toolbar", isOn: $actionsEnabled).kitLabelsHidden()
       }
+      .preview(height: 36) { ToolbarPreview(showsActions: actionsEnabled) }
       FormRow(
         "Breakpoints", help: "Click a line number; Run debugs with LLDB", systemImage: "arrowtriangle.right.fill",
         hue: .blue
       ) {
         Toggle("Breakpoints", isOn: $breakpointsEnabled).kitLabelsHidden()
+      }
+      .preview(height: EditorPreview.height(lines: 3, configuration: editor.configuration)) {
+        EditorPreview(
+          text: PreviewSample.currentLine, configuration: editor.configuration, breakpoints: breakpointsEnabled ? [1] : [])
       }
     }
     FormCard {
