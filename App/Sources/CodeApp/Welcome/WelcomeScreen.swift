@@ -102,9 +102,15 @@ struct WelcomeScreen: View {
     let icon = vault.localProjects.first { $0.localPath == path }?.icon
     return RecentItem(folder.lastPathComponent, subtitle: folder.abbreviatedPath, imageData: icon) { open(folder) }
       .kitContextMenu {
+        Button("Open") { open(folder) }
+        Button("Open in New Window") { AppState.shared.open(folder) }
+        Divider()
         Button("Show in \(KitDesktop.fileManagerName)") { KitDesktop.reveal([folder]) }
+        Button("Copy Path") { KitPasteboard.copy(folder.path) }
+        Divider()
         if isRecent {
           Button("Remove from Recents") { recents.remove(folder) }
+          Button("Clear Recents") { recents.clear() }
         }
         if let project {
           Button("Remove from List") { withAnimation(.kit) { _ = removed.ids.insert(project) } }
@@ -123,8 +129,12 @@ struct WelcomeScreen: View {
       withAnimation(.kit) { collapsedGroups.toggle(group.id) }
     }
     .kitContextMenu {
+      Button(isOpen ? "Close Group" : "Open Group") { withAnimation(.kit) { collapsedGroups.toggle(group.id) } }
+      Divider()
       if let folder = group.localURL {
         Button("Show in \(KitDesktop.fileManagerName)") { KitDesktop.reveal([folder]) }
+        Button("Copy Path") { KitPasteboard.copy(folder.path) }
+        Divider()
       }
       Button("Remove Group from List") { withAnimation(.kit) { _ = removed.ids.insert(group.id) } }
     }
