@@ -62,6 +62,14 @@
     public let root: URL
     public private(set) var schemes: [ActionScheme] = []
     public private(set) var isScanning = false
+    /// The workspaces, projects and packages found under the root (`ProjectContainer`), the root's first.
+    public private(set) var containers: [ProjectContainer] = []
+    /// The container picked in each folder that has several, by folder path, remembered per project.
+    public private(set) var pickedContainers: [String: String] = [:]
+    /// Called after `selectContainer`, once the choice is saved (the dependency list follows the root's).
+    @ObservationIgnored public var didSelectContainer: (@MainActor (ProjectContainer) -> Void)?
+    /// A scan is running that doesn't know the last pick: another follows it.
+    @ObservationIgnored private var needsRescan = false
     /// The scheme the user picked; nil uses the main one (`schemes.first`).
     public var selectedSchemeID: String? {
       didSet {
@@ -132,6 +140,7 @@
       // "scheme" also saved automatic picks (a package's test scheme).
       defaults.removeObject(forKey: key("scheme"))
       selectedSchemeID = defaults.string(forKey: key("pickedScheme"))
+      pickedContainers = defaults.dictionary(forKey: key("containers")) as? [String: String] ?? [:]
       selectedDestinationID = defaults.string(forKey: key("destination"))
     }
 
@@ -139,6 +148,33 @@
 
     public var selectedScheme: ActionScheme? {
       schemes.first { $0.id == selectedSchemeID } ?? schemes.first
+    }
+
+    /// The container the selected scheme comes from: its folder's pick, else that folder's first; the root's without
+    /// a scheme.
+    public var selectedContainer: ProjectContainer? {
+      let folder = selectedScheme?.directory ?? root
+      return ProjectContainer.effective(picked: pickedContainers[folder.path], in: containers(in: folder))
+        ?? containers.first
+    }
+
+    /// The containers of one folder, the default first.
+    public func containers(in folder: URL) -> [ProjectContainer] {
+      containers.filter { $0.directory.path == folder.path }
+    }
+
+    /// The container picked in `folder`, nil while it uses the default.
+    public func pickedContainer(in folder: URL) -> String? {
+      pickedContainers[folder.path]
+    }
+
+    /// Uses `container` for its folder from now on: its schemes replace the folder's. (`Build From` in the toolbar.)
+    public func selectContainer(_ container: ProjectContainer) {
+      guard pickedContainers[container.directory.path] != container.fileName else { return }
+      pickedContainers[container.directory.path] = container.fileName
+      defaults.set(pickedContainers, forKey: key("containers"))
+      didSelectContainer?(container)
+      scan()
     }
 
     public var selectedDestination: RunDestination? {
@@ -166,18 +202,29 @@
     /// Finds the folder's schemes again (at open, and when project files
     /// change).
     public func scan() {
-      guard !isScanning else { return }
+      guard !isScanning else {
+        needsRescan = true
+        return
+      }
       isScanning = true
       let root = root
       let excluded = excludedNames
+      let picks = pickedContainers
       Task {
         // Read the login shell's environment off the main thread first.
-        let schemes = await Task.detached(priority: .userInitiated) {
+        let found = await Task.detached(priority: .userInitiated) {
           _ = ShellEnvironment.shared
-          return ProjectScanner.scan(root: root, excluded: excluded)
+          return ProjectScanner.scanProjects(root: root, excluded: excluded, picks: picks)
         }.value
+        let schemes = found.schemes
         self.schemes = schemes
+        self.containers = found.containers
         self.isScanning = false
+        if self.needsRescan {
+          self.needsRescan = false
+          self.scan()
+          return
+        }
         if let id = self.selectedSchemeID, !schemes.contains(where: { $0.id == id }) {
           self.selectedSchemeID = nil
         }

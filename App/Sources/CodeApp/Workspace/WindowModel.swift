@@ -275,6 +275,7 @@ extension FocusedValues {
 /// The menus of a project window's chrome that open from a button.
 enum ChromeMenu: String {
   case project
+  case container
   case scheme
   case destination
 }

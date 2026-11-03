@@ -2,6 +2,7 @@
 @_exported import CodeActions
 @_exported import CodeAutocompletion
 @_exported import CodeEditor
+@_exported import CodeFolders
 @_exported import CodeFormatting
 @_exported import CodeHighlighting
 @_exported import CodeIcons

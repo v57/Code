@@ -126,7 +126,8 @@ private struct ProjectTitle: View {
   }
 }
 
-/// The issue counts (they open the issue list), then "Scheme › Destination": two of the kit's menus in one tool group.
+/// The issue counts (they open the issue list), then "Container › Scheme › Destination": the kit's menus in one tool
+/// group, the container only when a folder has several to choose from (`ProjectContainer`).
 private struct SchemeTools: View {
   let model: WindowModel
   /// The window's account's vault, whose projects on the user's other devices are the remote destinations.
@@ -166,6 +167,16 @@ private struct SchemeTools: View {
         }
       }
       ToolGroup {
+        if !choosableFolders.isEmpty, let container = actions.selectedContainer {
+          Button {
+            model.openMenu = .container
+          } label: {
+            Label(container.name, systemImage: container.kind.symbolName)
+          }
+          .kitMenu(isPresented: model.isPresented(.container)) { containerItems }
+          .kitHelp("Choose what to build from", meta: container.fileName)
+          ToolSeparator()
+        }
         Button {
           model.openMenu = .scheme
         } label: {
@@ -200,6 +211,43 @@ private struct SchemeTools: View {
       actions.didMeetHostKey = { [vault] target, fingerprint in
         vault.map { RemoteDestinations.trust(fingerprint, for: target, vault: $0) }
       }
+    }
+  }
+
+  /// The folders with more than one container, the root's first.
+  private var choosableFolders: [URL] {
+    let actions = model.services.actions
+    var folders: [URL] = []
+    for container in actions.containers where !folders.contains(container.directory) {
+      if actions.containers(in: container.directory).count > 1 { folders.append(container.directory) }
+    }
+    return folders
+  }
+
+  /// A folder's workspaces, projects and package; the one it builds from is checked.
+  @ViewBuilder private var containerItems: some View {
+    let folders = choosableFolders
+    ForEach(folders, id: \.self) { folder in
+      if folders.count > 1 {
+        if folder != folders.first { Divider() }
+        KitMenuSection(folder.lastPathComponent) { containerRows(in: folder) }
+      } else {
+        containerRows(in: folder)
+      }
+    }
+  }
+
+  private func containerRows(in folder: URL) -> some View {
+    let actions = model.services.actions
+    let containers = actions.containers(in: folder)
+    let current = ProjectContainer.effective(picked: actions.pickedContainer(in: folder), in: containers)
+    return ForEach(containers) { container in
+      Button {
+        actions.selectContainer(container)
+      } label: {
+        Label(container.name, systemImage: container == current ? "checkmark" : container.kind.symbolName)
+      }
+      .kitMenuHint(container.kind.title)
     }
   }
 

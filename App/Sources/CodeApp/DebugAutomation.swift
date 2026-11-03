@@ -83,6 +83,11 @@
           model.workspace.selectedTabID = tab.id
         }
       case "notarization": model.notarizationSetup = NotarizationSetupRequest()
+      case "container":
+        // container:<file name> picks it, as the toolbar's menu does.
+        if let container = services.actions.containers.first(where: { $0.fileName == argument }) {
+          services.actions.selectContainer(container)
+        }
       case "scheme":
         if let scheme = services.actions.schemes.first(where: { $0.name == argument }) {
           services.actions.selectedSchemeID = scheme.id
@@ -248,6 +253,8 @@
         var lines = [
           "schemes: " + actions.schemes.map { "\($0.name)[\($0.toolchain.rawValue)]" }.joined(separator: ", "),
           "scheme: \(actions.selectedScheme?.name ?? "-")",
+          "containers: " + actions.containers.map(\.fileName).joined(separator: ", "),
+          "container: \(actions.selectedContainer?.fileName ?? "-")",
           "destinations: " + actions.destinations.map { "\($0.name)[\($0.kind.rawValue)]" }.joined(separator: ", "),
           "destination: \(actions.selectedDestination?.name ?? "-")",
           "state: \(actions.state)",

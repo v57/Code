@@ -18,10 +18,11 @@ public struct XcodeDetector: ProjectDetector {
   }
 
   public func schemes(in folder: ProjectFolder) -> [ActionScheme] {
-    // A workspace wins over the project it contains.
+    // The picked container; without a pick a workspace wins over the project it contains.
     guard
-      let container = folder.first(withSuffix: ".xcworkspace")
-        ?? folder.first(withSuffix: ".xcodeproj")
+      let container = folder.containers.first(where: {
+        $0.kind != .package && (folder.pickedContainer == nil || $0.fileName == folder.pickedContainer)
+      })?.fileName
     else { return [] }
     let url = folder.url.appendingPathComponent(container)
     guard let listed = Self.schemeNames(url, in: folder), !listed.isEmpty else { return [] }
@@ -391,21 +392,21 @@ public struct XcodeDetector: ProjectDetector {
     return payload.project?.targets
   }
 
-  /// The container's schemes from `xcodebuild -list`; where there's no xcodebuild (iPhone and iPad, looking at a
-  /// copy of a project on a Mac) from its scheme files, then the targets Xcode makes schemes for.
+  /// The container's schemes from `xcodebuild -list`; where it has no answer (no xcodebuild on iPhone and iPad, looking
+  /// at a copy of a project on a Mac; a project whose remote packages don't resolve, next to the -Local workspace that
+  /// builds it) from its scheme files, then the targets Xcode makes schemes for.
   static func schemeNames(_ container: URL, in folder: ProjectFolder) -> [String]? {
-    #if os(iOS)
-      var names: [String] = []
-      for entry in folder.entries
-      where entry.name.hasSuffix(".xcodeproj") || entry.name.hasSuffix(".xcworkspace") {
-        let schemes = schemeFiles(in: folder.url.appendingPathComponent(entry.name)).map(\.0)
-        let targets = Self.targets(in: folder.read(entry.name + "/project.pbxproj") ?? "").map(\.0)
-        for name in schemes + targets where !names.contains(name) { names.append(name) }
-      }
-      return names
-    #else
-      return Self.list(container).flatMap(Self.parseSchemes)
+    #if !os(iOS)
+      if let listed = Self.list(container).flatMap(Self.parseSchemes), !listed.isEmpty { return listed }
     #endif
+    var names: [String] = []
+    for entry in folder.entries
+    where entry.name.hasSuffix(".xcodeproj") || entry.name.hasSuffix(".xcworkspace") {
+      let schemes = schemeFiles(in: folder.url.appendingPathComponent(entry.name)).map(\.0)
+      let targets = Self.targets(in: folder.read(entry.name + "/project.pbxproj") ?? "").map(\.0)
+      for name in schemes + targets where !names.contains(name) { names.append(name) }
+    }
+    return names
   }
 
   static func list(_ container: URL) -> String? {
@@ -422,9 +423,9 @@ public struct SwiftPackageDetector: ProjectDetector {
   public init() {}
 
   public func schemes(in folder: ProjectFolder) -> [ActionScheme] {
-    guard folder.hasFile("Package.swift"), let manifest = folder.read("Package.swift") else {
-      return []
-    }
+    guard folder.pickedContainer == nil || folder.pickedContainer == ProjectContainer.packageManifest,
+      folder.hasFile("Package.swift"), let manifest = folder.read("Package.swift")
+    else { return [] }
     let executables = Self.executableTargets(in: manifest)
     let common: [ActionKind: String] = [
       .build: "swift build", .test: "swift test", .clean: "swift package clean",

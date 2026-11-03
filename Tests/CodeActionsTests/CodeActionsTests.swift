@@ -14,6 +14,26 @@ import Testing
     }
   }
 
+  @Test func aPickedContainerDecidesTheFoldersSchemes() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("containers-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: root) }
+    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    try #"let package = Package(name: "App", targets: [.executableTarget(name: "tool")])"#
+      .write(to: root.appendingPathComponent("Package.swift"), atomically: true, encoding: .utf8)
+    try FileManager.default.createDirectory(
+      at: root.appendingPathComponent("App.xcodeproj"), withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(
+      at: root.appendingPathComponent("App-Local.xcworkspace"), withIntermediateDirectories: true)
+
+    let picked = ProjectScanner.scanProjects(root: root, picks: [root.path: "Package.swift"])
+    #expect(picked.schemes.map(\.name) == ["tool"])
+    #expect(picked.containers.map(\.fileName) == ["App-Local.xcworkspace", "App.xcodeproj", "Package.swift"])
+    // A folder without a pick uses its first container, here a workspace xcodebuild can't list: no package schemes.
+    #expect(ProjectScanner.scanProjects(root: root, picks: [:]).schemes.allSatisfy { $0.toolchain == .xcode })
+    // Without picks (Shell) the package's schemes stay.
+    #expect(ProjectScanner.scan(root: root).contains { $0.name == "tool" })
+  }
+
   @Test func swiftAndClangDiagnostics() {
     let found = issues([
       "/tmp/project/Sources/A.swift:12:5: error: cannot find 'x' in scope",

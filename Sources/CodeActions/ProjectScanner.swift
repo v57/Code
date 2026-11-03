@@ -1,3 +1,4 @@
+@_exported import CodeFolders
 import CryptoKit
 import Foundation
 
@@ -12,6 +13,9 @@ public struct ProjectFolder: Sendable {
 
   public let url: URL
   public let entries: [Entry]
+  /// The container (`ProjectContainer.fileName`) the folder's schemes come from; nil lists every kind's, the first
+  /// workspace or project and the package, as `ProjectScanner.schemes(in:)` does for Shell.
+  public var pickedContainer: String?
 
   public init(url: URL, entries: [Entry]) {
     self.url = url
@@ -34,6 +38,11 @@ public struct ProjectFolder: Sendable {
   }
 
   public var name: String { url.lastPathComponent }
+
+  /// The folder's workspaces, projects and package, the default first.
+  public var containers: [ProjectContainer] {
+    ProjectContainer.list(entries: entries.map(\.name), in: url)
+  }
 
   public func hasFile(_ name: String) -> Bool {
     entries.contains { $0.name == name && !$0.isDirectory }
@@ -76,7 +85,7 @@ public enum ProjectScanner {
 
   /// Bumped whenever a detector finds different schemes or commands, so
   /// scans cached under `fingerprint(of:)` are redone.
-  public static let revision = 8
+  public static let revision = 9
 
   /// Folders never searched: build products, dependencies, caches.
   public static let skippedFolders: Set<String> = [
@@ -86,15 +95,35 @@ public enum ProjectScanner {
     "static", "assets", "Resources",
   ]
 
-  /// Schemes of every project under `root`, the root's first.
+  /// Schemes of every project under `root`, the root's first, each folder's from all its containers.
   public static func scan(root: URL, depth: Int = 2, excluded: Set<String> = []) -> [ActionScheme] {
-    var schemes: [ActionScheme] = []
+    scanProjects(root: root, depth: depth, excluded: excluded, picks: nil).schemes
+  }
+
+  /// What `scanProjects` finds.
+  public struct Scan: Sendable {
+    public var schemes: [ActionScheme] = []
+    /// The workspaces, projects and packages found, the root's first, each folder's default first.
+    public var containers: [ProjectContainer] = []
+  }
+
+  /// The schemes and containers of every project under `root`. With `picks` (container file names by folder path),
+  /// each folder's schemes come from one container: its pick, else its first. Without, from all of them.
+  public static func scanProjects(
+    root: URL, depth: Int = 2, excluded: Set<String> = [], picks: [String: String]?
+  ) -> Scan {
+    var scan = Scan()
     var queue: [(URL, Int)] = [(root, 0)]
     while !queue.isEmpty {
       let (url, level) = queue.removeFirst()
-      let folder = ProjectFolder(listing: url)
+      var folder = ProjectFolder(listing: url)
+      let containers = folder.containers
+      scan.containers += containers
+      if let picks {
+        folder.pickedContainer = ProjectContainer.effective(picked: picks[url.path], in: containers)?.fileName
+      }
       let found = Self.schemes(in: folder)
-      schemes += found
+      scan.schemes += found
       // Modules of a multi-module build are part of its schemes already.
       let isMultiModule = found.contains {
         [.gradle, .android, .maven, .cargo, .dotnet].contains($0.toolchain)
@@ -109,7 +138,7 @@ public enum ProjectScanner {
         queue.append((url.appendingPathComponent(name), level + 1))
       }
     }
-    return schemes
+    return scan
   }
 
   /// The schemes of the projects in `folder` itself, without its subfolders.

@@ -61,22 +61,24 @@ let package = Package(
     .library(name: "CodeAutocompletion", targets: ["CodeAutocompletion"]),
     .library(name: "CodeIcons", targets: ["CodeIcons"]),
     .library(name: "CodeProgress", targets: ["CodeProgress"]),
+    .library(name: "CodeFolders", targets: ["CodeFolders"]),
   ],
   // SSHKit: remote actions over SSH, in-process (../SSH). ComponentKit: CodeActionsUI's sheets (../Component).
   dependencies: [v57("SSH"), v57("Component")],
   targets: [
     .target(name: "CodeHighlighting", swiftSettings: swiftSettings),
-    .target(name: "CodeWorkspace", dependencies: ["CodeHighlighting"], swiftSettings: swiftSettings),
+    .target(name: "CodeFolders", swiftSettings: swiftSettings),
+    .target(name: "CodeWorkspace", dependencies: ["CodeHighlighting", "CodeFolders"], swiftSettings: swiftSettings),
     .target(name: "CodeEditor", dependencies: ["CodeHighlighting"], swiftSettings: swiftSettings),
     .target(name: "CodeProgress", swiftSettings: swiftSettings),
     .target(
-      name: "CodeActions", dependencies: ["CodeProgress", .product(name: "SSHKit", package: "SSH")],
+      name: "CodeActions", dependencies: ["CodeProgress", "CodeFolders", .product(name: "SSHKit", package: "SSH")],
       // Release/: the linker and asset catalog compiler Install archives Mac apps with (copies of Dev's).
       resources: [.copy("Release")], swiftSettings: swiftSettings),
     .target(
       name: "CodeActionsUI", dependencies: ["CodeActions", .product(name: "ComponentKit", package: "Component")],
       swiftSettings: swiftSettings),
-    .target(name: "CodeLSP", swiftSettings: swiftSettings),
+    .target(name: "CodeLSP", dependencies: ["CodeFolders"], swiftSettings: swiftSettings),
     .target(name: "CodeMinimap", dependencies: ["CodeHighlighting"], swiftSettings: swiftSettings),
     .target(name: "CodeFormatting", swiftSettings: swiftSettings),
     .target(name: "CodeIcons", swiftSettings: swiftSettings),
@@ -87,7 +89,7 @@ let package = Package(
       name: "CodeKit",
       dependencies: [
         "CodeHighlighting", "CodeWorkspace", "CodeEditor", "CodeActions", "CodeLSP", "CodeMinimap",
-        "CodeFormatting", "CodeAutocompletion", "CodeIcons", "CodeProgress",
+        "CodeFormatting", "CodeAutocompletion", "CodeIcons", "CodeProgress", "CodeFolders",
       ],
       swiftSettings: swiftSettings),
 
