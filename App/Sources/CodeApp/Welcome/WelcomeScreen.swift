@@ -1,9 +1,11 @@
+import CodeFolders
 import ComponentKit
 import SwiftUI
 import VaultKit
 import VaultUI
 
-/// What a window without a project shows: the kit's welcome as the window's content. The app's icon, name and
+/// What a window without a project shows, and an open project with no file open (`EditorArea`, where a project opens in
+/// its window as the Projects card does): the kit's welcome. The app's icon, name and
 /// version, Open…, and the recent projects (click selects, double-click or Return opens) or the projects the v57 apps
 /// share (added in Git and the others, through the vault) in the vault's groups, live as they change. A group opens
 /// and closes from its chevron, a double click or Return; which are closed is Code's own. A folder can also be
@@ -13,6 +15,8 @@ import VaultUI
 struct WelcomeScreen: View {
   /// The window's account's vault.
   let vault: Vault
+  /// The project this window has open: left out of the lists. Nil in a window without a project.
+  var current: URL?
   let open: (URL) -> Void
   /// Recent or Projects, kept for the next time Welcome shows.
   @AppStorage("welcome.source") private var source = WelcomeSource.recent
@@ -48,7 +52,7 @@ struct WelcomeScreen: View {
       }
     } recents: {
       // The window's account's: its own folders (and on Personal, those no other account has).
-      ForEach(ProjectAccounts.recents(recents.existing, for: vault), id: \.self) { folder in
+      ForEach(ProjectAccounts.recents(recents.existing, for: vault).filter { $0 != current }, id: \.self) { folder in
         item(folder, isRecent: true)
       }
     } projects: {
@@ -59,12 +63,12 @@ struct WelcomeScreen: View {
         switch node {
         case .group(let group, _): groupItem(group, projects: node.projects.count)
         case .project(let project):
-          if let folder = project.localURL { item(folder, isRecent: false, project: project.id) }
+          if let folder = project.localURL, folder.standardizedFileURL != current {
+            item(folder, isRecent: false, project: project.id)
+          }
         }
       }
     }
-    .kitPane(.content)
-    .navigationTitle("Code")
     #if DEBUG && os(macOS)
       .onReceive(NotificationCenter.default.publisher(for: DebugAutomation.welcomeDrop)) { note in
         if let url = note.object as? URL { Task { await drop(url) } }
@@ -84,12 +88,12 @@ struct WelcomeScreen: View {
   /// Opens a dropped project; a folder that holds repositories without being one is offered as projects instead
   /// (and opens when there is nothing to offer).
   private func drop(_ url: URL) async {
+    // Looking for repositories would walk Desktop, Documents and the rest of the home folder.
+    guard !FolderScope.isBroad(url) else { return open(url) }
     guard let found = await VaultProjectDiscovery.scan([url]).first else { return }
     let holdsRepositories = !found.repositories.isEmpty && found.repositories != [found.root]
     guard holdsRepositories, let offer = VaultImportOffer([found], store: vault.store) else { return open(url) }
     dropped = url
-    // Looking for repositories would walk Desktop, Documents and the rest of the home folder.
-    guard !FolderScope.isBroad(url) else { return open(url) }
     importOffer = offer
   }
 

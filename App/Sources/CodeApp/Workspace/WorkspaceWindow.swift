@@ -56,6 +56,8 @@ struct WorkspaceWindow: View {
             .id(model.workspace.root)
         } else {
           WelcomeScreen(vault: vault) { open($0) }
+            .kitPane(.content)
+            .navigationTitle("Code")
         }
       }
       .onAppear { ProjectAccounts.findIcons(in: vault) }
@@ -74,13 +76,13 @@ struct WorkspaceWindow: View {
         ScreenshotDemo.attach { root = $0 }
       #endif
     }
-    .onChange(of: root, initial: true) { _, root in makeModel(root) }
-    // The project's account was deleted (the scope fell back to Personal): its project leaves with it.
     // After the launch's open events: `onOpenURL` runs before this looks, so a folder opened from Finder wins.
     .task {
       await Task.yield()
       if model == nil, root == nil, let folder = AppState.shared.takeLaunchProject() { open(folder) }
     }
+    .onChange(of: root, initial: true) { _, root in makeModel(root) }
+    // The project's account was deleted (the scope fell back to Personal): its project leaves with it.
     .onChange(of: accountID) { _, account in
       if model != nil, let modelAccountID, account != modelAccountID { root = nil }
     }
@@ -93,9 +95,9 @@ struct WorkspaceWindow: View {
   /// drop.
   private func open(_ url: URL) {
     guard url.isFileURL, let (folder, file) = AppState.target(of: url) else { return }
+    AppState.shared.didOpenFolder = true
     // The folder this window shows, or is about to (`root` is set before the
     // workspace exists).
-    AppState.shared.didOpenFolder = true
     if let current = model?.workspace.root ?? root?.standardizedFileURL {
       guard folder == current || folder.path.hasPrefix(current.path + "/") else {
         AppState.shared.open(url)  // another project: its own window

@@ -1,6 +1,8 @@
 import CodeKit
 import ComponentKit
 import SwiftUI
+import VaultKit
+import VaultUI
 
 /// The selected document's editor, or what to show instead (nothing open,
 /// still loading, a binary or oversized file).
@@ -10,6 +12,8 @@ struct EditorArea: View {
   var detachedDocument: TextDocument?
   @Environment(Workspace.self) private var workspace
   @Environment(WindowModel.self) private var model
+  /// The window's account's vault, for the welcome.
+  @Environment(\.vault) private var vault
   private let settings = EditorConfigurationReader()
   private let serviceSettings = ServiceSettingsReader()
   @State private var safeFrame: CGRect?
@@ -92,18 +96,17 @@ struct EditorArea: View {
     }
   }
 
-  private var emptyState: some View {
-    VStack(spacing: 14) {
-      EmptyState(
-        systemImage: "chevron.left.forwardslash.chevron.right", title: workspace.name,
-        message: "Select a file in the sidebar, or:"
-      )
-      .fixedSize(horizontal: false, vertical: true)
-      KeyHints([("⇧⌘O", "Open Quickly"), ("⌘N", "New File"), ("⌘O", "Open Folder")])
+  /// No file open: the kit's welcome, whose projects open in this window as the Projects card's do. No floor of its
+  /// own: the split view sizes the window's content to its columns' minimums, which it measures at the column's narrowest
+  /// width, where text wraps to many lines (a tall column made everything sit too high and cut off the sidebar's bottom bar).
+  @ViewBuilder private var emptyState: some View {
+    Group {
+      if let vault {
+        WelcomeScreen(vault: vault, current: workspace.root) { model.switchProject($0) }
+      } else {
+        EmptyState(systemImage: "chevron.left.forwardslash.chevron.right", title: workspace.name)
+      }
     }
-    // No floor of its own: the split view sizes the window's content to its columns' minimums, which it measures at
-    // the column's narrowest width, where the fixed-size name and message wrap to many lines (a long project name
-    // made the column taller than the window: everything sat 17pt too high and the sidebar's bottom bar was cut off).
     .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
   }
 }
