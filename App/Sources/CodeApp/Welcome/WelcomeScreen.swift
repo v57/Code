@@ -88,6 +88,8 @@ struct WelcomeScreen: View {
     let holdsRepositories = !found.repositories.isEmpty && found.repositories != [found.root]
     guard holdsRepositories, let offer = VaultImportOffer([found], store: vault.store) else { return open(url) }
     dropped = url
+    // Looking for repositories would walk Desktop, Documents and the rest of the home folder.
+    guard !FolderScope.isBroad(url) else { return open(url) }
     importOffer = offer
   }
 

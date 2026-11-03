@@ -1,3 +1,4 @@
+import CodeFolders
 import Foundation
 
 /// A package a project depends on, for the navigator's Package Dependencies
@@ -76,6 +77,8 @@ public enum DependencyScanner {
     _ root: URL, container: String? = nil, home: URL = URL(fileURLWithPath: NSHomeDirectory()),
     environment: [String: String] = ProcessInfo.processInfo.environment
   ) -> [PackageDependency] {
+    // The home folder's own .cargo, go and Library aren't a project's.
+    guard !FolderScope.isBroad(root, home: home) else { return [] }
     let folder = DependencyFolder(
       root: root.standardizedFileURL, container: container, home: home, environment: environment)
     var found: [PackageDependency] = []

@@ -42,6 +42,17 @@ import Testing
     ])
     #expect(found.count == 3)
     #expect(found[0].severity == .error)
+  @Test func broadFoldersAreNotWalked() throws {
+    let home = URL(fileURLWithPath: NSHomeDirectory())
+    #expect(FolderScope.isBroad(home))
+    #expect(FolderScope.isBroad(URL(fileURLWithPath: "/")))
+    #expect(FolderScope.isBroad(home.deletingLastPathComponent()))
+    #expect(!FolderScope.isBroad(home.appendingPathComponent("Developer")))
+    #expect(!FolderScope.isBroad(URL(fileURLWithPath: "/Applications")))
+    #expect(FolderScope.isBroad(URL(fileURLWithPath: "/a/b/"), home: URL(fileURLWithPath: "/a/b/")))
+    #expect(!FolderScope.isBroad(URL(fileURLWithPath: "/a/bc"), home: URL(fileURLWithPath: "/a/b")))
+  }
+
     #expect(found[0].url?.path == "/tmp/project/Sources/A.swift")
     #expect(found[0].line == 12 && found[0].column == 5)
     #expect(found[0].message == "cannot find 'x' in scope")

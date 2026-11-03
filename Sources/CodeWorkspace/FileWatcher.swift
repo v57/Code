@@ -1,3 +1,4 @@
+import CodeFolders
 import Foundation
 
 #if os(macOS)
@@ -12,7 +13,8 @@ import Foundation
 /// Windows, inotify on Linux) and reports them on the main queue, batched
 /// (`latency`) so a `git checkout` arrives as a few callbacks rather than
 /// thousands. Without `fileEvents`, a change is the folder whose items changed:
-/// far fewer events in a busy tree. A no-op elsewhere.
+/// far fewer events in a busy tree. A no-op elsewhere, and for the home folder and those above it (`FolderScope`):
+/// every event under them would re-read folders the user never opened, Desktop and Documents among them.
 public final class FileWatcher: @unchecked Sendable {
   /// One changed path. `structural` is true when an item was created, removed
   /// or renamed (the tree and Quick Open index need a re-read), false for a
@@ -41,7 +43,7 @@ public final class FileWatcher: @unchecked Sendable {
     self.root = root
     self.handler = handler
     #if os(macOS) || os(Windows) || os(Linux)
-      start(latency: latency, fileEvents: fileEvents)
+      if !FolderScope.isBroad(root) { start(latency: latency, fileEvents: fileEvents) }
     #endif
   }
 

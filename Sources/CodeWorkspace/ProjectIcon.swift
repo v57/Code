@@ -1,3 +1,4 @@
+import CodeFolders
 import Foundation
 
 #if canImport(ImageIO) && canImport(CoreGraphics)
@@ -14,6 +15,7 @@ public enum ProjectIcon {
   /// most `maxDepth` folders down, skipping hidden folders, dependencies and build output, and gives up after
   /// `maxEntries` entries.
   public static func find(in root: URL, maxDepth: Int = 6, maxEntries: Int = 20_000) -> URL? {
+    guard !FolderScope.isBroad(root) else { return nil }
     let fileManager = FileManager.default
     guard
       let walker = fileManager.enumerator(

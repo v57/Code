@@ -1,3 +1,4 @@
+import CodeFolders
 import Foundation
 import Observation
 
@@ -6,7 +7,8 @@ import Observation
 ///
 /// Hidden files (see `FileVisibility`) are left out unless
 /// `includesHiddenFiles` is set: then they are listed in `hiddenPaths`, except
-/// the inside of folders hidden by name (`.git`).
+/// the inside of folders hidden by name (`.git`). The home folder and those above it list only their own files
+/// (`FolderScope`).
 @MainActor @Observable public final class FileIndex {
   /// More files than this stops indexing (a home folder opened by mistake).
   public nonisolated static let limit = 100_000
@@ -145,6 +147,7 @@ import Observation
     var hiddenPaths: [String] = []
     var truncated = false
     let fm = FileManager.default
+    let isBroad = FolderScope.isBroad(root)
 
     func walk(_ folder: URL, _ folderPath: String, hidden folderHidden: Bool) {
       guard !truncated, !Task.isCancelled,
@@ -161,7 +164,7 @@ import Observation
           folderHidden ? nil : rules.reason(for: path, isDirectory: isDirectory, gitIgnore: gitIgnore)
         let isHidden = folderHidden || reason != nil
         if isDirectory {
-          guard !isHidden || (includingHidden && reason != .name) else { continue }
+          guard !isHidden || (includingHidden && reason != .name), !isBroad else { continue }
           walk(url, path, hidden: isHidden)
         } else if !isHidden {
           paths.append(path)

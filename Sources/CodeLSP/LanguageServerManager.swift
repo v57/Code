@@ -1,4 +1,5 @@
 #if os(macOS) || os(Windows) || os(Linux)
+  import CodeFolders
   import Foundation
   import Observation
 
@@ -77,6 +78,8 @@
     func server(for url: URL) -> LanguageServer? {
       guard let configuration = configuration(for: url) else { return nil }
       let root = LanguageServerCatalog.root(for: url, configuration: configuration, workspace: workspace)
+      // Servers index their root's whole tree.
+      guard !FolderScope.isBroad(root) else { return nil }
       let key = configuration.id + "|" + root.path
       if let server = servers[key] {
         if case .failed = server.status { return nil }

@@ -108,10 +108,12 @@ public enum ProjectScanner {
   }
 
   /// The schemes and containers of every project under `root`. With `picks` (container file names by folder path),
-  /// each folder's schemes come from one container: its pick, else its first. Without, from all of them.
+  /// each folder's schemes come from one container: its pick, else its first. Without, from all of them. The home
+  /// folder and those above it are only looked at themselves (`FolderScope`).
   public static func scanProjects(
     root: URL, depth: Int = 2, excluded: Set<String> = [], picks: [String: String]?
   ) -> Scan {
+    let depth = FolderScope.isBroad(root) ? 0 : depth
     var scan = Scan()
     var queue: [(URL, Int)] = [(root, 0)]
     while !queue.isEmpty {

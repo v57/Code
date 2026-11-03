@@ -171,6 +171,7 @@ public struct SourceFingerprint: Hashable, Codable, Sendable {
     let skipped: Set<String> = ["build", "DerivedData", "node_modules", "Pods", "Carthage"]
     var newest: TimeInterval = 0
     var count = 0
+    guard !FolderScope.isBroad(folder) else { return SourceFingerprint(value: "files:0:0", isDirty: true) }
     let keys: [URLResourceKey] = [.contentModificationDateKey, .isDirectoryKey]
     let enumerator = FileManager.default.enumerator(
       at: folder, includingPropertiesForKeys: keys, options: [.skipsHiddenFiles])

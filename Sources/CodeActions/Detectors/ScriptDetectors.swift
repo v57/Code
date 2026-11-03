@@ -216,7 +216,7 @@ public struct DotnetDetector: ProjectDetector {
 
   /// Project files up to three levels down.
   static func projects(in root: URL) -> [URL] {
-    guard
+    guard !FolderScope.isBroad(root),
       let enumerator = FileManager.default.enumerator(
         at: root, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
     else { return [] }
