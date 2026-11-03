@@ -3,7 +3,7 @@ import CodeKit
 import ComponentKit
 import SwiftUI
 
-/// A project window on the kit: the navigator, Back and Forward with the tab strip, the editor and the status bar
+/// A project window on the kit: the navigator, the tab strip, the editor and the status bar
 /// card, with Open Quickly and Go to Line floating over the editor as the kit's palette, and the console hanging
 /// under the toolbar's title.
 struct WorkspaceView: View {
@@ -24,9 +24,9 @@ struct WorkspaceView: View {
     } detail: {
       EditorArea()
       // The tabs float over the editor, as the toolbar does above them and the status bar under it: the editor runs
-      // on under all of them. A single tab isn't shown, so with nothing to go back or forward to there is no line.
+      // on under all of them. A single tab isn't shown.
       .safeAreaInset(edge: .top, spacing: 0) {
-        if workspace.tabs.count > 1 || model.services.canGoBack || model.services.canGoForward { TabBar() }
+        if workspace.tabs.count > 1 { TabBar() }
       }
       .kitPane(.content)
       .codeStatusBar()

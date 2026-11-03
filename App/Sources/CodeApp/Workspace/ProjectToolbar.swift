@@ -5,18 +5,37 @@ import VaultKit
 import VaultUI
 
 extension View {
-  /// Xcode's toolbar as the kit's bar: Run and Stop in a tool group before the project's rich title (its live icon
+  /// Xcode's toolbar as the kit's bar: Go Back and Go Forward (as in Markdown), Run and Stop in tool groups before the project's rich title (its live icon
   /// carries the running action, its meta line says what the project is doing), and the issue counts and
   /// scheme › destination at the end, which go icon-only when the window narrows. Without actions (Settings ›
   /// Tools), the project's name alone.
   func projectToolbar(model: WindowModel, actionsEnabled: Bool) -> some View {
     kitToolbar(model.workspace.name) {
+      NavigationTools(model: model)
+    } title: {
       HStack(spacing: KitMetrics.gutter) {
         if actionsEnabled { RunTools(model: model) }
         ProjectTitle(model: model, showsStatus: actionsEnabled)
       }
     } tools: {
       if actionsEnabled { SchemeTools(model: model) }
+    }
+  }
+}
+
+/// Go Back and Go Forward.
+private struct NavigationTools: View {
+  let model: WindowModel
+
+  var body: some View {
+    let services = model.services
+    ToolGroup(iconOnly: true) {
+      Button("Go Back", systemImage: "chevron.left") { services.goBack() }
+        .kitHelp("Go Back", shortcut: "⌃⌘←")
+        .disabled(!services.canGoBack)
+      Button("Go Forward", systemImage: "chevron.right") { services.goForward() }
+        .kitHelp("Go Forward", shortcut: "⌃⌘→")
+        .disabled(!services.canGoForward)
     }
   }
 }
