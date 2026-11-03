@@ -34,6 +34,8 @@ import SwiftUI
   var openMenu: ChromeMenu?
   /// The Notarization sheet: Export opens it until a profile is set up.
   var notarizationSetup: NotarizationSetupRequest?
+  /// The Upload to App Store sheet: the scheme waiting for its build number.
+  var appStoreUpload: AppStoreUploadRequest?
   @ObservationIgnored private var installObserver: NSObjectProtocol?
   var isGoToLinePresented = false
   /// The last prompt asked, kept while its sheet closes.
@@ -158,11 +160,15 @@ import SwiftUI
     consoleWindow?.close()
   }
 
-  /// Runs an action. The console stays shut while it builds: it opens once a Run's program starts (see
-  /// `WorkspaceView`), or when an action fails without issues to list. Export first asks for a notary profile when
-  /// none is set up.
+  /// Runs an action. The console stays shut, while it builds and once a Run's program starts: it opens from ⇧⌘Y or the
+  /// title, or when an action fails without issues to list. Export first asks for a notary profile when none is set up,
+  /// and Upload for its build number.
   func perform(_ kind: ActionKind) {
     guard services.settings.actionsEnabled else { return }
+    if kind == .upload, let scheme = services.actions.selectedScheme {
+      appStoreUpload = AppStoreUploadRequest(scheme: scheme)
+      return
+    }
     var environment: [String: String] = [:]
     if kind.needsNotarization {
       guard let profile = NotarySettings.profile else {
@@ -172,6 +178,13 @@ import SwiftUI
       environment["NOTARY_PROFILE"] = profile
     }
     services.actions.perform(kind, environment: environment)
+  }
+
+  /// Starts the Upload the sheet asked about.
+  func upload(_ scheme: ActionScheme, buildNumber: String) {
+    services.actions.perform(
+      .upload, scheme: scheme, destination: services.actions.selectedDestination,
+      environment: [AppStoreUpload.buildNumberVariable: buildNumber])
   }
 
   /// Open in New Window: shows a file in a window of its own with only its

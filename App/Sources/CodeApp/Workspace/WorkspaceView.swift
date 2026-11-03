@@ -1,3 +1,4 @@
+import CodeActionsUI
 import CodeKit
 import ComponentKit
 import SwiftUI
@@ -53,6 +54,9 @@ struct WorkspaceView: View {
     ) { model.commitPrompt($0) }
     .kitSheet(item: $model.notarizationSetup) { request in
       NotarizationSheet(request: request)
+    }
+    .kitSheet(item: $model.appStoreUpload) { request in
+      AppStoreUploadView(scheme: request.scheme) { model.upload(request.scheme, buildNumber: $0) }
     }
     .kitConfirmation(
       "Move “\(model.trashCandidate?.lastPathComponent ?? "")” to the Trash?",

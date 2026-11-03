@@ -14,6 +14,14 @@ import Testing
     }
   }
 
+  @Test func uploadCarriesTheAskedBuildNumber() throws {
+    let commands = XcodeDetector.distributionCommands("xcodebuild -project App.xcodeproj -scheme App", scheme: "App", mac: false)
+    #expect(commands[.upload]?.contains("CURRENT_PROJECT_VERSION=${CODE_BUILD_NUMBER:-$(git rev-list --count HEAD") == true)
+    #expect(AppStoreUpload.isValidBuildNumber("123"))
+    #expect(AppStoreUpload.isValidBuildNumber("1.2.3"))
+    for text in ["", "1.", ".1", "1.2.3.4", "1a", "-1", "١"] { #expect(!AppStoreUpload.isValidBuildNumber(text)) }
+  }
+
   @Test func aPickedContainerDecidesTheFoldersSchemes() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("containers-\(UUID().uuidString)")
     defer { try? FileManager.default.removeItem(at: root) }

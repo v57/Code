@@ -10,6 +10,12 @@ struct NotarizationSetupRequest: Identifiable {
   var exportsWhenDone = false
 }
 
+/// What opened the Upload to App Store sheet: the scheme waiting for its build number.
+struct AppStoreUploadRequest: Identifiable {
+  let id = UUID()
+  let scheme: ActionScheme
+}
+
 /// The notarytool keychain profile Export passes as `NOTARY_PROFILE`, saved
 /// once the Notarization sheet checked it; nil until then.
 enum NotarySettings {

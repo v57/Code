@@ -1,5 +1,22 @@
 import Foundation
 
+/// What an Upload to App Store asks before it starts: the build number it carries, which App Store Connect wants higher
+/// than the last one uploaded. Passed to the action in its environment.
+public enum AppStoreUpload {
+  public static let buildNumberVariable = "CODE_BUILD_NUMBER"
+
+  /// `CURRENT_PROJECT_VERSION` from the variable, else the commit count as releases have it, 1 outside Git.
+  static var buildNumberSetting: String {
+    "CURRENT_PROJECT_VERSION=${\(buildNumberVariable):-$(git rev-list --count HEAD 2>/dev/null || echo 1)}"
+  }
+
+  /// Whether App Store Connect takes `text` as a build number: up to three period-separated integers.
+  public static func isValidBuildNumber(_ text: String) -> Bool {
+    let parts = text.split(separator: ".", omittingEmptySubsequences: false)
+    return (1...3).contains(parts.count) && parts.allSatisfy { !$0.isEmpty && $0.allSatisfy(\.isASCII) && $0.allSatisfy(\.isNumber) }
+  }
+}
+
 /// An Xcode project or workspace: one scheme per Xcode scheme of its own,
 /// from `xcodebuild -list -json` (not its packages'). Runs on this Mac, iOS simulators and devices,
 /// depending on the platforms its target builds for (the project's when the
@@ -165,7 +182,8 @@ public struct XcodeDetector: ProjectDetector {
   }
 
   /// Install, Export and Upload to App Store, each archiving into
-  /// .build/<scheme> first. Install and Export are for Mac apps and pin the
+  /// .build/<scheme> first. Upload is stamped with the build number in `AppStoreUpload.buildNumberVariable`, the
+  /// commit count without it. Install and Export are for Mac apps and pin the
   /// macOS destination: a multiplatform target archives for iOS without it.
   /// They use the archive team's Developer ID Application identity when the
   /// keychain has one (checked when the action runs, so a new certificate
@@ -178,7 +196,7 @@ public struct XcodeDetector: ProjectDetector {
     let archive = shellQuote("\(folder)/\(scheme).xcarchive")
     var commands: [ActionKind: String] = [
       .upload:
-        "\(base) -archivePath \(archive) archive -allowProvisioningUpdates && echo '{\"method\":\"app-store-connect\"}' | plutil -convert xml1 -o \(shellQuote("\(folder)/AppStore.plist")) - && xcodebuild -exportArchive -archivePath \(archive) -exportOptionsPlist \(shellQuote("\(folder)/AppStore.plist")) -exportPath \(shellQuote("\(folder)/Upload")) -allowProvisioningUpdates"
+        "\(base) -archivePath \(archive) archive -allowProvisioningUpdates \(AppStoreUpload.buildNumberSetting) && echo '{\"method\":\"app-store-connect\"}' | plutil -convert xml1 -o \(shellQuote("\(folder)/AppStore.plist")) - && xcodebuild -exportArchive -archivePath \(archive) -exportOptionsPlist \(shellQuote("\(folder)/AppStore.plist")) -exportPath \(shellQuote("\(folder)/Upload")) -allowProvisioningUpdates"
     ]
     guard mac else { return commands }
     let archiveMac = "\(base) -destination 'generic/platform=macOS' -archivePath \(archive) archive"
