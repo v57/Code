@@ -66,10 +66,6 @@ struct WorkspaceView: View {
     ) {
       model.confirmTrash()
     }
-    .onChange(of: isRunningProgram) { _, isRunning in
-      // The console opens once a Run's build is done and its program starts, never while it builds.
-      if isRunning { model.showConsole() }
-    }
     .onChange(of: hidesIgnoredFiles) { _, hides in
       workspace.hidesIgnoredFilesByDefault = hides
     }
@@ -94,12 +90,6 @@ struct WorkspaceView: View {
     Binding(
       get: { model.isNavigatorVisible ? .all : .detailOnly },
       set: { model.isNavigatorVisible = $0 != .detailOnly })
-  }
-
-  /// A Run is past its build: its program is running.
-  private var isRunningProgram: Bool {
-    let actions = model.services.actions
-    return actions.runningKind == .run && actions.stepTitle == "Run"
   }
 
   // MARK: - New File and New Folder

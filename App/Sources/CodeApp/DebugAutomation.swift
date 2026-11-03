@@ -255,6 +255,7 @@
           "scheme: \(actions.selectedScheme?.name ?? "-")",
           "containers: " + actions.containers.map(\.fileName).joined(separator: ", "),
           "container: \(actions.selectedContainer?.fileName ?? "-")",
+          "console: \(model.isConsoleVisible ? "visible" : "hidden")",
           "destinations: " + actions.destinations.map { "\($0.name)[\($0.kind.rawValue)]" }.joined(separator: ", "),
           "destination: \(actions.selectedDestination?.name ?? "-")",
           "state: \(actions.state)",
