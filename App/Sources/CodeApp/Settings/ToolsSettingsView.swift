@@ -3,8 +3,8 @@ import ComponentKit
 import SwiftUI
 
 extension Notification.Name {
-  /// A language server or formatter was installed from Settings; the
-  /// object is its ID.
+  /// A language server or formatter was installed or uninstalled from
+  /// Settings; the object is its ID.
   static let codeToolInstalled = Notification.Name("CodeToolInstalled")
 }
 
@@ -20,6 +20,10 @@ extension Notification.Name {
   private(set) var hasFoundTools = false
   private(set) var environment: [String: String]?
   private(set) var adb: String?
+  /// Tools being uninstalled, by ID (their progress is in `installer`, which runs both).
+  private(set) var uninstalling: Set<String> = []
+  /// The last line of a failed uninstall, by tool ID.
+  private(set) var uninstallFailures: [String: String] = [:]
 
   func refresh() {
     Task {
@@ -45,6 +49,31 @@ extension Notification.Name {
       let succeeded = await installer.install(id: id, command: command, environment: environment)
       refresh()
       if succeeded { NotificationCenter.default.post(name: .codeToolInstalled, object: id) }
+    }
+  }
+
+  /// How the copy of `command` on the PATH would be uninstalled.
+  func uninstallPlan(command: String, installCommand: String?) -> ToolUninstallPlan? {
+    guard let path = paths[command] else { return nil }
+    return ToolUninstall.plan(tool: command, path: path, installCommand: installCommand) {
+      ShellEnvironment.shared.which($0)
+    }
+  }
+
+  func uninstall(id: String, command: String) {
+    guard let environment else { return }
+    uninstalling.insert(id)
+    uninstallFailures[id] = nil
+    Task {
+      let succeeded = await installer.install(id: id, command: command, environment: environment)
+      uninstalling.remove(id)
+      if succeeded {
+        NotificationCenter.default.post(name: .codeToolInstalled, object: id)
+      } else {
+        let lines = installer.logs[id]?.split(whereSeparator: \.isNewline) ?? []
+        uninstallFailures[id] = lines.last.map(String.init) ?? "Uninstalling failed."
+      }
+      refresh()
     }
   }
 }
@@ -81,7 +110,8 @@ struct LanguagesSettingsView: View {
               if on { ids.remove(server.id) } else { ids.insert(server.id) }
               disabled = EditorSettings.idsText(ids)
             }),
-          installCommand: server.install.command, toolID: server.id, systemImage: "curlybraces", hue: .purple)
+          installCommand: server.install.command, toolID: server.id, command: server.command,
+          systemImage: "curlybraces", hue: .purple)
       }
     }
     .disabled(!enabled)
@@ -122,8 +152,8 @@ struct FormattingSettingsView: View {
               if on { ids.remove(formatter.id) } else { ids.insert(formatter.id) }
               disabled = EditorSettings.idsText(ids)
             }),
-          installCommand: formatter.installCommand, toolID: formatter.id, systemImage: "text.alignleft",
-          hue: .orange
+          installCommand: formatter.installCommand, toolID: formatter.id, command: formatter.command,
+          systemImage: "text.alignleft", hue: .orange
         ) {
           if !formatter.configFiles.isEmpty {
             Toggle("Only with a config file", isOn: requiresConfigBinding(formatter))
@@ -218,8 +248,8 @@ extension Array {
   }
 }
 
-/// A tool's row: what it is for and where it is installed, with its switch and `controls`, a line of small controls
-/// under it (a formatter's config-file check and custom command); only Install while it isn't installed.
+/// A tool's row: what it is for and where it is installed, with Uninstall, its switch and `controls`, a line of small
+/// controls under it (a formatter's config-file check and custom command); only Install while it isn't installed.
 private struct ToolRow<Controls: View>: View {
   let name: String
   let detail: String
@@ -228,10 +258,14 @@ private struct ToolRow<Controls: View>: View {
   @Binding var isOn: Bool
   let installCommand: String?
   let toolID: String
+  /// The command on the PATH: what Uninstall removes, which isn't a formatter's custom command.
+  let command: String
   let systemImage: String
   let hue: Hue
   @ViewBuilder var controls: Controls
   private var tools: ToolsModel { .shared }
+  @State private var uninstallPlan: ToolUninstallPlan?
+  @State private var isConfirmingUninstall = false
 
   var body: some View {
     Group {
@@ -242,15 +276,52 @@ private struct ToolRow<Controls: View>: View {
       }
     }
     .help(path ?? source)
+    .kitDialog(
+      uninstallTitle, isPresented: $isConfirmingUninstall, message: uninstallMessage, systemImage: "trash",
+      hue: uninstallCommand == nil ? .gray : .red, confirm: uninstallCommand == nil ? "OK" : "Uninstall",
+      role: uninstallCommand == nil ? nil : .destructive
+    ) {
+      if let uninstallCommand { KitCodeBlock(uninstallCommand) }
+    } action: {
+      if let uninstallCommand { tools.uninstall(id: toolID, command: uninstallCommand) }
+    }
+  }
+
+  private var uninstallCommand: String? {
+    if case .command(let command, _) = uninstallPlan { command } else { nil }
+  }
+
+  private var uninstallTitle: String {
+    uninstallCommand == nil ? "Can’t Uninstall \(name)" : "Uninstall \(name)?"
+  }
+
+  private var uninstallMessage: String? {
+    switch uninstallPlan {
+    case .command(_, let note): note ?? "Code will run this command."
+    case .unknown(let reason): reason
+    case nil: nil
+    }
   }
 
   private var row: FormRow<some View, EmptyView> {
     let running = tools.installer.running[toolID]
-    return FormRow(name, help: running ?? help, systemImage: systemImage, hue: path == nil ? .gray : hue) {
+    return FormRow(
+      name, help: running ?? help, systemImage: systemImage, hue: path == nil ? .gray : hue,
+      error: running == nil ? tools.uninstallFailures[toolID] : nil
+    ) {
       if running != nil {
-        LiveIcon(systemImage: "arrow.down", status: .working, size: 20)
+        LiveIcon(systemImage: tools.uninstalling.contains(toolID) ? "trash" : "arrow.down", status: .working, size: 20)
       } else if path != nil {
-        Toggle(name, isOn: $isOn).kitLabelsHidden()
+        HStack(spacing: 8) {
+          if tools.paths[command] != nil {
+            Button("Uninstall") {
+              uninstallPlan = tools.uninstallPlan(command: command, installCommand: installCommand)
+              isConfirmingUninstall = uninstallPlan != nil
+            }
+            .buttonStyle(.kit)
+          }
+          Toggle(name, isOn: $isOn).kitLabelsHidden()
+        }
       } else if !tools.hasFoundTools {
         LiveIcon(systemImage: "magnifyingglass", status: .working, size: 20)
       } else if let installCommand {
@@ -274,11 +345,11 @@ private struct ToolRow<Controls: View>: View {
 extension ToolRow where Controls == EmptyView {
   init(
     name: String, detail: String, source: String, path: String?, isOn: Binding<Bool>, installCommand: String?,
-    toolID: String, systemImage: String, hue: Hue
+    toolID: String, command: String, systemImage: String, hue: Hue
   ) {
     self.init(
       name: name, detail: detail, source: source, path: path, isOn: isOn, installCommand: installCommand,
-      toolID: toolID, systemImage: systemImage, hue: hue
+      toolID: toolID, command: command, systemImage: systemImage, hue: hue
     ) { EmptyView() }
   }
 }
