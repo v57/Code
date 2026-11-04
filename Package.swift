@@ -38,6 +38,11 @@ func v57(_ name: String) -> Package.Dependency {
 /// - CodeIcons: file icons for languages, data and project files: an SF
 ///   Symbol, else one to three letters in the language's color (SwiftUI,
 ///   platform-neutral).
+/// - CodeScan: a byte-level scanner over CodeHighlighting's languages, every file's declarations and scopes, and a
+///   workspace index that answers definitions, references, symbols and completions without a compiler
+///   (platform-neutral).
+/// - CodePretty: a formatter for every language on CodeScan's tokens; refuses any result whose tokens changed.
+/// - CodeServer: a language server (LSP over stdio) for every language on CodeScan and CodePretty.
 /// - CodeKit: all of the above, plus what connects them (an editor for a
 ///   workspace's documents with language services, issues and breakpoints).
 ///
@@ -62,6 +67,11 @@ let package = Package(
     .library(name: "CodeIcons", targets: ["CodeIcons"]),
     .library(name: "CodeProgress", targets: ["CodeProgress"]),
     .library(name: "CodeFolders", targets: ["CodeFolders"]),
+    .library(name: "CodeScan", targets: ["CodeScan"]),
+    .library(name: "CodePretty", targets: ["CodePretty"]),
+    .library(name: "CodeServer", targets: ["CodeServer"]),
+    .executable(name: "code-lsp", targets: ["code-lsp"]),
+    .executable(name: "code-pretty", targets: ["code-pretty"]),
   ],
   // SSHKit: remote actions over SSH, in-process (../SSH). ComponentKit: CodeActionsUI's sheets (../Component).
   dependencies: [v57("SSH"), v57("Component")],
@@ -79,6 +89,11 @@ let package = Package(
       name: "CodeActionsUI", dependencies: ["CodeActions", .product(name: "ComponentKit", package: "Component")],
       swiftSettings: swiftSettings),
     .target(name: "CodeLSP", dependencies: ["CodeFolders"], swiftSettings: swiftSettings),
+    .target(name: "CodeScan", dependencies: ["CodeHighlighting"], swiftSettings: swiftSettings),
+    .target(name: "CodePretty", dependencies: ["CodeScan"], swiftSettings: swiftSettings),
+    .target(name: "CodeServer", dependencies: ["CodeScan", "CodePretty", "CodeLSP"], swiftSettings: swiftSettings),
+    .executableTarget(name: "code-lsp", dependencies: ["CodeServer"], swiftSettings: swiftSettings),
+    .executableTarget(name: "code-pretty", dependencies: ["CodeScan", "CodePretty"], swiftSettings: swiftSettings),
     .target(name: "CodeMinimap", dependencies: ["CodeHighlighting"], swiftSettings: swiftSettings),
     .target(name: "CodeFormatting", swiftSettings: swiftSettings),
     .target(name: "CodeIcons", swiftSettings: swiftSettings),
@@ -89,13 +104,16 @@ let package = Package(
       name: "CodeKit",
       dependencies: [
         "CodeHighlighting", "CodeWorkspace", "CodeEditor", "CodeActions", "CodeLSP", "CodeMinimap",
-        "CodeFormatting", "CodeAutocompletion", "CodeIcons", "CodeProgress", "CodeFolders",
+        "CodeFormatting", "CodeAutocompletion", "CodeIcons", "CodeProgress", "CodeFolders", "CodeScan", "CodePretty",
       ],
       swiftSettings: swiftSettings),
 
     .testTarget(
       name: "CodeHighlightingTests", dependencies: ["CodeHighlighting"],
       swiftSettings: swiftSettings),
+    .testTarget(name: "CodeScanTests", dependencies: ["CodeScan"], swiftSettings: swiftSettings),
+    .testTarget(name: "CodePrettyTests", dependencies: ["CodePretty"], swiftSettings: swiftSettings),
+    .testTarget(name: "CodeServerTests", dependencies: ["CodeServer"], swiftSettings: swiftSettings),
     .testTarget(
       name: "CodeWorkspaceTests", dependencies: ["CodeWorkspace"], swiftSettings: swiftSettings),
     .testTarget(name: "CodeEditorTests", dependencies: ["CodeEditor"], swiftSettings: swiftSettings),
