@@ -141,6 +141,63 @@ private final class Client: @unchecked Sendable {
     }
   }
 
+  /// Past `refreshIfStale`'s two seconds, so that the next workspace query scans the folder again.
+  private func waitForRefresh() { Thread.sleep(forTimeInterval: 2.2) }
+
+  @Test func unsavedEditsOutliveTheRefresh() throws {
+    let use = "func use() {\n  let t = Added()\n}\n"
+    try start(["A.swift": "struct Old {}\n", "B.swift": use]) { client, root in
+      let a = root + "/A.swift"
+      let b = root + "/B.swift"
+      open(client, a, "struct Old {}\n")
+      // Only the editor has the new name, and the text is no longer as long as the file.
+      client.notify(
+        "textDocument/didChange",
+        "{\"textDocument\":{\"uri\":\"file://\(a)\",\"version\":2},\"contentChanges\":[{\"range\":{\"start\":{\"line\":0,\"character\":7},\"end\":{\"line\":0,\"character\":10}},\"text\":\"Added\"}]}")
+      #expect(client.request("textDocument/definition", at(b, 1, 10))["result"].array?.first?["uri"].string == "file://\(a)")
+
+      waitForRefresh()
+
+      let definition = client.request("textDocument/definition", at(b, 1, 10))
+      #expect(definition["result"].array?.first?["uri"].string == "file://\(a)")
+      #expect(definition["result"].array?.first?["range"]["start"]["line"].int == 0)
+      let references = client.request("textDocument/references", String(at(b, 1, 10).dropLast()) + ",\"context\":{\"includeDeclaration\":true}}")
+      let referencing = Set(references["result"].array?.compactMap { $0["uri"].string } ?? [])
+      #expect(referencing == ["file://\(a)", "file://\(b)"])
+      #expect(client.request("workspace/symbol", "{\"query\":\"Added\"}")["result"].array?.first?["name"].string == "Added")
+      #expect(client.request("workspace/symbol", "{\"query\":\"Old\"}")["result"].array?.isEmpty == true)
+
+      // Closing it without saving: the file is the truth again.
+      client.notify("textDocument/didClose", "{\"textDocument\":{\"uri\":\"file://\(a)\"}}")
+      #expect(client.request("workspace/symbol", "{\"query\":\"Added\"}")["result"].array?.isEmpty == true)
+      #expect(client.request("workspace/symbol", "{\"query\":\"Old\"}")["result"].array?.first?["name"].string == "Old")
+    }
+  }
+
+  @Test func openDocumentsWithoutAFileOutliveTheRefresh() throws {
+    let elsewhere = FileManager.default.temporaryDirectory.appendingPathComponent("codeserver-\(UUID().uuidString)").resolvingSymlinksInPath()
+    try FileManager.default.createDirectory(at: elsewhere, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: elsewhere) }
+    let use = "func use() {\n  let n = Never()\n  let d = Deleted()\n  let o = Outside()\n}\n"
+    try start(["B.swift": use, "Deleted.swift": "struct Deleted {}\n"]) { client, root in
+      let b = root + "/B.swift"
+      let unsaved = root + "/Never.swift"
+      let deleted = root + "/Deleted.swift"
+      let outside = elsewhere.path + "/Outside.swift"
+      open(client, unsaved, "struct Never {}\n")
+      open(client, deleted, "struct Deleted {}\n")
+      open(client, outside, "struct Outside {}\n")
+      try FileManager.default.removeItem(atPath: deleted)
+
+      waitForRefresh()
+
+      for (line, path) in [(1, unsaved), (2, deleted), (3, outside)] {
+        let definition = client.request("textDocument/definition", at(b, line, 10))
+        #expect(definition["result"].array?.first?["uri"].string == "file://\(path)")
+      }
+    }
+  }
+
   @Test func diagnosticsFollowTheBrackets() throws {
     try start(["A.swift": "\n"]) { client, root in
       let path = root + "/A.swift"

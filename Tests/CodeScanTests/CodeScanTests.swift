@@ -279,6 +279,43 @@ private func names(_ text: String, _ language: String) -> [String] {
     }
   }
 
+  @Test func refreshLeavesOpenDocumentsAlone() throws {
+    try withFolder(["A.swift": "struct Old {}\n", "B.swift": "struct Bee {}\n", "C.swift": "struct Sea {}\n"]) { root in
+      let index = WorkspaceIndex(roots: [root])
+      index.refresh()
+      let swift = profile("Swift")
+      func found(_ name: String) -> Bool { !index.workspaceSymbols(query: name, limit: 5).filter { $0.name == name }.isEmpty }
+      let outside = "/not/in/the/folder/D.swift"
+      // As long as the file, then not.
+      index.setDocument(SourceFile("struct Bzz {}\n", profile: swift), path: root + "/B.swift")
+      index.setDocument(SourceFile("struct Longer {}\n", profile: swift), path: root + "/A.swift")
+      // Without a file in the folder: deleted from it, and never in it.
+      index.setDocument(SourceFile("struct Sea {}\n", profile: swift), path: root + "/C.swift")
+      try FileManager.default.removeItem(atPath: root + "/C.swift")
+      index.setDocument(SourceFile("struct Elsewhere {}\n", profile: swift), path: outside)
+
+      index.refresh()
+
+      #expect(found("Bzz"))
+      #expect(!found("Bee"))
+      #expect(found("Longer"))
+      #expect(!found("Old"))
+      #expect(found("Sea"))
+      #expect(found("Elsewhere"))
+      #expect(index.fileCount == 4)
+
+      // Closed, the disk counts again.
+      for path in [root + "/A.swift", root + "/B.swift", root + "/C.swift", outside] { index.closeDocument(path: path) }
+      index.refresh()
+      #expect(found("Old"))
+      #expect(found("Bee"))
+      #expect(!found("Longer"))
+      #expect(!found("Sea"))
+      #expect(!found("Elsewhere"))
+      #expect(index.fileCount == 2)
+    }
+  }
+
   @Test func gitignoreIsHonored() throws {
     try withFolder([
       ".gitignore": "gen/\n*.out.swift\n!keep.out.swift\n",

@@ -121,11 +121,12 @@ public final class WorkspaceIndex: @unchecked Sendable {
   private let extensions = ExtensionTable()
 
   /// Scans the roots again: new and changed files by their size and date, removed ones dropped. The first call reads
-  /// everything; later ones cost a `stat` per file.
+  /// everything; later ones cost a `stat` per file. An open document stays as the editor has it, whatever the disk says.
   @discardableResult public func refresh() -> Int {
     lastRefresh = Date()
     let known = fileIndexes
     let existing = files
+    let open = Set(documents.keys)
     let threads = FileWalk.threadCount
     let workers = (0..<threads).map { _ in Worker() }
     let seenLock = NSLock()
@@ -139,6 +140,7 @@ public final class WorkspaceIndex: @unchecked Sendable {
         seenLock.lock()
         seen.insert(path)
         seenLock.unlock()
+        if open.contains(path) { return true }
         guard let index = known[path], let file = existing[index] else { return false }
         return file.size == size && file.modified == modified
       },
@@ -150,7 +152,7 @@ public final class WorkspaceIndex: @unchecked Sendable {
         workers[worker].scan(path: path, text: text, count: count, modified: modified, profile: profile)
       })
     var changes = 0
-    for (path, index) in known where !seen.contains(path) {
+    for (path, index) in known where !seen.contains(path) && !open.contains(path) {
       remove(index, path: path)
       changes += 1
     }
