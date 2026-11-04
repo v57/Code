@@ -70,8 +70,10 @@ struct WelcomeScreen: View {
       }
     }
     #if DEBUG && os(macOS)
-      .onReceive(NotificationCenter.default.publisher(for: DebugAutomation.welcomeDrop)) { note in
-        if let url = note.object as? URL { Task { await drop(url) } }
+      .task {
+        for await note in NotificationCenter.default.notifications(named: DebugAutomation.welcomeDrop) {
+          if let url = note.object as? URL { await drop(url) }
+        }
       }
     #endif
     .kitSheet(item: $importOffer) { offer in
