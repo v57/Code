@@ -9,6 +9,8 @@
   import CodeEditor
   import CodeFormatting
   import CodeLSP
+  import CodePretty
+  import CodeScan
   import CodeWorkspace
   import Observation
 
@@ -19,6 +21,9 @@
     public var languageServersEnabled = true
     public var disabledLanguageServers: Set<String> = []
     public var formatOnSave = true
+    /// Files no installed formatter applies to go through CodePretty. Off until asked: a save then rewrites files that
+    /// used to be left alone.
+    public var usesBuiltInFormatter = false
     public var disabledFormatters: Set<String> = []
     /// "Only with a config file", where changed from a formatter's default.
     public var formatterRequiresConfig: [String: Bool] = [:]
@@ -227,13 +232,24 @@
       guard settings.formatOnSave else { return }
       let text = textView.string
       do {
-        guard let formatted = try await formatting.format(text, url: document.url),
-          formatted != text, textView.string == text
-        else { return }
+        var result = try await formatting.format(text, url: document.url)
+        if result == nil, settings.usesBuiltInFormatter {
+          result = await Self.formatWithBuiltIn(text, url: document.url)
+        }
+        guard let formatted = result, formatted != text, textView.string == text else { return }
         textView.applyFormattedText(formatted)
       } catch {
         showStatus((error as? LocalizedError)?.errorDescription ?? "\(error)")
       }
+    }
+
+    private nonisolated static func formatWithBuiltIn(_ text: String, url: URL) async -> String? {
+      await Task.detached(priority: .userInitiated) {
+        guard let profile = LexProfile.profile(forPath: url.path) else { return nil }
+        let source = SourceFile(text, profile: profile)
+        let output = Pretty.format(source, path: url.path, options: PrettyOptions.resolve(path: url.path, source: source))
+        return output.refused ? nil : String(decoding: output.text, as: UTF8.self)
+      }.value
     }
 
     // MARK: - Issues

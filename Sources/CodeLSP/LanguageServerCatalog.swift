@@ -15,12 +15,14 @@ public enum ServerInstall: Equatable, Sendable {
   case dotnetTool(String)
   /// Comes with the language's own SDK (Dart).
   case sdk(String)
+  /// Part of the app itself: nothing to install.
+  case builtIn
 
   /// The shell command that installs it, or nil when it comes with
   /// something else.
   public var command: String? {
     switch self {
-    case .xcode, .sdk: return nil
+    case .xcode, .sdk, .builtIn: return nil
     case .brew(let formula): return "brew install \(formula)"
     case .npm(let package): return "npm install -g \(package)"
     case .gem(let gem): return "gem install \(gem)"
@@ -36,6 +38,7 @@ public enum ServerInstall: Equatable, Sendable {
     case .gem(let gem): return "RubyGems: \(gem)"
     case .dotnetTool(let tool): return ".NET tool: \(tool)"
     case .sdk(let sdk): return "Included with the \(sdk) SDK"
+    case .builtIn: return "Built into Code"
     }
   }
 }
@@ -82,7 +85,23 @@ public struct LanguageServerConfiguration: Identifiable, Equatable, Sendable {
 
 /// The language servers Code knows, one per language.
 public enum LanguageServerCatalog {
-  public static let all: [LanguageServerConfiguration] = [
+  public static let all: [LanguageServerConfiguration] = installable + [builtIn]
+
+  /// Code's own scanner (CodeServer), last: it answers from tokens, in microseconds and without types, for every file
+  /// whose language's own server is off or isn't installed.
+  public static let builtIn = LanguageServerConfiguration(
+    id: "code-lsp", name: "Code’s scanner", languages: "Any language without its own server",
+    languageIDs: installable.reduce(into: formats) { $0.merge($1.languageIDs) { first, _ in first } },
+    command: "code-lsp", arguments: ["--language-server"], rootMarkers: [], install: .builtIn)
+
+  /// What no server above handles: formats, for their outline and folding.
+  private static let formats = [
+    "json": "json", "jsonc": "jsonc", "yaml": "yaml", "yml": "yaml", "toml": "toml", "md": "markdown", "markdown": "markdown",
+    "html": "html", "htm": "html", "css": "css", "scss": "scss", "xml": "xml", "sql": "sql", "sh": "shellscript",
+    "bash": "shellscript", "zsh": "shellscript", "mk": "makefile", "ps1": "powershell", "lua": "lua",
+  ]
+
+  private static let installable: [LanguageServerConfiguration] = [
     LanguageServerConfiguration(
       id: "sourcekit-lsp", name: "SourceKit-LSP", languages: "Swift",
       languageIDs: ["swift": "swift"], command: "sourcekit-lsp",

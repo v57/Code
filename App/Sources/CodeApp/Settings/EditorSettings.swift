@@ -25,6 +25,7 @@ enum EditorSettings {
   static let languageServersEnabled = "languages.enabled"
   static let disabledLanguageServers = "languages.disabled"  // comma-separated server IDs
   static let formatOnSave = "formatting.onSave"
+  static let usesBuiltInFormatter = "formatting.builtIn"
   static let disabledFormatters = "formatting.disabled"  // comma-separated formatter IDs
   static let formatterRequiresConfig = "formatting.requiresConfig"  // JSON {id: Bool}
   static let formatterCommands = "formatting.commands"  // JSON {id: path}
@@ -61,6 +62,7 @@ extension EditorSettings {
     settings.languageServersEnabled = bool(languageServersEnabled)
     settings.disabledLanguageServers = ids(from: defaults.string(forKey: disabledLanguageServers) ?? "")
     settings.formatOnSave = bool(formatOnSave)
+    settings.usesBuiltInFormatter = defaults.bool(forKey: usesBuiltInFormatter)
     settings.disabledFormatters = ids(from: defaults.string(forKey: disabledFormatters) ?? "")
     settings.formatterRequiresConfig = dictionary(from: defaults.string(forKey: formatterRequiresConfig) ?? "")
     settings.formatterCommands = dictionary(from: defaults.string(forKey: formatterCommands) ?? "")
@@ -79,6 +81,7 @@ struct ServiceSettingsReader: DynamicProperty {
   @AppStorage(EditorSettings.languageServersEnabled) private var languageServersEnabled = true
   @AppStorage(EditorSettings.disabledLanguageServers) private var disabledLanguageServers = ""
   @AppStorage(EditorSettings.formatOnSave) private var formatOnSave = true
+  @AppStorage(EditorSettings.usesBuiltInFormatter) private var usesBuiltInFormatter = false
   @AppStorage(EditorSettings.disabledFormatters) private var disabledFormatters = ""
   @AppStorage(EditorSettings.formatterRequiresConfig) private var formatterRequiresConfig = "{}"
   @AppStorage(EditorSettings.formatterCommands) private var formatterCommands = "{}"
@@ -94,6 +97,7 @@ struct ServiceSettingsReader: DynamicProperty {
     settings.languageServersEnabled = languageServersEnabled
     settings.disabledLanguageServers = EditorSettings.ids(from: disabledLanguageServers)
     settings.formatOnSave = formatOnSave
+    settings.usesBuiltInFormatter = usesBuiltInFormatter
     settings.disabledFormatters = EditorSettings.ids(from: disabledFormatters)
     settings.formatterRequiresConfig = EditorSettings.dictionary(from: formatterRequiresConfig)
     settings.formatterCommands = EditorSettings.dictionary(from: formatterCommands)

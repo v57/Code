@@ -51,9 +51,14 @@
       self.environment = environment
     }
 
+    /// What runs the built-in server (CodeServer): the app's own binary, set by the app. Without one, as in a host
+    /// that doesn't link the server, it counts as not installed.
+    public static var builtInExecutable: String?
+
     /// The full path of a server's command, or nil when it isn't installed.
     public func executable(for configuration: LanguageServerConfiguration) -> String? {
-      Self.which(configuration.command, path: environment["PATH"] ?? "")
+      if configuration.install == .builtIn { return Self.builtInExecutable }
+      return Self.which(configuration.command, path: environment["PATH"] ?? "")
     }
 
     nonisolated static func which(_ command: String, path: String) -> String? {
@@ -64,13 +69,12 @@
       return nil
     }
 
-    /// The server configuration for a file, when servers are on and it is
-    /// enabled.
+    /// The server configuration for a file, when servers are on: the first enabled one that's installed (the built-in
+    /// scanner is last), else the first enabled, to say what's missing.
     public func configuration(for url: URL) -> LanguageServerConfiguration? {
-      guard isEnabled, let configuration = LanguageServerCatalog.configuration(for: url, in: configurations),
-        !disabledServerIDs.contains(configuration.id)
-      else { return nil }
-      return configuration
+      guard isEnabled else { return nil }
+      let matching = configurations.filter { $0.languageID(for: url) != nil && !disabledServerIDs.contains($0.id) }
+      return matching.first { executable(for: $0) != nil } ?? matching.first
     }
 
     /// The server for a file, started on first use; nil when there is none

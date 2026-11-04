@@ -102,7 +102,7 @@ struct LanguagesSettingsView: View {
       ForEach(LanguageServerCatalog.all.installedFirst { tools.paths[$0.command] != nil }) { server in
         ToolRow(
           name: server.name, detail: server.languages, source: server.install.summary,
-          path: tools.paths[server.command],
+          path: server.install == .builtIn ? LanguageServerManager.builtInExecutable : tools.paths[server.command],
           isOn: Binding(
             get: { !EditorSettings.ids(from: disabled).contains(server.id) },
             set: { on in
@@ -121,6 +121,7 @@ struct LanguagesSettingsView: View {
 
 struct FormattingSettingsView: View {
   @AppStorage(EditorSettings.formatOnSave) private var formatOnSave = true
+  @AppStorage(EditorSettings.usesBuiltInFormatter) private var usesBuiltInFormatter = false
   @AppStorage(EditorSettings.disabledFormatters) private var disabled = ""
   @AppStorage(EditorSettings.formatterRequiresConfig) private var requiresConfig = "{}"
   @AppStorage(EditorSettings.formatterCommands) private var commands = "{}"
@@ -138,6 +139,10 @@ struct FormattingSettingsView: View {
       .preview(height: EditorPreview.height(lines: 2, configuration: editor.configuration)) {
         EditorPreview(text: PreviewSample.formatting(isOn: formatOnSave), configuration: editor.configuration)
       }
+      FormRow("Code’s formatter", help: "For files no formatter below applies to, in any language", systemImage: "wand.and.stars", hue: .orange) {
+        Toggle("Use Code’s formatter for other files", isOn: $usesBuiltInFormatter).kitLabelsHidden()
+      }
+      .disabled(!formatOnSave)
     }
     FormCard("Formatters") {
       ForEach(FormatterCatalog.all.installedFirst { path(of: $0) != nil }) { formatter in
