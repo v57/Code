@@ -285,6 +285,11 @@ public final class LexProfile: @unchecked Sendable {
 /// and stop at the zero instead of checking the end each time.
 public let scanPadding = 32
 
+/// Whether the text starts with UTF-8's byte order mark, as files written on Windows often do.
+@inline(__always) public func hasByteOrderMark(_ t: UnsafePointer<UInt8>, _ n: Int) -> Bool {
+  n >= 3 && t[0] == 0xEF && t[1] == 0xBB && t[2] == 0xBF
+}
+
 /// Scans `text`. `out` has room for `length + 8` tokens, and the text is followed by `scanPadding` zero bytes.
 /// Tolerant: unterminated strings end at their line, and comments at the end.
 public func scan(
@@ -299,8 +304,11 @@ public func scan(
   var frames = InterpolationFrames()
   var hereDocument = HereDocument()
 
-  // A shebang is no code, in any language.
-  if n > 2, t[0] == 0x23, t[1] == 0x21, t[2] != 0x5B {
+  // A byte order mark says how the text is written, and would join the first word as high bytes do.
+  if hasByteOrderMark(t, n) {
+    i = 3
+  } else if n > 2, t[0] == 0x23, t[1] == 0x21, t[2] != 0x5B {
+    // A shebang is no code, in any language.
     i = lineEnd(t, n, 0)
     out[0] = Token(.comment, 0, i)
     count = 1
@@ -442,8 +450,8 @@ private struct InterpolationFrames {
   }()
 
   @inline(__always) private mutating func with<R>(_ index: Int, _ body: (inout Frame) -> R) -> R {
-    withUnsafeMutableBytes(of: &frames) { buffer in
-      body(&buffer.bindMemory(to: Frame.self)[index])
+    withUnsafeMutablePointer(to: &frames) { tuple in
+      tuple.withMemoryRebound(to: Frame.self, capacity: 8) { body(&$0[index]) }
     }
   }
 

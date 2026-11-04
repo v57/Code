@@ -55,6 +55,21 @@ private func names(_ text: String, _ language: String) -> [String] {
     #expect(tokens.filter { $0.1 == .string }.count == 3)
   }
 
+  @Test func interpolationsNestPastTheirRoom() {
+    for (language, open, close) in [("swift", "\"\\(", ")\""), ("javascript", "`${", "}`"), ("typescript", "`${", "}`")] {
+      for depth in [7, 8, 9, 400] {
+        let text = String(repeating: open, count: depth) + "x" + String(repeating: close, count: depth) + "\n"
+        let source = SourceFile(text, profile: profile(language))
+        var end = 0
+        for token in source.tokens {
+          #expect(token.start >= end, "\(language) \(depth)")
+          #expect(token.end <= source.count, "\(language) \(depth)")
+          end = token.end
+        }
+      }
+    }
+  }
+
   @Test func rawAndMultilineStrings() {
     #expect(kinds(##"#"a"b"#"##, "Swift").map(\.1) == [.string])
     #expect(kinds("\"\"\"\na\n\"b\"\n\"\"\"", "Swift").map(\.1) == [.string])
@@ -119,6 +134,32 @@ private func names(_ text: String, _ language: String) -> [String] {
     #expect(names("a:\n  b: 1\n", "YAML") == ["a", "b"])
     #expect(names("all: x\n\tcmd\n", "Makefile") == ["all"])
     #expect(names(".a { color: red }\n", "CSS").contains(".a"))
+  }
+
+  @Test func aByteOrderMarkIsntPartOfTheFirstWord() {
+    #expect(names("\u{FEFF}struct Marked {}\n", "Swift") == ["Marked"])
+    #expect(names("\u{FEFF}", "Swift").isEmpty)
+    #expect(names("\u{FEFF}func F() {}\n", "Go") == ["F"])
+  }
+
+  @Test func cDeclarationsAreNotAssignments() {
+    let text = """
+      int f(struct S *s) {
+        s->member = 1;
+        a.b = 2;
+        u32 x0, x1, *x2 = g(1, 2), x3[4];
+        struct T *node = 0;
+        h(x0, x1);
+        return 0;
+      }
+      """
+    let symbols = SourceFile(text, profile: profile("C")).symbols
+    let all = symbols.symbols.map { symbols.name($0) }
+    for name in ["f", "s", "x0", "x1", "x2", "x3", "node"] { #expect(all.contains(name), "\(name)") }
+    for name in ["member", "b", "g", "h"] { #expect(!all.contains(name), "\(name)") }
+    let nodes = symbols.symbols.filter { symbols.name($0) == "node" }
+    #expect(nodes.count == 1)
+    #expect(nodes.first?.isLocal == true)
   }
 
   @Test func unbalancedBracketsAreReported() {

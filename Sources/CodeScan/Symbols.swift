@@ -833,10 +833,14 @@ private struct SymbolExtractor {
     case .close: afterType = t[previous.start] == 0x5D  // int[] x.
     case .punctuation:
       let last = t[previous.end &- 1]
-      // `Foo *x`, `Foo &x`, `List<int> x`, not `a * b;`: it must start the statement.
-      guard last == 0x2A || last == 0x26 || last == 0x3E else { return }
+      // `Foo *x`, `Foo &x`, `Foo **x`, `List<int> x`, not `a * b;`: it must start the statement. Not `a->b`, either.
+      let first = t[previous.start]
+      guard (last == 0x2A || last == 0x26 || last == 0x3E) && first == last else { return }
       guard i >= 2, tokens[i &- 2].kind == .identifier || tokens[i &- 2].kind == .keyword else { return }
-      guard i < 3 || startsLine(i &- 2) || isByte(i &- 3, 0x3B) || isByte(i &- 3, 0x7B) || isByte(i &- 3, 0x7D) || tokens[i &- 3].kind == .keyword else {
+      guard
+        i < 3 || startsLine(i &- 2) || isByte(i &- 3, 0x3B) || isByte(i &- 3, 0x7B) || isByte(i &- 3, 0x7D) || tokens[i &- 3].kind == .keyword
+          || tokens[i &- 3].kind == .declarationKeyword  // `struct T *x`.
+      else {
         return
       }
       afterType = true
@@ -868,6 +872,40 @@ private struct SymbolExtractor {
     }
     guard isByte(next, 0x3D) || isByte(next, 0x3B) || isByte(next, 0x2C) || isByte(next, 0x5B) else { return }
     add(name: token, kind: .variable, local: scope.inFunction, start: lineFirstToken(i))
+    moreDeclarators(after: i, local: scope.inFunction)
+  }
+
+  /// `int a, *b = f(1, 2), c[3];`: the names after the first, which nothing else in the statement marks.
+  private mutating func moreDeclarators(after first: Int, local: Bool) {
+    var i = first &+ 1
+    var depth = 0
+    let limit = min(tokens.count, first &+ 512)
+    var expectsName = false
+    while i < limit {
+      let token = tokens[i]
+      switch token.kind {
+      case .open, .interpolationOpen: depth &+= 1
+      case .close, .interpolationClose:
+        if depth == 0 { return }
+        depth &-= 1
+      case .punctuation:
+        guard depth == 0 else { break }
+        if isByte(i, 0x3B) { return }
+        if isByte(i, 0x2C) { expectsName = true }
+      case .identifier:
+        if expectsName, depth == 0 {
+          expectsName = false
+          let next = i &+ 1
+          guard next < tokens.count else { return }
+          // Anything else after it means this wasn't a list of names: `a, b(c)`.
+          guard isByte(next, 0x3D) || isByte(next, 0x3B) || isByte(next, 0x2C) || isByte(next, 0x5B) else { return }
+          add(name: token, kind: .variable, local: local, start: lineFirstToken(i))
+        }
+      default:
+        if expectsName { return }
+      }
+      i &+= 1
+    }
   }
 
   func lineFirstToken(_ index: Int) -> Int {

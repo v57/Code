@@ -37,7 +37,8 @@ public enum JSONValue: Equatable, Sendable, ExpressibleByStringLiteral, Expressi
   }
 
   public var int: Int? {
-    if case .number(let value) = self { return Int(value) }
+    // `Int(exactly:)` as a number a server sends can be past what an Int holds, where `Int(_:)` would trap.
+    if case .number(let value) = self { return Int(exactly: value.rounded(.towardZero)) }
     return nil
   }
 

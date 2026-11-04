@@ -69,13 +69,18 @@ public final class LanguageServerLoop {
         guard end < bytes.count else { return nil }
         var lineEnd = end
         if lineEnd > i, bytes[lineEnd - 1] == 0x0D { lineEnd -= 1 }
-        if lineEnd == i { return length >= 0 ? (end + 1, length) : nil }
-        // "Content-Length: 123", any case.
+        // A header without a usable length has no body to wait for: an empty one, which the caller skips.
+        if lineEnd == i { return (end + 1, max(length, 0)) }
+        // "Content-Length: 123", any case. Up to 1 TB, so that the sum can't overflow.
         if lineEnd - i > 15, bytes[i] | 0x20 == 0x63, bytes[i + 8] | 0x20 == 0x6C {
           var j = i + 15
           var value = 0
-          while j < lineEnd {
-            if bytes[j] >= 0x30, bytes[j] <= 0x39 { value = value * 10 + Int(bytes[j] - 0x30) }
+          while j < lineEnd, value >= 0 {
+            if bytes[j] >= 0x30, bytes[j] <= 0x39, value < 1 << 40 {
+              value = value * 10 + Int(bytes[j] - 0x30)
+            } else if bytes[j] != 0x20 {
+              value = -1
+            }
             j += 1
           }
           length = value

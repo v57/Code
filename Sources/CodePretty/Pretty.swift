@@ -31,7 +31,18 @@ public enum Pretty {
     public var refusedLine: Int?
   }
 
-  public static func format(_ source: SourceFile, path: String? = nil, options: PrettyOptions) -> Output {
+  public static func format(_ source: SourceFile, path: String? = nil, options given: PrettyOptions) -> Output {
+    // A byte order mark stays where it is; what follows it is the start of the file. No token can show it's kept.
+    if hasByteOrderMark(source.text, source.count) {
+      var inner = format(SourceFile(bytes: source.bytes.dropFirst(3), profile: source.profile), path: path, options: given)
+      inner.text.insert(contentsOf: source.bytes.prefix(3), at: 0)
+      return inner
+    }
+    // Widths come from editors and project files, which can say anything.
+    var options = given
+    options.indentWidth = min(max(options.indentWidth, 1), 16)
+    options.printWidth = max(options.printWidth, 0)
+    options.maxBlankLines = max(options.maxBlankLines, 0)
     let first = formatOnce(source, path: path, options: options)
     guard !first.refused, !first.text.elementsEqual(source.bytes) else { return first }
     // Formatting a second time must change nothing, or saving would keep moving the code: leave those alone.
@@ -213,6 +224,9 @@ private struct TokenFormatter {
   var breaks: [UInt16]
   /// The close bracket matching each open one, and -1 elsewhere.
   var closers: [Int32]
+  /// Inside a string's interpolation: all of it stays as written, as whitespace can be content there
+  /// (`f"{a: >2}"`), which comparing tokens can't see.
+  var interpolated: [Bool]
   /// The tokens after which a trailing comma goes.
   var commas = Set<Int>()
   let isFullLayout: Bool
@@ -230,6 +244,13 @@ private struct TokenFormatter {
     newline = source.usesCRLF ? [0x0D, 0x0A] : [0x0A]
     breaks = [UInt16](repeating: 0, count: tokens.count)
     closers = [Int32](repeating: -1, count: tokens.count)
+    interpolated = [Bool](repeating: false, count: tokens.count)
+    var depth = 0
+    for (index, token) in tokens.enumerated() {
+      if token.kind == .interpolationClose { depth -= 1 }
+      interpolated[index] = depth > 0
+      if token.kind == .interpolationOpen { depth += 1 }
+    }
     preferredQuote = Self.quote(in: source, rules: rules, options: options)
     computeBreaks()
     computeClosers()
@@ -240,7 +261,10 @@ private struct TokenFormatter {
     if let quote = options.quote { return quote }
     var single = 0
     var double = 0
-    for token in source.tokens where token.kind == .string {
+    var depth = 0
+    for token in source.tokens {
+      if token.kind == .interpolationOpen { depth += 1 } else if token.kind == .interpolationClose { depth -= 1 }
+      guard token.kind == .string, depth == 0 else { continue }
       if source.text[token.start] == 0x27 { single += 1 } else if source.text[token.start] == 0x22 { double += 1 }
     }
     if single == 0 || double == 0 { return nil }
@@ -259,6 +283,10 @@ private struct TokenFormatter {
         i += 1
       }
       guard count > 0 else { continue }
+      if interpolated[index] {
+        breaks[index] = count
+        continue
+      }
       var allowed = min(count, limit)
       if isFullLayout {
         // No blank line just inside a bracket.
@@ -363,7 +391,7 @@ private struct TokenFormatter {
       if let frame, frame.alignToken >= 0, !isVerbatim, token.kind != .close, originalColumn(first) == frame.alignColumn {
         alignedWith = frame.alignToken
       }
-      if frame?.byte == 0x28 && tokens[Int(frame!.firstOfStatement)].kind == .interpolationOpen { isVerbatim = true }
+      if interpolated[first] { isVerbatim = true }
 
       // A line starts a new statement unless it continued one; a bracket's content starts one too.
       if level == content, token.kind != .close { statementFirst = first }
@@ -596,6 +624,7 @@ private struct TokenFormatter {
     let a = tokens[index - 1]
     let b = tokens[index]
     let hadGap = b.start > a.end
+    if interpolated[index] { return hadGap }
     // Inside interpolation and next to it: as written.
     switch a.kind {
     case .interpolationOpen: return hadGap
@@ -760,6 +789,12 @@ private struct TokenFormatter {
     var index = line.first
     while index < line.end {
       let token = tokens[index]
+      // A string can't hold a line break, and neither can what's interpolated into it.
+      if token.kind == .interpolationOpen {
+        guard closers[index] > 0 else { return false }
+        index = Int(closers[index]) + 1
+        continue
+      }
       guard token.kind == .open, closers[index] > 0 else {
         // A multi-line token's width isn't this line's to fix.
         if token.kind == .string || token.kind == .comment || token.kind == .docComment, token.length > 0, memchr(t + token.start, 0x0A, token.length) != nil { return false }
@@ -767,7 +802,9 @@ private struct TokenFormatter {
         continue
       }
       let close = Int(closers[index])
-      if close > index + 1, canBreak(open: index, close: close), breaks[index + 1] == 0 {
+      // Only what fixes the line: breaking `a(x)` of `a(x) || b(y) || c(z)` makes it longer and no shorter.
+      let saved = tokens[close].start - tokens[index].end
+      if close > index + 1, line.width - saved <= options.printWidth, canBreak(open: index, close: close), breaks[index + 1] == 0 {
         apply(open: index, close: close)
         return true
       }
@@ -794,6 +831,8 @@ private struct TokenFormatter {
     // A statement block doesn't break into a list, nor `for (;;)`.
     if semicolons > 0 { return false }
     if byte == 0x7B, commas == 0 { return false }
+    // `{ a, b in …}` is a closure in these, and its commas are its parameters'.
+    if byte == 0x7B, rules.closureHead != nil { return false }
     // A lone string or word gains nothing on its own line.
     if commas == 0, close == open + 2, tokens[open + 1].kind == .string || tokens[open + 1].kind == .identifier { return false }
     if open > 0, tokens[open - 1].kind == .punctuation, tokens[open - 1].length == 1, t[tokens[open - 1].start] == 0x2E { return false }
@@ -842,6 +881,8 @@ private struct TokenFormatter {
     // Where aligned lines line up: a token's column in the result.
     var columns = [Int32: Int]()
     var alignTargets = Set<Int32>()
+    // In `f"{a['b']}"` the inner quotes can't become the outer ones, in Python before 3.12.
+    var interpolationDepth = 0
     for line in lines where line.alignedWith >= 0 { alignTargets.insert(Int32(line.alignedWith)) }
     for (lineIndex, line) in lines.enumerated() {
       if lineIndex > 0 {
@@ -876,11 +917,12 @@ private struct TokenFormatter {
       var index = line.first
       while index < line.end {
         let token = tokens[index]
+        if token.kind == .interpolationOpen { interpolationDepth += 1 } else if token.kind == .interpolationClose { interpolationDepth -= 1 }
         if index > line.first, shouldSpace(index) {
           // A comment's distance is the author's; so is Go's alignment.
           let previous = tokens[index - 1]
           let gap = token.start - previous.end
-          if (token.kind == .comment || token.kind == .docComment || rules.preservesOperatorSpacing), gap >= 1, isSpacesOnly(previous.end, token.start) {
+          if (token.kind == .comment || token.kind == .docComment || rules.preservesOperatorSpacing || interpolated[index]), gap >= 1, isSpacesOnly(previous.end, token.start) {
             out.append(contentsOf: UnsafeBufferPointer(start: t + previous.end, count: gap))
           } else {
             out.append(0x20)
@@ -894,7 +936,7 @@ private struct TokenFormatter {
           }
           columns[Int32(index)] = column
         }
-        write(token, into: &out, indentChange: written - originalIndent)
+        write(token, into: &out, indentChange: written - originalIndent, swapsQuotes: interpolationDepth == 0)
         if token.length > 0, memchr(t + token.start, 0x0A, token.length) != nil, let last = out.lastIndex(of: 0x0A) { lineStartInOutput = last + 1 }
         if commas.contains(index) { out.append(0x2C) }
         index += 1
@@ -925,8 +967,8 @@ private struct TokenFormatter {
     return i
   }
 
-  private func write(_ token: Token, into out: inout [UInt8], indentChange: Int) {
-    if token.kind == .string, let preferred = preferredQuote, swapsQuote(token, to: preferred) {
+  private func write(_ token: Token, into out: inout [UInt8], indentChange: Int, swapsQuotes: Bool) {
+    if swapsQuotes, token.kind == .string, let preferred = preferredQuote, swapsQuote(token, to: preferred) {
       out.append(preferred)
       out.append(contentsOf: UnsafeBufferPointer(start: t + token.start + 1, count: token.length - 2))
       out.append(preferred)

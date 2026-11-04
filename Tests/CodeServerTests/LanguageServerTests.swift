@@ -35,7 +35,11 @@ private final class Client: @unchecked Sendable {
   }
 
   private func write(_ body: String) {
-    toServer.fileHandleForWriting.write(Data("Content-Length: \(body.utf8.count)\r\n\r\n\(body)".utf8))
+    sendRaw("Content-Length: \(body.utf8.count)\r\n\r\n\(body)")
+  }
+
+  func sendRaw(_ text: String) {
+    toServer.fileHandleForWriting.write(Data(text.utf8))
   }
 
   func readMessage() -> JSONValue {
@@ -54,6 +58,11 @@ private final class Client: @unchecked Sendable {
       if chunk.isEmpty { return .null }
       buffer.append(chunk)
     }
+  }
+
+  /// As an editor that quits without saying so.
+  func closeInput() {
+    try? toServer.fileHandleForWriting.close()
   }
 
   func close() {
@@ -185,6 +194,40 @@ private final class Client: @unchecked Sendable {
     }
   }
 
+  @Test func brokenFramesAreSkipped() throws {
+    try start(["A.swift": "struct Thing {}\n"]) { client, _ in
+      let long = String(repeating: "9", count: 40)
+      for header in ["Nonsense\r\n\r\n", "Content-Length: abc\r\n\r\n", "Content-Length: -1\r\n\r\n", "Content-Length: 2\r\n\r\n{]", "Content-Type: a\r\n\r\n"] {
+        client.sendRaw(header)
+        let found = client.request("workspace/symbol", "{\"query\":\"Thin\"}")
+        #expect(found["result"].array?.first?["name"].string == "Thing", "\(header)")
+      }
+      // Only overflow to rule out: a length this big waits for its body, so it comes last, from a client of its own.
+      let overflowing = Client()
+      overflowing.sendRaw("Content-Length: \(long)\r\n\r\n")
+      overflowing.closeInput()
+    }
+  }
+
+  @Test func wildPositionsAndWidthsGetAnAnswer() throws {
+    try start(["A.swift": "func a() {\nb( c )\n}\n"]) { client, root in
+      let path = root + "/A.swift"
+      for (line, character) in [(-1, -1), (1 << 40, 1 << 40), (0, 1 << 31), (3, 0), (99, 0)] {
+        for method in ["definition", "hover", "completion", "references", "documentHighlight"] {
+          #expect(client.request("textDocument/\(method)", at(path, line, character))["error"]["code"].int != -32603)
+        }
+        client.notify(
+          "textDocument/didChange",
+          "{\"textDocument\":{\"uri\":\"file://\(path)\",\"version\":2},\"contentChanges\":[{\"range\":{\"start\":{\"line\":\(line),\"character\":\(character)},\"end\":{\"line\":0,\"character\":0}},\"text\":\"\"}]}")
+      }
+      for tabSize in [-1, 0, 1_000_000] {
+        let edits = client.request(
+          "textDocument/formatting", "{\"textDocument\":{\"uri\":\"file://\(path)\"},\"options\":{\"tabSize\":\(tabSize),\"insertSpaces\":true}}")
+        #expect(edits["result"].array != nil)
+      }
+    }
+  }
+
   @Test func unknownMethodsGetAnErrorAndNoCrash() throws {
     try start(["A.swift": "\n"]) { client, _ in
       #expect(client.request("nonsense/method", "{}")["error"]["code"].int == -32601)
@@ -205,11 +248,21 @@ private final class Client: @unchecked Sendable {
   }
 
   @Test func whatIsntJSONIsNil() {
-    for text in ["", "{", "[1,", "{\"a\"}", "{a:1}", "tru", "\"abc", "[1 2]"] {
+    for text in ["", "{", "[1,", "{\"a\"}", "{a:1}", "tru", "\"abc", "[1 2]", "1e999", "-1e999"] {
       #expect(parse(text) == nil, "\(text)")
     }
     let deep = String(repeating: "[", count: 100_000)
     #expect(parse(deep) == nil)
+  }
+
+  @Test func numbersPastAnIntDontTrap() {
+    #expect(parse("1e30")?.int == nil)
+    #expect(parse("-1e30")?.int == nil)
+    #expect(parse("-9223372036854775808") != nil)
+    #expect(parse("99999999999999999999999999")?.int == nil)
+    #expect(parse("123456789012")?.int == 123_456_789_012)
+    #expect(parse("-5")?.int == -5)
+    #expect(parse("2.9")?.int == 2)
   }
 
   @Test func writerRoundTrips() {

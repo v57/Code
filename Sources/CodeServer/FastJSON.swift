@@ -109,6 +109,8 @@ enum FastJSON {
         let c = t[i]
         if c >= 0x30, c <= 0x39 {
           if isInteger { integer = integer &* 10 &+ Int(c - 0x30) }
+          // More digits than an integer is sure to hold.
+          if i - start > 17 { isInteger = false }
         } else if c == 0x2E || c == 0x65 || c == 0x45 || c == 0x2B || c == 0x2D {
           isInteger = false
         } else {
@@ -119,7 +121,9 @@ enum FastJSON {
       guard i > start else { return nil }
       if isInteger { return .number(Double(negative ? -integer : integer)) }
       let text = String(decoding: UnsafeBufferPointer(start: t + start, count: i - start), as: UTF8.self)
-      return Double(text).map(JSONValue.number)
+      // `1e999` reads as infinity, which JSON can't say back.
+      guard let value = Double(text), value.isFinite else { return nil }
+      return .number(value)
     }
 
     mutating func string() -> String? {
@@ -245,7 +249,11 @@ struct JSONWriter {
     case .null: raw("null")
     case .bool(let flag): raw(flag ? "true" : "false")
     case .number(let number):
-      if number.rounded() == number, abs(number) < 1e15 { integer(Int(number)) } else { raw(String(number)) }
+      if number.rounded() == number, abs(number) < 1e15 {
+        integer(Int(number))
+      } else {
+        raw(number.isFinite ? String(number) : "null")
+      }
     case .string(let text): string(text)
     case .array(let items):
       raw("[")

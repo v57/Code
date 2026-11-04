@@ -104,6 +104,51 @@ private func pretty(_ text: String, _ language: String, _ configure: (inout Pret
     #expect(pretty("a = 'x'\n", "JavaScript") == "a = 'x'\n")
   }
 
+  @Test func quotesInsideAnInterpolationStay() {
+    // Python rejects these before 3.12, and the corpus has them.
+    let python = "a = \"x\"\nb = \"y\"\nc = f\"{d['e']} {', '.join(f)}\"\ng = 'h'\n"
+    #expect(pretty(python, "Python") == "a = \"x\"\nb = \"y\"\nc = f\"{d['e']} {', '.join(f)}\"\ng = \"h\"\n")
+    let javaScript = "a = \"x\"\nb = \"y\"\nc = `${d['e']}`\n"
+    #expect(pretty(javaScript, "JavaScript") == javaScript)
+  }
+
+  @Test func interpolationsStayAsWritten() {
+    // A space here would change what's printed.
+    for text in ["a = f\"{b:02x}\"\n", "a = f\"{b: >2}\"\n", "a = f\"{b:  >2}\"\n", "a = f\"{ b  ==c }\"\n"] {
+      #expect(pretty(text, "Python") == text)
+    }
+    #expect(pretty("let a = \"\\(b==c)\\( d )\"\n", "Swift") == "let a = \"\\(b==c)\\( d )\"\n")
+    #expect(pretty("a = `${b==c}${ d }`\n", "JavaScript") == "a = `${b==c}${ d }`\n")
+  }
+
+  @Test func aByteOrderMarkStaysAndIsntCode() {
+    let mark = "\u{FEFF}"
+    #expect(pretty(mark + "struct A {\nlet b=1\n}\n", "Swift") == mark + "struct A {\n  let b = 1\n}\n")
+    // Right before a docstring or a bracket, where a space after it would indent Python's first line.
+    #expect(pretty(mark + "\"\"\"doc\"\"\"\nimport a\n", "Python") == mark + "\"\"\"doc\"\"\"\nimport a\n")
+    #expect(pretty(mark + "{\"a\":1}\n", "JSON") == mark + "{ \"a\": 1 }\n")
+    #expect(pretty(mark, "Swift") == mark)
+    #expect(pretty(mark + mark + "x\n", "Swift").hasPrefix(mark + mark))
+  }
+
+  @Test func wildWidthsDontBreakIt() {
+    let text = "func a() {\nb( c )\n}\n"
+    #expect(pretty(text, "Swift") { $0.indentWidth = -1 } == "func a() {\n b(c)\n}\n")
+    #expect(pretty(text, "Swift") { $0.indentWidth = 0 } == "func a() {\n b(c)\n}\n")
+    #expect(pretty(text, "Swift") { $0.indentWidth = 1_000_000 } == "func a() {\n                b(c)\n}\n")
+    #expect(pretty(text, "Swift") { $0.printWidth = -5; $0.maxBlankLines = -5 }.contains("b(c)"))
+  }
+
+  @Test func wrappingStaysOutOfStringsAndClosures() {
+    let interpolated = "print(\"\\(String(format: alpha, beta, gamma, delta, epsilon, zeta, eta, theta, iota))\")\n"
+    #expect(pretty("let x = \"\\(f(alpha, beta, gamma, delta, epsilon, zeta))\"\n", "Swift") { $0.printWidth = 20 } == "let x = \"\\(f(alpha, beta, gamma, delta, epsilon, zeta))\"\n")
+    #expect(!pretty(interpolated, "Swift") { $0.printWidth = 40 }.contains("\\(String(\n"))
+    let closure = "foo { aaaaaaaaaaaaaaaaaaaaaaaa, bbbbbbbbbbbbbbbbbbbbbbbbb in c(aaaaaaaaaaaaaaaaaaaaaaaa) }\n"
+    #expect(pretty(closure, "Swift") { $0.printWidth = 40 }.contains("bbbbbbbbbbbbbbbbbbbbbbbbb in"))
+    let conditions = "if aaaaaaaa(x) || bbbbbbbb(y) || cccccccc(z) || dddddddd(w) {}\n"
+    #expect(pretty(conditions, "Swift") { $0.printWidth = 40 } == conditions)
+  }
+
   @Test func indentationBlocksKeepTheirs() {
     let python = "def a():\n      if b:\n            c( d )\n"
     #expect(pretty(python, "Python") == "def a():\n      if b:\n            c(d)\n")
