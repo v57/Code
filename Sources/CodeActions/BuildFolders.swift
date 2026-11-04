@@ -162,20 +162,11 @@ extension ActionScheme {
       }
     case .swiftPM:
       guard let path = folders.instance(.swiftpm, for: directory)?.path else { return self }
-      scheme.commands = commands.mapValues { command in
-        let subcommand = ["swift build", "swift test", "swift run", "swift package clean"]
-          .first { command == $0 || command.hasPrefix($0 + " ") }
-        guard let subcommand else { return command }
-        return subcommand + " --scratch-path \(shellQuote(path))" + command.dropFirst(subcommand.count)
-      }
+      scheme.commands = commands.mapValues { Self.swiftCommand($0, scratchPath: path) }
       scheme.executable = executable.map { $0.hasPrefix(".build/") ? path + $0.dropFirst(".build".count) : $0 }
     case .cargo:
       guard let path = folders.instance(.cargo, for: directory)?.path else { return self }
-      scheme.commands = commands.mapValues { command in
-        let words = command.split(separator: " ", maxSplits: 2, omittingEmptySubsequences: false)
-        guard words.count >= 2, words[0] == "cargo" else { return command }
-        return "cargo \(words[1]) --target-dir \(shellQuote(path))" + (words.count > 2 ? " " + words[2] : "")
-      }
+      scheme.commands = commands.mapValues { Self.cargoCommand($0, targetDirectory: path) }
       scheme.executable = executable.map { $0.hasPrefix("target/") ? path + $0.dropFirst("target".count) : $0 }
     default:
       return self

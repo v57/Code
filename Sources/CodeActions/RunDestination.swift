@@ -14,6 +14,8 @@ public struct RunDestination: Identifiable, Hashable, Codable, Sendable {
     case androidVirtualDevice
     /// Another machine the actions run on over SSH (`SSHExecutor`): a device on the user's Hub, a saved host.
     case remote
+    /// A container on a local runtime (`ContainerExecutor`): its image is the destination's name.
+    case container
   }
 
   /// "mac", a simulator or device UDID, an adb serial, or "avd:<name>".
@@ -46,7 +48,7 @@ public struct RunDestination: Identifiable, Hashable, Codable, Sendable {
 
   public var platform: Platform {
     switch kind {
-    case .mac, .remote: return .mac
+    case .mac, .remote, .container: return .mac
     case .iOSSimulator, .iOSDevice: return .iOS
     case .androidDevice, .androidEmulator, .androidVirtualDevice: return .android
     }
@@ -65,6 +67,7 @@ public struct RunDestination: Identifiable, Hashable, Codable, Sendable {
     case .androidDevice: return "smartphone"
     case .androidEmulator, .androidVirtualDevice: return "candybarphone"
     case .remote: return "point.3.connected.trianglepath.dotted"
+    case .container: return "shippingbox"
     }
   }
 
@@ -77,6 +80,7 @@ public struct RunDestination: Identifiable, Hashable, Codable, Sendable {
     case .androidDevice: return "Android Devices"
     case .androidEmulator, .androidVirtualDevice: return "Android Emulators"
     case .remote: return "Other Machines"
+    case .container: return "Containers"
     }
   }
 }

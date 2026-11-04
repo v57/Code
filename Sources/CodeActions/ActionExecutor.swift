@@ -51,7 +51,7 @@ public protocol ActionCommand: AnyObject, Sendable {
   }
 #endif
 
-/// An executor that couldn't be set up (no key to sign in with): every command fails with why.
+/// An executor that couldn't be set up (no key to sign in with, no folder there yet): every command fails with why.
 struct UnavailableExecutor: ActionExecutor {
   var reason: String
 
@@ -188,7 +188,8 @@ public struct SSHExecutor: ActionExecutor {
   /// `ssh -tt` with keepalives and no prompts (there's no one to answer them), pinning the host key when known.
   func sshArguments(_ remoteCommand: String) throws -> [String] {
     var arguments = [
-      Self.sshPath, "-tt", "-o", "BatchMode=yes", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3",
+      Self.sshPath, "-tt", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=15",
+      "-o", "ServerAliveCountMax=3",
       "-p", String(target.port),
     ]
     if let hostKey = target.hostKey {

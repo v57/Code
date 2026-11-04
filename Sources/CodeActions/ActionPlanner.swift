@@ -131,7 +131,9 @@ public struct ActionStep: Sendable {
     ) -> [ActionStep] {
       // An Xcode library has no Run, a test bundle no Build either.
       guard scheme.supports(kind) else { return [] }
-      if destination?.kind == .remote { return remoteSteps(kind, scheme, signing: signing ?? .unsigned) }
+      if destination?.kind == .remote || destination?.kind == .container {
+        return remoteSteps(kind, scheme, signing: signing ?? .unsigned)
+      }
       switch scheme.toolchain {
       case .xcode: return xcodeSteps(kind, scheme, destination)
       case .android: return androidSteps(kind, scheme, destination)
@@ -143,8 +145,9 @@ public struct ActionStep: Sendable {
 
     // MARK: - Another machine
 
-    /// The steps on another machine (`SSHExecutor`): the scheme's own commands, and xcodebuild for the Mac there,
-    /// signed as `signing` says. Running an Xcode app there and installing to devices it reaches come later.
+    /// The steps on another machine (`SSHExecutor`) or in a container (`ContainerExecutor`): the scheme's own commands,
+    /// and xcodebuild for the Mac there, signed as `signing` says. Run builds, then runs the product in the desktop
+    /// session there (`DesktopJob`), where an app can open windows; installing to devices it reaches comes later.
     static func remoteSteps(_ kind: ActionKind, _ scheme: ActionScheme, signing: RemoteSigning) -> [ActionStep] {
       switch scheme.toolchain {
       case .xcode:
@@ -153,10 +156,28 @@ public struct ActionStep: Sendable {
         case .build: return [signing.step("Build", arguments, "build")]
         case .test: return [signing.step("Test", arguments, "test")]
         case .clean: return [.shell("Clean", "xcodebuild \(arguments) clean", resource: .disk)]
+        case .run:
+          return [
+            signing.step("Build", arguments, "build"),
+            ActionStep("Run") { context in
+              // Over the action's executor: the settings are there. The terminal gets errors too, hence no stderr.
+              let settings = LineCollector()
+              let status = try await context.run(
+                "xcodebuild \(arguments) -showBuildSettings -json 2>/dev/null", title: "Run", allowFailure: true,
+                shown: "", filter: { line in
+                  if !line.isTransient { settings.add(line.text) }
+                  return false
+                })
+              guard status == 0, let product = XcodeProduct.parse(settings.json, scheme: scheme.name) else {
+                throw ActionError.missing("Couldn’t read the build settings of “\(scheme.name)” there.")
+              }
+              try await DesktopJob(command: shellQuote(product.executablePath)).step("Run").work(context)
+            },
+          ]
         default:
           return [
             ActionStep(kind.title) { _ in
-              throw ActionError.missing("\(kind.title) runs on this Mac for now; Build, Test and Clean run on the other one.")
+              throw ActionError.missing("\(kind.title) runs on this Mac for now; Build, Run, Test and Clean run on the other one.")
             }
           ]
         }
@@ -167,6 +188,23 @@ public struct ActionStep: Sendable {
       default:
         guard let command = scheme.commands[kind] else { return [] }
         return [.shell(kind.title, command)]
+      }
+    }
+
+    /// Lines of a command's output, up to and past what a login shell prints around its JSON.
+    final class LineCollector: @unchecked Sendable {
+      private let lock = NSLock()
+      private var lines: [String] = []
+
+      func add(_ line: String) { lock.withLock { lines.append(line) } }
+
+      var all: [String] { lock.withLock { lines } }
+
+      /// What's between the first "[" and the last "]".
+      var json: String {
+        let text = lock.withLock { lines.joined(separator: "\n") }
+        guard let start = text.firstIndex(of: "["), let end = text.lastIndex(of: "]"), start < end else { return text }
+        return String(text[start...end])
       }
     }
 

@@ -16,6 +16,9 @@ public struct ProjectFolder: Sendable {
   /// The container (`ProjectContainer.fileName`) the folder's schemes come from; nil lists every kind's, the first
   /// workspace or project and the package, as `ProjectScanner.schemes(in:)` does for Shell.
   public var pickedContainer: String?
+  /// A copy of a project on another machine (`ProjectMirror`): its schemes come from its files alone, as the tools
+  /// here can't resolve a project whose sources aren't there.
+  public var isMirror = false
 
   public init(url: URL, entries: [Entry]) {
     self.url = url
@@ -110,8 +113,12 @@ public enum ProjectScanner {
   /// The schemes and containers of every project under `root`. With `picks` (container file names by folder path),
   /// each folder's schemes come from one container: its pick, else its first. Without, from all of them. The home
   /// folder and those above it are only looked at themselves (`FolderScope`).
+  ///
+  /// `allowing` leaves out containers a build source can't use: they aren't listed, and a folder picks among the rest.
+  /// `isMirror` says `root` is a copy of a project elsewhere (`ProjectFolder.isMirror`).
   public static func scanProjects(
-    root: URL, depth: Int = 2, excluded: Set<String> = [], picks: [String: String]?
+    root: URL, depth: Int = 2, excluded: Set<String> = [], picks: [String: String]?,
+    allowing: @Sendable (ProjectContainer) -> Bool = { _ in true }, isMirror: Bool = false
   ) -> Scan {
     let depth = FolderScope.isBroad(root) ? 0 : depth
     var scan = Scan()
@@ -119,10 +126,13 @@ public enum ProjectScanner {
     while !queue.isEmpty {
       let (url, level) = queue.removeFirst()
       var folder = ProjectFolder(listing: url)
-      let containers = folder.containers
+      folder.isMirror = isMirror
+      let containers = folder.containers.filter(allowing)
       scan.containers += containers
       if let picks {
         folder.pickedContainer = ProjectContainer.effective(picked: picks[url.path], in: containers)?.fileName
+        // Only containers that aren't allowed: none of them lists schemes.
+        if folder.pickedContainer == nil, !folder.containers.isEmpty { folder.pickedContainer = "" }
       }
       let found = Self.schemes(in: folder)
       scan.schemes += found

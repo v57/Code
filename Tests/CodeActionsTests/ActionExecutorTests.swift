@@ -52,7 +52,8 @@ import Testing
       let remote = RunDestination(id: "ssh:studio", name: "Mac Studio", kind: .remote)
       let build = ActionPlanner.steps(for: .build, scheme: scheme, destination: remote)
       #expect(build.map(\.title) == ["Build"])
-      #expect(ActionPlanner.steps(for: .run, scheme: scheme, destination: remote).map(\.title) == ["Run"])
+      // Run builds, then runs the product in the desktop session there.
+      #expect(ActionPlanner.steps(for: .run, scheme: scheme, destination: remote).map(\.title) == ["Build", "Run"])
       // A scheme without the action (a library's Run) plans nothing.
       #expect(ActionPlanner.steps(for: .test, scheme: scheme, destination: remote).isEmpty)
       #expect(ActionPlanner.steps(for: .test, scheme: scheme, destination: nil).isEmpty)

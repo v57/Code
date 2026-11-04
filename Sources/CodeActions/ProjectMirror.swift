@@ -1,4 +1,3 @@
-import CodeActions
 import Foundation
 import SSHKit
 
@@ -6,23 +5,33 @@ import SSHKit
 /// `ProjectScanner` searches them), their small files (manifests), and the Xcode projects' scheme files and
 /// `project.pbxproj`, fetched over SFTP. The schemes found in the copy run there, in the real folder: the executor
 /// maps the copy's paths to the folder there.
-enum ProjectMirror {
+public enum ProjectMirror {
   /// Files up to this size are copied; bigger ones are left empty (detectors only need to see that they exist).
   static let fileLimit = 512 * 1024
   /// The most files copied, so a huge folder can't stall opening the project.
   static let countLimit = 2000
 
   /// Copies `directory` on the server into a fresh folder for `projectID` in the caches, and returns it.
-  static func fetch(_ directory: String, projectID: String, client: SFTPClient) async throws -> URL {
+  public static func fetch(_ directory: String, projectID: String, client: SFTPClient) async throws -> URL {
     let caches = try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
     let root = caches.appendingPathComponent("Projects", isDirectory: true)
       .appendingPathComponent(projectID, isDirectory: true)
       .appendingPathComponent((directory as NSString).lastPathComponent, isDirectory: true)
-    try? FileManager.default.removeItem(at: root)
-    try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
-    var copier = Copier(client: client)
-    try await copier.folder(directory, into: root, level: 0)
+    try await fetch(directory, into: root, client: client)
     return root
+  }
+
+  /// Copies `directory` on the server into `root`, replacing what's there only once the copy has succeeded, so losing
+  /// the connection halfway keeps the last one.
+  public static func fetch(_ directory: String, into root: URL, client: SFTPClient) async throws {
+    let parent = root.deletingLastPathComponent()
+    let fresh = parent.appendingPathComponent(".\(root.lastPathComponent)-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: fresh, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: fresh) }
+    var copier = Copier(client: client)
+    try await copier.folder(directory, into: fresh, level: 0)
+    try? FileManager.default.removeItem(at: root)
+    try FileManager.default.moveItem(at: fresh, to: root)
   }
 
   private struct Copier {
@@ -41,6 +50,11 @@ enum ProjectMirror {
             try await xcodeContainer(entry.path, into: target)
           } else if level < 2, Self.searched(entry.name) {
             try await folder(entry.path, into: target, level: level + 1)
+          } else if entry.name == "src" {
+            // Cargo's detector looks for src/main.rs; the scanner goes no further.
+            for file in try await client.list(entry.path) where !file.isDirectory {
+              try await self.file(file.path, size: file.size, into: target.appendingPathComponent(file.name))
+            }
           }
         } else {
           try await file(entry.path, size: entry.size, into: target)

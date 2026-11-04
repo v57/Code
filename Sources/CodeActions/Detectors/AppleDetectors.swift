@@ -415,7 +415,7 @@ public struct XcodeDetector: ProjectDetector {
   /// builds it) from its scheme files, then the targets Xcode makes schemes for.
   static func schemeNames(_ container: URL, in folder: ProjectFolder) -> [String]? {
     #if !os(iOS)
-      if let listed = Self.list(container).flatMap(Self.parseSchemes), !listed.isEmpty { return listed }
+      if !folder.isMirror, let listed = Self.list(container).flatMap(Self.parseSchemes), !listed.isEmpty { return listed }
     #endif
     var names: [String] = []
     for entry in folder.entries
