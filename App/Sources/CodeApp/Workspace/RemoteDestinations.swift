@@ -2,6 +2,7 @@ import CodeKit
 import Foundation
 import SSHKit
 import VaultKit
+import VaultUI
 
 /// Where else this project's Build, Test and Clean can run: the user's other devices that have this project
 /// (`Vault.otherPlaces`), reached over SSH through one of the user's Hubs at their Hub Network address, or straight to
@@ -27,19 +28,17 @@ enum RemoteDestinations {
   }
 
   /// How Code signs in to a Mac that lets the user's devices in: this device's key (the one Settings ▸ Remote allows
-  /// there) and the host key the vault trusts for it. Nil for a host via Hub, which the system's `ssh` reaches as
-  /// before.
+  /// there) and the host key the vault trusts for it, or the user's answer about one it doesn't know. Nil for a host
+  /// via Hub, which the system's `ssh` reaches as before.
   @MainActor static func login(for target: SSHExecutor.Target, vault: Vault) throws -> SSHServer? {
     guard let host = vault.personalVault.host(id: target.id), host.isDevice else { return nil }
-    let known = try? vault.personalVault.store?.knownFingerprint(host: host.hostname, port: host.port)
+    let trust = SSHHostTrust.known(
+      vault.knownHost(for: host)?.fingerprint,
+      otherwise: .ask { key in
+        await VaultHostKeyRequest.shared.approve(key.fingerprint, keyType: key.type, for: host, in: vault)
+      })
     let user = host.user.isEmpty ? NSUserName() : host.user
-    return SSHServer(host: host.hostname, port: host.port, user: user, key: try deviceKey(), knownFingerprint: known)
-  }
-
-  /// Remembers a host's key after the first login to it (trust on first use, as Shell and Database do).
-  @MainActor static func trust(_ fingerprint: String, for target: SSHExecutor.Target, vault: Vault) {
-    guard let host = vault.personalVault.host(id: target.id) else { return }
-    try? vault.personalVault.store?.trust(fingerprint: fingerprint, host: host.hostname, port: host.port)
+    return SSHServer(host: host.hostname, port: host.port, user: user, key: try deviceKey(), trust: trust)
   }
 
   /// The host's login password, which unlocks its login keychain for signing.

@@ -18,6 +18,7 @@ public struct CodeApp: App {
   public var body: some Scene {
     WindowGroup {
       AccountWindow()
+        .vaultHostKeyRequests()
         .componentKit()
     }
   }

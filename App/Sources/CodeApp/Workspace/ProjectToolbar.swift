@@ -227,9 +227,6 @@ private struct SchemeTools: View {
       actions.remoteLogin = { [vault] target in
         try vault.flatMap { try RemoteDestinations.login(for: target, vault: $0) }
       }
-      actions.didMeetHostKey = { [vault] target, fingerprint in
-        vault.map { RemoteDestinations.trust(fingerprint, for: target, vault: $0) }
-      }
     }
   }
 

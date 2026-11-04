@@ -35,7 +35,6 @@ import VaultKit
       phase = .loading("Connecting to \(target.name)")
       do {
         let client = try await SFTPClient.connect(server: try login(for: target), timeout: 15)
-        remember(client.hostKeyFingerprint, for: target)
         phase = .loading("Reading the project on \(target.name)")
         let root = try await ProjectMirror.fetch(target.directory, projectID: project.id, client: client)
         files = client
@@ -67,9 +66,6 @@ import VaultKit
   private func start(root: URL, preferring target: SSHExecutor.Target) {
     let controller = ActionController(root: root)
     controller.remoteLogin = { [vault] target in try RemoteProjects.login(for: target, vault: vault) }
-    controller.didMeetHostKey = { [vault] target, fingerprint in
-      RemoteProjects.trust(fingerprint, for: target, vault: vault)
-    }
     controller.remoteLoginPassword = { [vault] target in RemoteProjects.loginPassword(for: target, vault: vault) }
     controller.remoteTargets = project.targets
     #if DEBUG
@@ -107,13 +103,6 @@ import VaultKit
   private func login(for target: SSHExecutor.Target) throws -> SSHServer {
     let login = try RemoteProjects.login(for: target, vault: vault)
     return SSHExecutor(target: target, localRoot: URL(fileURLWithPath: "/"), login: login).server(from: login)
-  }
-
-  private func remember(_ fingerprint: String, for target: SSHExecutor.Target) {
-    guard target.hostKey == nil, (try? RemoteProjects.login(for: target, vault: vault).knownFingerprint) == nil else {
-      return
-    }
-    RemoteProjects.trust(fingerprint, for: target, vault: vault)
   }
 
   /// A path on the device as the project sees it: "Sources/Atlas" (the project's own folder is its name).

@@ -77,7 +77,9 @@
       let remote = remotes[index]
       let text = remote.keyText ?? remote.key.flatMap { try? String(contentsOfFile: $0, encoding: .utf8) } ?? ""
       return SSHServer(
-        host: target.host, port: target.port, user: remote.user, key: try? SSHKey(importing: text))
+        host: target.host, port: target.port, user: remote.user, key: try? SSHKey(importing: text),
+        // A test server named by this debug run's environment.
+        trust: .ask { _ in true })
     }
 
     /// Runs `CODE_DEBUG_PERFORM` once the schemes are in, and writes the state as it changes.

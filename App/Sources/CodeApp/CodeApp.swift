@@ -3,6 +3,7 @@ import ComponentKit
 import SwiftUI
 import UpdateKit
 import VaultKit
+import VaultUI
 
 /// Code: a folder-based code editor. Each window shows one project folder;
 /// a window without one shows the Welcome screen.
@@ -35,6 +36,7 @@ public struct CodeApp: App {
       WorkspaceWindow(root: $root)
         // Screenshots show every row the window has room for, never one still on its way.
         .kitLazyLoading(!ScreenshotDemo.isOn)
+        .vaultHostKeyRequests()
         .componentKit()
     }
     .defaultSize(width: 1200, height: 800)

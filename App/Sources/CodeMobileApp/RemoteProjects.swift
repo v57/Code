@@ -2,6 +2,7 @@ import CodeActions
 import Foundation
 import SSHKit
 import VaultKit
+import VaultUI
 
 /// A project Code can act on from here: one the vault knows, with a folder on the user's other devices that Code can
 /// reach: through one of the user's Hubs, or straight to a Mac that lets the user's devices in (the Vault app's SSH
@@ -80,23 +81,22 @@ struct RemoteProject: Identifiable, Hashable {
     #endif
     guard let host = vault.personalVault.host(id: target.id) else { throw LoginError.unknownHost }
     guard !host.user.isEmpty else { throw LoginError.noUser(host.displayName) }
-    let known = try? vault.personalVault.store?.knownFingerprint(host: host.hostname, port: host.port)
+    let personal = vault.personalVault
+    let trust = SSHHostTrust.known(
+      personal.knownHost(for: host)?.fingerprint,
+      otherwise: .ask { key in
+        await VaultHostKeyRequest.shared.approve(key.fingerprint, keyType: key.type, for: host, in: personal)
+      })
     switch host.auth {
     case .password:
       return SSHServer(
         host: host.hostname, port: host.port, user: host.user, password: VaultSecrets.password(for: host.id),
-        knownFingerprint: known)
+        trust: trust)
     case .deviceKey:
-      return SSHServer(host: host.hostname, port: host.port, user: host.user, key: try deviceKey(), knownFingerprint: known)
+      return SSHServer(host: host.hostname, port: host.port, user: host.user, key: try deviceKey(), trust: trust)
     case .importedKey:
       throw LoginError.importedKey(host.displayName)
     }
-  }
-
-  /// Remembers a host's key after the first login to it (trust on first use, as Shell and Database do).
-  static func trust(_ fingerprint: String, for target: SSHExecutor.Target, vault: Vault) {
-    guard let host = vault.personalVault.host(id: target.id) else { return }
-    try? vault.personalVault.store?.trust(fingerprint: fingerprint, host: host.hostname, port: host.port)
   }
 
   /// This device's SSH key (Secure Enclave, shared by the v57 apps).

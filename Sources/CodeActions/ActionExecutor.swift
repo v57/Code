@@ -66,8 +66,8 @@ struct UnavailableExecutor: ActionExecutor {
 /// Two clients run them. Given a `login` (this device's key and the host key the vault trusts), SSHKit's in-process
 /// client does, as on iPhone and iPad, which have no `ssh`. Without one, the system's `ssh` client runs on a
 /// pseudo-terminal here (macOS, Windows), so it signs in with the user's SSH keys and agent. Either way a host key
-/// the machine signed (a device on the user's Hub) is pinned for the connection; any other host is trusted on first
-/// use (through the user's `known_hosts`, or the login's known key), never silently when its key changed.
+/// the machine signed (a device on the user's Hub) is pinned for the connection. Any other host follows the login's
+/// `SSHServer.trust`, which asks the user, or the user's `known_hosts`; a key nobody vouches for is refused.
 public struct SSHExecutor: ActionExecutor {
   public struct Target: Sendable, Hashable, Identifiable, Codable {
     /// The shared host's id.
@@ -108,29 +108,25 @@ public struct SSHExecutor: ActionExecutor {
   public var target: Target
   /// The project's folder here, which `target.directory` stands for there.
   public var localRoot: URL
-  /// How the in-process client signs in (user, key or password, the host key known for the host); nil runs the
+  /// How the in-process client signs in (user, key or password, what to do about the host's key); nil runs the
   /// system's `ssh` client.
   public var login: SSHServer?
-  /// Called with the host's key after a first login to a host whose key wasn't known, for the app to remember.
-  public var onNewHostKey: (@Sendable (String) -> Void)?
   /// Shell variables set there before each command (the login password `RemoteSigning` unlocks the keychain with),
   /// kept out of the command line the log shows.
   public var secrets: [String: String]
 
   public init(
-    target: Target, localRoot: URL, login: SSHServer? = nil, secrets: [String: String] = [:],
-    onNewHostKey: (@Sendable (String) -> Void)? = nil
+    target: Target, localRoot: URL, login: SSHServer? = nil, secrets: [String: String] = [:]
   ) {
     self.target = target
     self.localRoot = localRoot
     self.login = login
     self.secrets = secrets
-    self.onNewHostKey = onNewHostKey
   }
 
   public func start(_ command: String, directory: URL, environment: [String: String]) throws -> any ActionCommand {
     let remote = remoteCommand(command, directory: directory)
-    if let login { return SSHActionCommand(server: server(from: login), command: remote, onNewHostKey: onNewHostKey) }
+    if let login { return SSHActionCommand(server: server(from: login), command: remote) }
     #if os(macOS) || os(Windows) || os(Linux)
       let arguments = try sshArguments(remote)
       // Locally only the `ssh` client runs (from the home folder: the project needn't exist here); the remote side
@@ -151,7 +147,7 @@ public struct SSHExecutor: ActionExecutor {
     server.port = target.port
     if !target.user.isEmpty { server.user = target.user }
     if let hostKey = target.hostKey, let fingerprint = Self.fingerprint(ofHostKey: hostKey) {
-      server.knownFingerprint = fingerprint
+      server.trust = .pinned(fingerprint)
     }
     return server
   }
@@ -185,7 +181,9 @@ public struct SSHExecutor: ActionExecutor {
     return target.directory + local.dropFirst(root.count)
   }
 
-  /// `ssh -tt` with keepalives and no prompts (there's no one to answer them), pinning the host key when known.
+  /// `ssh -tt` with keepalives and no prompts (there's no one to answer them), pinning the host key when known. A host
+  /// that's neither pinned here nor in the user's `known_hosts` is refused: `ssh` would otherwise sign in to whoever
+  /// answers, with the user's keys.
   func sshArguments(_ remoteCommand: String) throws -> [String] {
     var arguments = [
       Self.sshPath, "-tt", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=15",
@@ -196,7 +194,7 @@ public struct SSHExecutor: ActionExecutor {
       let file = try Self.knownHostsFile(host: target.host, port: target.port, key: hostKey)
       arguments += ["-o", "StrictHostKeyChecking=yes", "-o", "UserKnownHostsFile=\(file.path)"]
     } else {
-      arguments += ["-o", "StrictHostKeyChecking=accept-new"]
+      arguments += ["-o", "StrictHostKeyChecking=yes"]
     }
     arguments.append(target.user.isEmpty ? target.host : "\(target.user)@\(target.host)")
     arguments += ["--", remoteCommand]
@@ -225,11 +223,9 @@ public struct SSHExecutor: ActionExecutor {
 /// as `PTYProcess` splits a local one's, and Stop hanging it up.
 final class SSHActionCommand: ActionCommand, @unchecked Sendable {
   private let command: SSHCommand
-  private let onNewHostKey: (@Sendable (String) -> Void)?
 
-  init(server: SSHServer, command: String, onNewHostKey: (@Sendable (String) -> Void)?) {
+  init(server: SSHServer, command: String) {
     self.command = SSHCommand(server: server, command: command)
-    self.onNewHostKey = onNewHostKey
   }
 
   func run(onLine: @escaping @Sendable (ActionLine) -> Void) async -> Int32 {
@@ -237,9 +233,6 @@ final class SSHActionCommand: ActionCommand, @unchecked Sendable {
     do {
       let status = try await command.run { lines.add($0) }
       lines.finish()
-      if command.server.knownFingerprint == nil, !command.hostKeyFingerprint.isEmpty {
-        onNewHostKey?(command.hostKeyFingerprint)
-      }
       // No status: Stop hung it up, or a signal ended it (as a shell reports SIGHUP).
       return status ?? 129
     } catch {

@@ -35,12 +35,14 @@ import Testing
       #expect(try String(contentsOfFile: file, encoding: .utf8) == "[100.96.0.4]:2222 ecdsa-sha2-nistp256 AAAAE2VjZHNh\n")
     }
 
-    @Test func unknownHostsAreTrustedOnFirstUseOnly() throws {
+    /// `accept-new` signed in to whoever answered the first time, and kept their key.
+    @Test func unknownHostsAreRefusedUnlessTheUserKnowsThem() throws {
       var target = executor.target
       target.hostKey = nil
       target.user = ""
       let arguments = try SSHExecutor(target: target, localRoot: executor.localRoot).sshArguments("true")
-      #expect(arguments.contains("StrictHostKeyChecking=accept-new"))
+      #expect(arguments.contains("StrictHostKeyChecking=yes"))
+      #expect(!arguments.contains("StrictHostKeyChecking=accept-new"))
       #expect(!arguments.contains { $0.hasPrefix("UserKnownHostsFile=") })
       #expect(arguments.suffix(3) == ["100.96.0.4", "--", "true"])
     }
@@ -188,7 +190,7 @@ import Testing
       hostKey: "ecdsa-sha2-nistp256 AAAAE2VjZHNh comment", directory: "/Users/me/Code/Atlas")
     let executor = SSHExecutor(
       target: target, localRoot: URL(fileURLWithPath: "/tmp/Atlas"),
-      login: SSHServer(host: "", user: "fallback", password: "x", knownFingerprint: "SHA256:old"))
+      login: SSHServer(host: "", user: "fallback", password: "x", trust: .pinned("SHA256:old")))
     let server = executor.server(from: try #require(executor.login))
     #expect(server.host == "100.96.0.4" && server.port == 2222 && server.user == "me")
     // SHA-256 of the key blob ("AAAAE2VjZHNh" decodes to it), unpadded base64, as libssh2 reports it.
@@ -216,8 +218,9 @@ import Testing
         id: "test", name: "test", host: environment["CODE_SSH_TEST_HOST"] ?? "127.0.0.1",
         port: Int(environment["CODE_SSH_TEST_PORT"] ?? "22") ?? 22, directory: remote.path),
       localRoot: URL(fileURLWithPath: "/nonexistent/project"),
-      login: SSHServer(host: "", user: environment["CODE_SSH_TEST_USER"] ?? NSUserName(), key: key)
-    ) { met.append($0) }
+      login: SSHServer(
+        host: "", user: environment["CODE_SSH_TEST_USER"] ?? NSUserName(), key: key, trust: .ask { key in met.append(key.fingerprint); return true })
+    )
     let lines = LineBox()
     let context = ActionContext(
       directory: URL(fileURLWithPath: "/nonexistent/project/Sub"), environment: [:], executor: executor

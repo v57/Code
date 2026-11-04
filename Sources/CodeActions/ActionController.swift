@@ -88,11 +88,9 @@
         destinations = destinations.filter { $0.kind != .remote } + remoteDestinations
       }
     }
-    /// How the in-process SSH client signs in to a remote target (this device's key, the host key known for it).
+    /// How the in-process SSH client signs in to a remote target (this device's key, what to do about its host key).
     /// Nil, or a nil result, runs the system's `ssh` client (macOS, Windows); iPhone and iPad need it.
     @ObservationIgnored public var remoteLogin: (@MainActor (SSHExecutor.Target) throws -> SSHServer?)?
-    /// Called on the main actor with a remote target's host key after a first in-process login to it, to remember.
-    @ObservationIgnored public var didMeetHostKey: (@MainActor (SSHExecutor.Target, String) -> Void)?
     /// The login password of a remote target whose builds unlock the login keychain (`RemoteSigning.loginKeychain`).
     @ObservationIgnored public var remoteLoginPassword: (@MainActor (SSHExecutor.Target) -> String?)?
     public var selectedDestinationID: String? {
@@ -362,14 +360,11 @@
         let reason = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
         return UnavailableExecutor(reason: "couldn't sign in to \(target.name): \(reason)")
       }
-      let didMeetHostKey = didMeetHostKey
       var secrets: [String: String] = [:]
       if target.signing == .loginKeychain, let password = remoteLoginPassword?(target) {
         secrets[RemoteSigning.passwordVariable] = password
       }
-      return SSHExecutor(target: target, localRoot: root, login: login, secrets: secrets) { fingerprint in
-        Task { @MainActor in didMeetHostKey?(target, fingerprint) }
-      }
+      return SSHExecutor(target: target, localRoot: root, login: login, secrets: secrets)
     }
 
     // MARK: - Build From
@@ -522,15 +517,12 @@
       let id = source.id
       buildSourceStatuses[id] = .checking
       let root = root
-      let didMeetHostKey = didMeetHostKey
       Task {
         do {
           let login = try remoteLogin?(target)
           var probing = target
           if probing.directory.isEmpty { probing.directory = "/" }
-          let executor = SSHExecutor(target: probing, localRoot: root, login: login) { fingerprint in
-            Task { @MainActor in didMeetHostKey?(target, fingerprint) }
-          }
+          let executor = SSHExecutor(target: probing, localRoot: root, login: login)
           let find = target.directory.isEmpty ? await Self.search(for: root) : nil
           let answer = try await Self.ask(executor, script: MachineProbe.script(find: find), name: target.name, root: root)
           defaults.set(
