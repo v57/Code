@@ -156,6 +156,7 @@ struct ProjectsSidebar: View {
   @Binding var selection: RemoteProject.ID?
   @Binding var columnVisibility: NavigationSplitViewVisibility
   @State private var search = ""
+  @State private var showsPrivacy = false
 
   private var shown: [RemoteProject] {
     search.isEmpty ? projects : projects.filter { $0.name.localizedCaseInsensitiveContains(search) }
@@ -196,6 +197,15 @@ struct ProjectsSidebar: View {
       HStack(spacing: 6) {
         StatusDot(hue: deviceCount > 0 ? .green : .gray)
         Text(deviceCount == 0 ? "No devices" : deviceCount == 1 ? "1 device" : "\(deviceCount) devices")
+        Spacer(minLength: 0)
+        Button("Privacy", systemImage: "hand.raised") { showsPrivacy = true }
+          .labelStyle(.iconOnly)
+          .buttonStyle(.kitPlain)
+      }
+    }
+    .kitSheet(isPresented: $showsPrivacy) {
+      KitSheet(title: "Privacy", systemImage: "hand.raised", hue: .blue, onClose: { showsPrivacy = false }) {
+        VaultICloudCard()
       }
     }
     .navigationTitle("Code")

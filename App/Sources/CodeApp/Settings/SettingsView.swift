@@ -21,6 +21,7 @@ struct SettingsView: View {
         FormattingSettingsView()
       }
       SettingsPane("Run", systemImage: "play.fill", hue: .green, id: "run") { RunSettingsView() }
+      SettingsPane("Privacy", systemImage: "hand.raised", hue: .blue, id: "privacy") { VaultICloudCard() }
       SettingsPane("Accounts", systemImage: "person.2", hue: .indigo, section: "v57", id: "accounts") {
         VaultAccountsSettings()
       }
