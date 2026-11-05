@@ -35,10 +35,9 @@ enum OpenWithApps {
       .app(Self.xcode, name: "Xcode", opening: opening, preview: "Opens \(name) in Xcode."),
       .fileManager(revealing: [url], preview: "Shows \(name) in its folder in \(KitDesktop.fileManagerName)."),
       defaultApp
-        ? KitOpenApp(
-          "Default App", icon: KitDesktop.icon(forFile: url.path), words: "Open with Default App",
-          preview: "Opens \(name) in the app the system opens it with.", id: "default"
-        ) { KitDesktop.open(url) }
+        ? .defaultApp(
+          opening: url,
+          preview: "Opens \(name) in \(KitDesktop.defaultApp(for: url)?.name ?? "the app the system opens it with").")
         : nil,
     ]
   }

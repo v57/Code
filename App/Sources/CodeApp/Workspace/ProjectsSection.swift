@@ -66,6 +66,8 @@ struct ProjectsSection<FileTree: View, Accessory: View, Fallback: View>: View {
           .disabled(folder.standardizedFileURL == root)
       }
     }
+    // Xcode and Git join the section's own Finder and Terminal (Code leaves itself out).
+    .openWith { project in project.localURL.map { OpenWithApps.project($0) } ?? [] }
     .removable { ids in removed.ids.formUnion(ids) }
     if current == nil { fallback() }
   }
