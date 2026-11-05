@@ -303,15 +303,19 @@ public struct XcodeDetector: ProjectDetector {
     return matches(of: #"BlueprintName = "([^"]+)""#, in: from).first?[0]
   }
 
-  /// `names` with the folder's own app schemes first, then its other project
+  /// `names` with the app scheme named after the folder's project or workspace
+  /// first, then its other app schemes (an extension's launches its app, so
+  /// sorting by name would put it ahead of the app), then its other project
   /// schemes, then the rest (a workspace's package schemes), each group in
-  /// `xcodebuild`'s order: the first is the main scheme, as Xcode picks it.
+  /// `xcodebuild`'s order: the first is the main scheme, selected until one is picked.
   static func ranked(_ names: [String], in folder: ProjectFolder) -> [String] {
     var apps = Set<String>()
     var own = Set<String>()
+    var namesakes = Set<String>()
     for entry in folder.entries
     where entry.name.hasSuffix(".xcodeproj") || entry.name.hasSuffix(".xcworkspace") {
       let container = folder.url.appendingPathComponent(entry.name)
+      namesakes.insert(container.deletingPathExtension().lastPathComponent)
       // Without scheme files, Xcode makes one per target, named after it.
       let targets = Self.targets(in: folder.read(entry.name + "/project.pbxproj") ?? "")
       for (name, product) in schemeFiles(in: container) + targets {
@@ -322,7 +326,8 @@ public struct XcodeDetector: ProjectDetector {
     func rank(_ name: String) -> Int {
       let plain = plainName(name)
       if plain.package { return own.contains(name) ? 1 : 2 }
-      return apps.contains(plain.name) ? 0 : own.contains(plain.name) ? 1 : 2
+      guard apps.contains(plain.name) else { return own.contains(plain.name) ? 1 : 2 }
+      return namesakes.contains(plain.name) ? -1 : 0
     }
     return names.enumerated().sorted { (rank($0.element), $0.offset) < (rank($1.element), $1.offset) }
       .map(\.element)

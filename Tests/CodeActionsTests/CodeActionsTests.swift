@@ -308,10 +308,16 @@ import Testing
       """.write(
         to: root.appendingPathComponent("App.xcodeproj/project.pbxproj"), atomically: true,
         encoding: .utf8)
+    // An extension's scheme launches its app, so it's an app scheme, and sorts ahead of the app by name.
+    try launch.write(to: schemes.appendingPathComponent("AShare.xcscheme"), atomically: true, encoding: .utf8)
     let folder = ProjectFolder(listing: root)
     #expect(
-      XcodeDetector.ranked(["AppKitExtras", "AppTests", "BSONTests", "Helper", "App"], in: folder)
-        == ["Helper", "App", "AppKitExtras", "AppTests", "BSONTests"])
+      XcodeDetector.ranked(["AShare", "AppKitExtras", "AppTests", "BSONTests", "Helper", "App"], in: folder)
+        == ["App", "AShare", "Helper", "AppKitExtras", "AppTests", "BSONTests"])
+    // A test scheme named after the project stays with the test schemes.
+    try "<TestAction><Testables><TestableReference/></Testables></TestAction>".write(
+      to: schemes.appendingPathComponent("App.xcscheme"), atomically: true, encoding: .utf8)
+    #expect(XcodeDetector.ranked(["App", "Helper"], in: folder) == ["Helper", "App"])
   }
 
   @Test func xcodeProducts() throws {
