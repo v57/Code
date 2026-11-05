@@ -29,6 +29,23 @@ import Testing
 
   // MARK: What each source builds
 
+  /// An iOS app's only destinations are this computer's simulators and devices: it's listed here, and only here.
+  @Test func thisComputerBuildsEveryScheme() throws {
+    let can = BuildCapabilities.local
+    #expect(can.canBuild(scheme("Phone only", .xcode, platforms: [.iOS])))
+    #expect(can.canBuild(scheme("Phone", .android, platforms: [.android])))
+    #expect(can.canBuild(scheme("tool", .swiftPM)))
+    #expect(can.canUse(ProjectContainer(directory: URL(fileURLWithPath: "/p"), fileName: "App.xcodeproj")))
+
+    let root = try project()
+    defer { forget(root) }
+    #expect(ActionController(root: root).selectedBuildCapabilities.canBuild(scheme("Phone only", .xcode, platforms: [.iOS])))
+
+    // What a machine answered is kept encoded, without ever counting as this computer.
+    let saved = try JSONDecoder().decode(BuildCapabilities.self, from: JSONEncoder().encode(BuildCapabilities.local))
+    #expect(!saved.canBuild(scheme("Phone only", .xcode, platforms: [.iOS])))
+  }
+
   @Test func containersBuildNeitherXcodeNorAndroid() {
     let can = BuildCapabilities.container
     #expect(!can.canBuild(scheme("App", .xcode)))

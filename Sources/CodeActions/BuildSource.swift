@@ -114,19 +114,33 @@ public struct BuildCapabilities: Hashable, Codable, Sendable {
   public var system: String?
   /// The toolchains it has; nil until it was asked, when only what never runs there is left out.
   public var toolchains: Set<Toolchain>?
+  /// This computer, whose destinations are its simulators and devices as well.
+  private var isLocal = false
+
+  private enum CodingKeys: String, CodingKey {
+    case system, toolchains
+  }
 
   public init(system: String? = nil, toolchains: Set<Toolchain>? = nil) {
     self.system = system
     self.toolchains = toolchains
   }
 
+  /// This computer: every scheme found here, an iOS or Android app too.
+  public static var local: BuildCapabilities {
+    var capabilities = BuildCapabilities()
+    capabilities.isLocal = true
+    return capabilities
+  }
+
   /// Linux in a container: anything but what needs Apple's or Android's tools.
   public static let container = BuildCapabilities(
     system: "Linux", toolchains: Set(Toolchain.allCases).subtracting([.xcode, .android]))
 
-  /// Whether a scheme builds there. iOS and Android products have no destination elsewhere yet, and Android actions
-  /// run on this computer only (`ActionPlanner.remoteSteps`).
+  /// Whether a scheme builds there. Away from this computer iOS and Android products have no destination yet, and
+  /// Android actions run on this computer only (`ActionPlanner.remoteSteps`).
   public func canBuild(_ scheme: ActionScheme) -> Bool {
+    if isLocal { return true }
     guard scheme.toolchain != .android, scheme.platforms.contains(.mac) else { return false }
     return toolchains?.contains(scheme.toolchain) ?? true
   }

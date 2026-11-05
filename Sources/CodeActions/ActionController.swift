@@ -410,7 +410,7 @@
 
     private func capabilities(of source: BuildSource) -> BuildCapabilities {
       switch source.place {
-      case .local: return BuildCapabilities()
+      case .local: return .local
       case .container: return .container
       case .machine:
         return defaults.data(forKey: key("buildCapabilities|\(source.id)"))
