@@ -57,6 +57,7 @@ struct TabBar: View {
     Button("Close All") { workspace.closeAll() }
     if workspace.isPreview(document) {
       Button("Keep Open") { workspace.keep(document) }
+        .kitMenuPreview("Keeps this tab when another file would replace it.")
     }
     Divider()
     Button("Open in New Window") { model.openInNewWindow(document) }
@@ -65,7 +66,9 @@ struct TabBar: View {
       workspace.tree.reveal(document.url)
       model.sidebarSelection = document.url
     }
-    Button("Show in \(KitDesktop.fileManagerName)") { KitDesktop.reveal([document.url]) }
+    KitOpenWithRow(
+      OpenWithApps.item(
+        document.url, project: workspace.root, container: model.services.actions.selectedContainer, defaultApp: false))
     Button("Copy Path") { KitPasteboard.copy(document.url.path) }
   }
 

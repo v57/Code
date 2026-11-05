@@ -59,6 +59,7 @@ struct ProjectsSection<FileTree: View, Accessory: View, Fallback: View>: View {
     .rowMenu { project in
       if let folder = project.localURL, AppState.shared.isRunningInBackground(folder) {
         Button("Stop", systemImage: "stop.fill") { AppState.shared.stopBackgroundProject(folder) }
+          .kitMenuPreview("Stops what’s running in \(project.name).")
       }
       if let folder = project.localURL {
         Button("Open in New Window", systemImage: "macwindow.badge.plus") { AppState.shared.open(folder) }

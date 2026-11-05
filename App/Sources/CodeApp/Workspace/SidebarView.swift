@@ -333,20 +333,22 @@ struct FileMenu: View {
 
   /// A package's file or folder: open, reveal and copy, nothing that changes it.
   @ViewBuilder private func dependencyMenu(for url: URL) -> some View {
-    if model.isFile(url) {
+    let isFile = model.isFile(url)
+    if isFile {
       Button("Open in New Tab") { workspace.open(url) }
       Button("Open in New Window") { model.openInNewWindow(url) }
-      Button("Open with Default App") { KitDesktop.open(url) }
     }
-    Button("Show in \(KitDesktop.fileManagerName)") { KitDesktop.reveal([url]) }
+    KitOpenWithRow(OpenWithApps.item(url, project: nil, defaultApp: isFile))
     Divider()
     Button("Copy Path") { copy(url.path) }
     Divider()
     Button("Refresh Package Dependencies") { workspace.reloadDependencies() }
+      .kitMenuPreview("Reads the project’s package dependencies again.")
   }
 
   @ViewBuilder private func projectMenu(node: FileNode?) -> some View {
     let folder = node.map { $0.isDirectory ? $0.url : $0.url.deletingLastPathComponent() } ?? workspace.root
+    let container = model.services.actions.selectedContainer
     Button("New File…") { model.ask(.newFile(in: folder)) }
     Button("New Folder…") { model.ask(.newFolder(in: folder)) }
     if let node {
@@ -354,15 +356,16 @@ struct FileMenu: View {
       if !node.isDirectory {
         Button("Open in New Tab") { workspace.open(node.url) }
         Button("Open in New Window") { model.openInNewWindow(node.url) }
-        Button("Open with Default App") { KitDesktop.open(node.url) }
       }
-      Button("Show in \(KitDesktop.fileManagerName)") { KitDesktop.reveal([node.url]) }
+      KitOpenWithRow(
+        OpenWithApps.item(node.url, project: workspace.root, container: container, defaultApp: !node.isDirectory))
       Divider()
       Button("Copy Path") { copy(node.url.path) }
       Button("Copy Relative Path") { copy(workspace.tree.relativePath(of: node.url)) }
       Divider()
       Button("Rename") { model.rename(node.url) }
       Button("Move to Trash", role: .destructive) { model.trashCandidate = node.url }
+        .kitMenuPreview("Asks, then moves \(node.name) to the Trash. You can put it back from there.")
       Divider()
       if !node.isInHiddenFolder {
         if node.hiddenReason != nil {
@@ -377,9 +380,10 @@ struct FileMenu: View {
       editHiddenFilesButton
     } else {
       Divider()
-      Button("Show in \(KitDesktop.fileManagerName)") { KitDesktop.reveal([workspace.root]) }
+      KitOpenWithRow(OpenWithApps.project(workspace.root, container: container))
       Button("Copy Path") { copy(workspace.root.path) }
       Button("Reload") { workspace.tree.reloadAll() }
+        .kitMenuPreview("Reads \(workspace.name)’s files from disk again.")
       Divider()
       editHiddenFilesButton
     }

@@ -104,18 +104,19 @@ struct WelcomeScreen: View {
     let icon = vault.localProjects.first { $0.localPath == path }?.icon
     return RecentItem(folder.lastPathComponent, subtitle: folder.abbreviatedPath, imageData: icon) { open(folder) }
       .kitContextMenu {
-        Button("Open") { open(folder) }
+        KitOpenWithRow(OpenWithApps.project(folder, git: false))
         Button("Open in New Window") { AppState.shared.open(folder) }
-        Divider()
-        Button("Show in \(KitDesktop.fileManagerName)") { KitDesktop.reveal([folder]) }
         Button("Copy Path") { KitPasteboard.copy(folder.path) }
         Divider()
         if isRecent {
           Button("Remove from Recents") { recents.remove(folder) }
+            .kitMenuPreview("Takes \(folder.lastPathComponent) off the recent list. It stays on disk.")
           Button("Clear Recents") { recents.clear() }
+            .kitMenuPreview("Empties the recent list. Projects stay on disk.")
         }
         if let project {
           Button("Remove from List") { withAnimation(.kit) { _ = removed.ids.insert(project) } }
+            .kitMenuPreview("Takes \(folder.lastPathComponent) off Code’s lists. It stays on disk.")
         }
       }
   }
@@ -134,11 +135,12 @@ struct WelcomeScreen: View {
       Button(isOpen ? "Close Group" : "Open Group") { withAnimation(.kit) { collapsedGroups.toggle(group.id) } }
       Divider()
       if let folder = group.localURL {
-        Button("Show in \(KitDesktop.fileManagerName)") { KitDesktop.reveal([folder]) }
+        KitOpenWithRow(OpenWithApps.project(folder, xcode: false, git: false))
         Button("Copy Path") { KitPasteboard.copy(folder.path) }
         Divider()
       }
       Button("Remove Group from List") { withAnimation(.kit) { _ = removed.ids.insert(group.id) } }
+        .kitMenuPreview("Takes \(group.name) off Code’s lists. Its projects stay on disk.")
     }
   }
 }

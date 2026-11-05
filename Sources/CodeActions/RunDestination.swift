@@ -26,13 +26,19 @@ public struct RunDestination: Identifiable, Hashable, Codable, Sendable {
   public var detail: String?
   /// False for a device that is paired but not reachable now.
   public var isAvailable: Bool
+  /// What a device is, when it says ("iPad Pro 13-inch (M4)": devicectl's marketing name), as its own name is the
+  /// user's.
+  public var model: String?
 
-  public init(id: String, name: String, kind: Kind, detail: String? = nil, isAvailable: Bool = true) {
+  public init(
+    id: String, name: String, kind: Kind, detail: String? = nil, isAvailable: Bool = true, model: String? = nil
+  ) {
     self.id = id
     self.name = name
     self.kind = kind
     self.detail = detail
     self.isAvailable = isAvailable
+    self.model = model
   }
 
   /// This computer (`.mac` is the computer Code runs on): "My Mac", "This PC" on Windows, "This Computer" on Linux.
@@ -63,7 +69,7 @@ public struct RunDestination: Identifiable, Hashable, Codable, Sendable {
         return "laptopcomputer"
       #endif
     case .iOSSimulator: return name.contains("iPad") ? "ipad" : "iphone"
-    case .iOSDevice: return name.contains("iPad") ? "ipad" : "iphone.gen3"
+    case .iOSDevice: return (model ?? name).contains("iPad") ? "ipad" : "iphone.gen3"
     case .androidDevice: return "smartphone"
     case .androidEmulator, .androidVirtualDevice: return "candybarphone"
     case .remote: return "point.3.connected.trianglepath.dotted"
@@ -200,7 +206,8 @@ public enum DestinationProvider {
       return RunDestination(
         id: hardware?.udid ?? device.identifier,
         name: device.deviceProperties?.name ?? hardware?.marketingName ?? "iPhone",
-        kind: .iOSDevice, detail: available ? version : "Unavailable", isAvailable: available)
+        kind: .iOSDevice, detail: available ? version : "Unavailable", isAvailable: available,
+        model: hardware?.marketingName)
     }
   }
 
