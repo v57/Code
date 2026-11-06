@@ -1007,6 +1007,9 @@
       if granularity == .selectByWord, let block = delimitedBlock(at: proposedCharRange) {
         return block
       }
+      if granularity == .selectByWord, let word = identifierWord(at: proposedCharRange) {
+        return word
+      }
       return super.selectionRange(forProposedRange: proposedCharRange, granularity: granularity)
     }
 

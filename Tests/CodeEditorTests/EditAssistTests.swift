@@ -115,6 +115,21 @@
       #expect(view.delimitedBlock(at: NSRange(location: 13, length: 1)) == NSRange(location: 1, length: 13))
     }
 
+    @Test func doubleClickSelectsOneIdentifierAcrossDots() {
+      let view = editor("workspace.flushAll($0)")
+      let word = { (at: Int) in
+        view.selectionRange(forProposedRange: NSRange(location: at, length: 0), granularity: .selectByWord)
+      }
+      #expect(word(3) == NSRange(location: 0, length: 9))
+      #expect(word(12) == NSRange(location: 10, length: 8))
+      #expect(word(9) == NSRange(location: 9, length: 1))
+      #expect(word(20) == NSRange(location: 19, length: 2))
+      // Dragging by words from one name to the next.
+      let drag = view.selectionRange(
+        forProposedRange: NSRange(location: 3, length: 9), granularity: .selectByWord)
+      #expect(drag == NSRange(location: 0, length: 18))
+    }
+
     @Test func saveTrimsTrailingWhitespaceOfEditedLinesOnly() {
       let view = editor("a\nb  \nc", caret: 1)
       view.insertText("  ", replacementRange: view.selectedRange())  // edits line 1

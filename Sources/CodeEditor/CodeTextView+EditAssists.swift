@@ -220,6 +220,48 @@
       return NSRange(location: start, length: max(proposed.location, match) - start + 1)
     }
 
+    /// Word selection by identifiers: a double-click on `workspace.flushAll`
+    /// selects one name, where AppKit's word joins the two across the dot (as
+    /// in "e.g."). A drag by words extends from end to end the same way.
+    func identifierWord(at proposed: NSRange) -> NSRange? {
+      guard let text = textStorage?.mutableString, proposed.location < text.length else {
+        return nil
+      }
+      func isIdentifier(_ i: Int) -> Bool {
+        guard i >= 0, i < text.length else { return false }
+        let unit = text.character(at: i)
+        if unit == 0x5F || unit == 0x24 { return true }  // _ $
+        if UTF16.isLeadSurrogate(unit) || UTF16.isTrailSurrogate(unit) { return false }
+        guard let scalar = Unicode.Scalar(unit) else { return false }
+        return scalar.properties.isAlphabetic || scalar.properties.numericType != nil
+      }
+      func run(at i: Int) -> NSRange {
+        if isIdentifier(i) {
+          var start = i
+          var end = i + 1
+          while isIdentifier(start - 1) { start -= 1 }
+          while isIdentifier(end) { end += 1 }
+          return NSRange(location: start, length: end - start)
+        }
+        // Blanks select their run, any other character itself.
+        let unit = text.character(at: i)
+        guard unit == 0x20 || unit == 0x09 else { return NSRange(location: i, length: 1) }
+        var start = i
+        var end = i + 1
+        while start > 0, text.character(at: start - 1) == unit { start -= 1 }
+        while end < text.length, text.character(at: end) == unit { end += 1 }
+        return NSRange(location: start, length: end - start)
+      }
+      let first = proposed.location
+      // A line break keeps AppKit's (it selects the break or the line's end).
+      let unit = text.character(at: first)
+      if proposed.length == 0, unit == 0x0A || unit == 0x0D { return nil }
+      let head = run(at: first)
+      guard proposed.length > 0 else { return head }
+      let last = min(text.length - 1, NSMaxRange(proposed) - 1)
+      return NSUnionRange(head, run(at: last))
+    }
+
     /// ⌘←: to the first non-blank character, or to column 0 when already
     /// there (or on a wrapped continuation row, where AppKit's behavior is
     /// kept). Returns false to let AppKit handle it.
