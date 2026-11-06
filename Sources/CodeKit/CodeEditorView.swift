@@ -89,6 +89,14 @@
         services.showQuickHelp(in: document, at: location)
         return true
       }
+      textView.onCommandHover = { [weak services, weak document] location, range in
+        guard let services, let document else { return }
+        services.showSymbolInfo(in: document, at: location, range: range)
+      }
+      textView.onCommandHoverEnd = { [weak services, weak document] in
+        guard let services, let document else { return }
+        services.hideSymbolInfo(in: document)
+      }
       textView.onBreakpointsChange = { [weak services, weak document] lines in
         guard let services, let document else { return }
         services.setBreakpoints(lines, for: document.url)
@@ -415,6 +423,15 @@
 
     public func showQuickHelp(_ text: String, at range: NSRange) {
       QuickHelpPopover.show(text, in: self, at: range)
+    }
+
+    /// What ⌘ held over a symbol shows (`ProjectServices.showSymbolInfo`).
+    func showSymbolInfo(_ text: String, at range: NSRange) {
+      QuickHelpPopover.showHover(text, in: self, at: range)
+    }
+
+    func hideSymbolInfo() {
+      QuickHelpPopover.closeHover()
     }
   }
 

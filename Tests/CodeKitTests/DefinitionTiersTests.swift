@@ -98,3 +98,28 @@ import Testing
     #expect(rows[0].tier == .model)
   }
 }
+
+#if os(macOS)
+  @Suite struct SymbolInfoTests {
+    let root = URL(fileURLWithPath: "/p")
+
+    func place(_ file: String, _ line: Int, _ preview: String) -> DefinitionPlace {
+      DefinitionPlace(url: URL(fileURLWithPath: "/p/\(file)"), line: line, column: 0, name: "x", preview: preview)
+    }
+
+    @Test func aSurePlaceShowsItsDeclarationAndFile() {
+      let answer = DefinitionAnswer(tier: .model, isSure: true, places: [place("Sources/A.swift", 9, "func flushAll()")])
+      #expect(
+        ProjectServices.symbolInfo(answer, hover: nil, root: root) == "```\nfunc flushAll()\n```\n`Sources/A.swift:10`")
+    }
+
+    @Test func guessesSaySoAndTheServerTextWinsWithThePlace() {
+      let one = DefinitionAnswer(tier: .scanner, isSure: false, places: [place("A.swift", 0, "var a = 1")])
+      #expect(ProjectServices.symbolInfo(one, hover: nil, root: root)?.hasSuffix("A guess from Code’s scanner.") == true)
+      #expect(
+        ProjectServices.symbolInfo(one, hover: "```swift\nvar a: Int\n```", root: root)
+          == "```swift\nvar a: Int\n```\n\nDeclared in `A.swift:1`")
+      #expect(ProjectServices.symbolInfo(nil, hover: "  ", root: root) == nil)
+    }
+  }
+#endif

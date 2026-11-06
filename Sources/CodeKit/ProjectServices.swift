@@ -82,6 +82,8 @@
     @ObservationIgnored let tiers: CodeTiers
     /// The ⌘-click being answered.
     @ObservationIgnored private var definitionLookup: Task<Void, Never>?
+    /// The ⌘-hover being answered.
+    @ObservationIgnored private var symbolInfoLookup: Task<Void, Never>?
     /// The definitions menu's rows, as shown.
     @ObservationIgnored private var definitionRows: [DefinitionChoices.Row] = []
     public let installer = ToolInstaller()
@@ -609,6 +611,77 @@
         }
         textView.showQuickHelp(text, at: textView.identifierRange(at: location) ?? NSRange(location: location, length: 0))
       }
+    }
+
+    #if os(macOS)
+      /// ⌘ held over a symbol: where it's declared and its declaration's line, from Code's scanner and the Swift model
+      /// (at once), then the language server's hover text when it answers, in a popover under it.
+      public func showSymbolInfo(in document: TextDocument, at location: Int, range: NSRange) {
+        guard let textView = document.textView else { return }
+        symbolInfoLookup?.cancel()
+        let url = document.url
+        let position = textView.position(of: location)
+        let text = textView.string
+        let tiers = tiers
+        let servers = languageServers
+        let root = workspace.root
+        let useModel = settings.usesSwiftModel && CodeTiers.isSwift(url)
+        let useScanner = settings.usesScanner
+        let serverOpen = languageServers.isOpen(url)
+        let lspPosition = LSPPosition(line: position.line, character: position.column)
+        symbolInfoLookup = Task { [weak textView] in
+          let hover = Task.detached(priority: .userInitiated) {
+            serverOpen ? await servers.hover(url: url, position: lspPosition) : nil
+          }
+          let places = await Task.detached(priority: .userInitiated) { () -> DefinitionAnswer? in
+            if useModel, let answer = await tiers.modelDefinitions(
+              url: url, text: text, line: position.line, column: position.column), !answer.places.isEmpty
+            {
+              return answer
+            }
+            guard useScanner else { return nil }
+            return await tiers.scannerDefinitions(url: url, text: text, line: position.line, column: position.column)
+          }.value
+          guard !Task.isCancelled else { return hover.cancel() }
+          if let info = Self.symbolInfo(places, hover: nil, root: root) {
+            textView?.showSymbolInfo(info, at: range)
+          }
+          let help = await hover.value
+          guard !Task.isCancelled, let help, let info = Self.symbolInfo(places, hover: help, root: root) else { return }
+          textView?.showSymbolInfo(info, at: range)
+        }
+      }
+
+      /// The ⌘-hover ended.
+      public func hideSymbolInfo(in document: TextDocument) {
+        symbolInfoLookup?.cancel()
+        symbolInfoLookup = nil
+        document.textView?.hideSymbolInfo()
+      }
+    #endif
+
+    /// What a ⌘-hover shows, as Markdown: the language server's hover text when it has some, with where the symbol is
+    /// declared when that's one place; else each place's declaration line (three at most) and file, guesses said so.
+    nonisolated static func symbolInfo(_ answer: DefinitionAnswer?, hover: String?, root: URL) -> String? {
+      let places = answer?.places ?? []
+      let rootPath = root.standardizedFileURL.path + "/"
+      func whereIs(_ place: DefinitionPlace) -> String {
+        let path = place.url.path.hasPrefix(rootPath) ? String(place.url.path.dropFirst(rootPath.count)) : place.url.lastPathComponent
+        return "`\(path):\(place.line + 1)`"
+      }
+      if let hover = hover?.trimmingCharacters(in: .whitespacesAndNewlines), !hover.isEmpty {
+        guard places.count == 1 else { return hover }
+        return hover + "\n\nDeclared in " + whereIs(places[0])
+      }
+      guard !places.isEmpty else { return nil }
+      let shown = places.prefix(3).map { place in
+        let line = place.preview.flatMap { $0.isEmpty ? nil : $0 } ?? place.name
+        return "```\n\(line)\n```\n" + whereIs(place)
+      }
+      var info = shown.joined(separator: "\n\n")
+      if places.count > 3 { info += "\n\n\(places.count - 3) more places: ⌘-click to see them all." }
+      if answer?.isSure != true { info += "\n\n" + (places.count == 1 ? "A guess from Code’s scanner." : "Guesses from Code’s scanner.") }
+      return info
     }
 
     /// Opens a file at a line and column (from 1), selecting `length`

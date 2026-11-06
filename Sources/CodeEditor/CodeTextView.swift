@@ -117,6 +117,12 @@
     /// ⌥-click at a character location (Quick Help); return true when
     /// handled.
     public var onOptionClick: ((Int) -> Bool)?
+    /// ⌘ held over a symbol for a moment: its first character and its range, to show what it is
+    /// (see CodeTextView+CommandHover.swift). Without it ⌘ underlines nothing.
+    public var onCommandHover: ((Int, NSRange) -> Void)?
+    /// The ⌘-hover asked through `onCommandHover` ended: hide what it showed.
+    public var onCommandHoverEnd: (() -> Void)?
+    let commandHover = CommandHover()
     /// Called when line marks move or the text is laid out again (the
     /// minimap redraws).
     public var onLayoutChange: (() -> Void)?
@@ -714,9 +720,24 @@
       nonisolated(unsafe) var result = attrs
       nonisolated(unsafe) let effectiveCharRange = effectiveCharRange
       MainActor.assumeIsolated {
-        guard let run = colorRun(at: charIndex) else { return }
-        effectiveCharRange?.pointee = run.range
-        result[.foregroundColor] = run.color
+        let run = colorRun(at: charIndex)
+        if let run { result[.foregroundColor] = run.color }
+        // Without a run AppKit's own range stands, unless it would run into a ⌘-hovered symbol.
+        var range = run?.range
+        // A ⌘-hovered symbol is underlined as a link; runs stop at its edges.
+        if let hover = commandHover.range {
+          if NSLocationInRange(charIndex, hover) {
+            range = range.map { NSIntersectionRange($0, hover) } ?? hover
+            result[.underlineStyle] = NSUnderlineStyle.single.rawValue
+            result[.underlineColor] = NSColor.linkColor
+          } else if charIndex < hover.location {
+            let start = range?.location ?? charIndex
+            range = NSRange(location: start, length: min(range.map(NSMaxRange) ?? hover.location, hover.location) - start)
+          } else if let current = range, current.location < NSMaxRange(hover) {
+            range = NSRange(location: NSMaxRange(hover), length: NSMaxRange(current) - NSMaxRange(hover))
+          }
+        }
+        if let range { effectiveCharRange?.pointee = range }
       }
       return result
     }
@@ -906,6 +927,7 @@
     }
 
     public override func mouseDown(with event: NSEvent) {
+      endCommandHover()
       if handleCommandClick(event) { return }
       if event.clickCount == 1, handleBannerClick(at: convert(event.locationInWindow, from: nil)) {
         return
@@ -962,10 +984,14 @@
 
     public override func viewWillMove(toWindow newWindow: NSWindow?) {
       super.viewWillMove(toWindow: newWindow)
-      if newWindow == nil { onFocusLoss?() }
+      if newWindow == nil {
+        endCommandHover()
+        onFocusLoss?()
+      }
     }
 
     public override func keyDown(with event: NSEvent) {
+      endCommandHover()
       // ⌃Space shows completions (when the system doesn't take it for
       // switching input sources).
       if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .control,

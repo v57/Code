@@ -14,7 +14,7 @@
   /// Commands: `open:<path>[:line]`, `perform:run|build|test|clean`, `stop`,
   /// `scheme:<name>`, `destination:<name or id>`, `definition` (at the
   /// caret), `breakpoint` (toggle at the caret), `save`, `insert:<text>`,
-  /// `console:on|off`, `issues`, `back`, `quickhelp`, `type:<text>` (as if
+  /// `console:on|off`, `issues`, `back`, `quickhelp`, `commandhover[:off]`, `type:<text>` (as if
   /// typed: completions open), `complete` (Esc), `key:up|down|return|tab|esc`,
   /// `hidden:on|off` (Show Hidden Files), `choose:on|off` (Choose Visible
   /// Files), `setvisible:<relative path>:on|off`, `quickopen:<query>|off`,
@@ -105,6 +105,11 @@
       case "quickhelp":
         if let document, let textView = document.textView {
           services.showQuickHelp(in: document, at: textView.selectedRange().location)
+        }
+      case "commandhover":
+        // ⌘ held over the symbol at the caret (`off`: let go).
+        if let textView = document?.textView {
+          textView.commandHover(at: argument == "off" ? nil : textView.selectedRange().location)
         }
       case "breakpoint":
         if let textView = document?.textView {
