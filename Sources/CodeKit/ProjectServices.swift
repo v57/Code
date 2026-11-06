@@ -37,6 +37,13 @@
     /// The completion list opens while typing (else only with Esc and
     /// ⌃Space).
     public var suggestsCompletions = true
+    /// Code's scanner answers first, in every language: guesses from tokens, shown while the others work.
+    public var usesScanner = true
+    /// The Swift model answers Swift questions in milliseconds, from source; off frees its memory (150 to 200 MB for a
+    /// large app).
+    public var usesSwiftModel = true
+    /// When the language server is asked for definitions.
+    public var serverDefinitions = ServerDefinitions.whenUnsure
 
     public init() {}
   }
@@ -71,6 +78,12 @@
     public let workspace: Workspace
     public let actions: ActionController
     public let languageServers: LanguageServerManager
+    /// Code's scanner and the Swift model, in this process.
+    @ObservationIgnored let tiers: CodeTiers
+    /// The ⌘-click being answered.
+    @ObservationIgnored private var definitionLookup: Task<Void, Never>?
+    /// The definitions menu's rows, as shown.
+    @ObservationIgnored private var definitionRows: [DefinitionChoices.Row] = []
     public let installer = ToolInstaller()
     public private(set) var formatting = FormattingService()
     public var settings: ServiceSettings {
@@ -114,6 +127,7 @@
       self.settings = settings
       actions = ActionController(root: workspace.root)
       languageServers = LanguageServerManager(workspace: workspace.root)
+      tiers = CodeTiers(root: workspace.root)
       actions.excludedNames = Self.unscannedFolders
       workspace.dependencyContainer = actions.pickedContainer(in: workspace.root)
       actions.didSelectContainer = { [weak workspace] container in
@@ -128,6 +142,9 @@
       }
       workspace.onSelectionChange = { [weak self] previous in
         self?.selectionChanged(from: previous)
+      }
+      workspace.onFilesChange = { [weak self] urls, structural in
+        self?.tiers.filesChanged(urls, structural: structural)
       }
       actions.willPerform = { [weak workspace] in workspace?.flushAll() }
       actions.stepsOverride = { [weak self] kind, scheme, destination in
@@ -164,6 +181,7 @@
       formatting.disabledIDs = settings.disabledFormatters
       formatting.requiresConfig = settings.formatterRequiresConfig
       formatting.customCommands = settings.formatterCommands
+      if !settings.usesSwiftModel { tiers.dropSwiftModel() }
       guard let previous, isReady else { return }
       if settings.actionsEnabled && !previous.actionsEnabled { actions.scan() }
       if !settings.actionsEnabled && previous.actionsEnabled { actions.stop() }
@@ -190,6 +208,8 @@
     /// An editor started showing a document: its language server opens it.
     func documentShown(_ document: TextDocument, textView: any CodeTextEditing) {
       shown[document.url.standardizedFileURL] = WeakTextView(textView: textView)
+      // The project loads while the file is read, not on the first ⌘-click.
+      if settings.usesSwiftModel, CodeTiers.isSwift(document.url) { tiers.prepareSwiftModel() }
       guard isReady else { return }
       languageServers.didOpen(document.url, text: textView.string)
     }
@@ -384,24 +404,173 @@
 
     // MARK: - Navigation
 
-    /// Jumps to the definition of the symbol at `location` (⌘-click, ⌃⌘J).
+    /// How long a sure answer is waited for before the menu shows what the faster tiers found.
+    static let definitionWait: Duration = .milliseconds(50)
+
+    /// Jumps to the definition of the symbol at `location` (⌘-click, ⌃⌘J). The tiers are asked together: Code's
+    /// scanner, the Swift model for Swift, and the language server as `settings.serverDefinitions` says. A sure answer
+    /// with one place jumps; guesses, several places, or an answer later than a moment show in a menu under the
+    /// symbol, updated as slower tiers answer.
     public func jumpToDefinition(in document: TextDocument, at location: Int) {
       guard let textView = document.textView else { return }
+      definitionLookup?.cancel()
+      let url = document.url
       let position = textView.position(of: location)
-      guard languageServers.isOpen(document.url) else {
-        showStatus(languageServerHint(for: document.url))
+      let text = textView.string
+      let anchor = textView.identifierRange(at: location)?.location ?? location
+      let useModel = settings.usesSwiftModel && CodeTiers.isSwift(url)
+      let serverOpen = languageServers.isOpen(url)
+      let serverMode = serverOpen ? settings.serverDefinitions : .off
+      var asked: Set<DefinitionTier> = []
+      if settings.usesScanner { asked.insert(.scanner) }
+      if useModel { asked.insert(.model) }
+      // Without the model, "when unsure" means always: nothing else can be sure.
+      let askServerFirst = serverMode == .always || (serverMode == .whenUnsure && !useModel)
+      if askServerFirst { asked.insert(.server) }
+      guard !asked.isEmpty || serverMode == .whenUnsure else {
+        showStatus(serverOpen ? "Definitions are off in Settings." : languageServerHint(for: url))
         return
       }
-      Task {
-        let locations = await languageServers.locations(
-          url: document.url, position: LSPPosition(line: position.line, character: position.column))
-        guard let target = locations.first else {
-          beep()
-          showStatus("No definition found")
-          return
+      var choices = DefinitionChoices(asking: asked, decidingTier: serverMode == .always ? .server : nil)
+      let tiers = tiers
+      let servers = languageServers
+      let lspPosition = LSPPosition(line: position.line, character: position.column)
+      let (events, continuation) = AsyncStream<DefinitionEvent>.makeStream()
+      func ask(_ tier: DefinitionTier) {
+        Task.detached(priority: .userInitiated) {
+          let answer: DefinitionAnswer?
+          switch tier {
+          case .scanner:
+            answer = await tiers.scannerDefinitions(url: url, text: text, line: position.line, column: position.column)
+          case .model:
+            answer = await tiers.modelDefinitions(url: url, text: text, line: position.line, column: position.column)
+          case .server:
+            let locations = await servers.locations(url: url, position: lspPosition)
+            answer = DefinitionAnswer(
+              tier: .server, isSure: true,
+              places: locations.map { location in
+                DefinitionPlace(
+                  url: location.url, line: location.range.start.line, column: location.range.start.character,
+                  name: "", preview: Self.preview(of: location.url, line: location.range.start.line))
+              })
+          }
+          continuation.yield(.answer(tier, answer))
         }
-        open(target.url, line: target.range.start.line + 1, column: target.range.start.character + 1)
       }
+      for tier in asked.sorted() { ask(tier) }
+      definitionLookup = Task { [weak self] in
+        let deadline = Task {
+          try? await Task.sleep(for: Self.definitionWait)
+          continuation.yield(.deadline)
+        }
+        defer {
+          deadline.cancel()
+          continuation.finish()
+        }
+        for await event in events {
+          guard let self, !Task.isCancelled else { return }
+          let menu = self.definitionMenuState(of: document)
+          let step: DefinitionChoices.Step
+          switch event {
+          case .deadline:
+            step = choices.deadline(selectionMoved: menu.moved, selected: menu.selected)
+          case .answer(let tier, let answer):
+            // The model wasn't sure: now the server, when it's asked only then.
+            if tier == .model, serverMode == .whenUnsure, answer?.isSure != true {
+              choices.ask(.server)
+              ask(.server)
+            }
+            step = choices.receive(answer, from: tier, selectionMoved: menu.moved, selected: menu.selected)
+          }
+          self.perform(step, rows: choices.rows, document: document, anchor: anchor)
+          if choices.isFinished { return }
+        }
+      }
+    }
+
+    private enum DefinitionEvent: Sendable {
+      case answer(DefinitionTier, DefinitionAnswer?)
+      case deadline
+    }
+
+    /// Whether the user moved the selection in the definitions menu, and where it is.
+    private func definitionMenuState(of document: TextDocument) -> (moved: Bool, selected: Int) {
+      #if os(macOS)
+        guard let completion = document.completion, completion.isShowingChoices else { return (false, 0) }
+        return (completion.choicesSelectionMoved, completion.selectedChoice)
+      #else
+        return (false, 0)
+      #endif
+    }
+
+    /// Does what the tiers' answers so far call for.
+    private func perform(
+      _ step: DefinitionChoices.Step, rows: [DefinitionChoices.Row], document: TextDocument, anchor: Int
+    ) {
+      switch step {
+      case .wait, .none: break
+      case .jump(let place):
+        open(place)
+      case .notFound:
+        beep()
+        showStatus("No definition found")
+      case .show(let shown, let selected), .update(let shown, let selected):
+        #if os(macOS)
+          guard let completion = document.completion else { return open(shown[0].place) }
+          let items = shown.map { Self.menuItem($0, root: workspace.root) }
+          if case .show = step {
+            completion.showChoices(items, at: anchor, selecting: selected) { [weak self] index in
+              // The rows as they are when picked: later answers may have changed them.
+              guard let self, let choice = self.definitionRows.indices.contains(index) ? self.definitionRows[index] : nil
+              else { return }
+              self.open(choice.place)
+            }
+          } else {
+            completion.updateChoices(items, selecting: selected)
+          }
+          definitionRows = shown
+        #else
+          open(shown[0].place)
+        #endif
+      }
+    }
+
+    /// Opens a definition (lines and columns from 0).
+    private func open(_ place: DefinitionPlace) {
+      open(place.url, line: place.line + 1, column: place.column + 1)
+    }
+
+    /// A row of the definitions menu: the declaration's line, its file and line, and which tier found it.
+    static func menuItem(_ row: DefinitionChoices.Row, root: URL) -> CompletionItem {
+      let place = row.place
+      let source: String
+      switch row.tier {
+      case .scanner: source = "Code’s scanner, a guess"
+      case .model: source = row.isSure ? "Swift model" : "Swift model, a guess"
+      case .server: source = "Language server"
+      }
+      let rootPath = root.standardizedFileURL.path + "/"
+      let path = place.url.path.hasPrefix(rootPath) ? String(place.url.path.dropFirst(rootPath.count)) : place.url.path
+      let label = place.preview.flatMap { $0.isEmpty ? nil : $0 } ?? (place.name.isEmpty ? path : place.name)
+      return CompletionItem(
+        label: label, detail: "\(place.url.lastPathComponent):\(place.line + 1)",
+        documentation: "\(source) · \(path)", kind: row.isSure ? .reference : .text, insertText: "")
+    }
+
+    /// The line's text, trimmed, read from disk (a language server's answer has only its place).
+    nonisolated static func preview(of url: URL, line: Int) -> String? {
+      guard let data = FileManager.default.contents(atPath: url.path) else { return nil }
+      var current = 0
+      var start = data.startIndex
+      for index in data.indices where current < line {
+        if data[index] == 10 {
+          current += 1
+          start = index + 1
+        }
+      }
+      guard current == line else { return nil }
+      let end = data[start...].firstIndex(of: 10) ?? data.endIndex
+      return String(String(decoding: data[start..<end], as: UTF8.self).trimmingCharacters(in: .whitespaces).prefix(160))
     }
 
     /// Why there is no language server for a file, for the status bar.

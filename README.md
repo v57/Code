@@ -61,6 +61,12 @@ Libraries
                        same resource (CPU, disk, network, remote); dynamic
                        stages that end early never make the bar jump; units
                        counted against earlier runs (neutral, no dependencies)
+    CodeSwiftModel     a Swift code model from source text plus CodeScan's
+                       tokens, built in layers only as far as a question
+                       needs: definitions (exact, candidates or unknown),
+                       completions, references; the SDK's interfaces and
+                       Clang headers read when asked (`swift-model`
+                       measures it; numbers in ../Demos/SwiftModel)
     CodeKit            re-exports them all; CodeEditorView(document:) edits a
                        workspace document (autosave, reload, ⌘S trimming,
                        minimap, issues, breakpoints); ProjectServices connects
@@ -265,9 +271,20 @@ Features
     badges, types and documentation; Return or Tab inserts, arguments as
     placeholders (Tab and ⇧Tab, ⌃/ move between them; Backspace deletes
     one whole); imports a server adds come with it in one undo. "Suggest
-    completions while typing" in Settings › Editor.
-  - Jump to Definition (⌘-click, ⌃⌘J), Quick Help (⌥-click), Go Back and
-    Forward (⌃⌘← ⌃⌘→). SourceKit-LSP doesn't read Xcode projects, so files
+    completions while typing" in Settings › Editor. For Swift the Swift
+    model's list shows at once and the server's (with the model's names it
+    lacks) replaces it when the server takes over 50 ms; rows already moved
+    past keep their place. Other languages get Code's scanner's list first.
+  - Jump to Definition (⌘-click, ⌃⌘J) from three tiers asked together: Code's
+    scanner (guesses from tokens, every language), the Swift model (exact or
+    candidates, in milliseconds) and the language server (by default only
+    when the model isn't sure; Settings › Languages: When Unsure, Always,
+    Never). A sure answer with one place jumps; guesses, several places or
+    an answer later than 50 ms show in a menu under the symbol (the
+    completion list's window, `CompletionController.showChoices`), updated
+    as slower tiers answer without moving rows the user went past
+    (`DefinitionChoices`). Each tier can be turned off. Quick Help (⌥-click),
+    Go Back and Forward (⌃⌘← ⌃⌘→). SourceKit-LSP doesn't read Xcode projects, so files
     of Xcode targets get the selected Xcode scheme's compiler arguments
     (`xcodebuild -showBuildSettingsForIndex`) as a compilation database in
     Caches, written when the scheme or destination changes and after

@@ -45,6 +45,9 @@ import Observation
   /// Called after another tab was selected, with the document that was
   /// (nil when none was; it may have just closed), for Go Back.
   @ObservationIgnored public var onSelectionChange: ((TextDocument?) -> Void)?
+  /// Files changed on disk, by anyone: their URLs, and whether files or folders came or went (or everything has to be
+  /// read again).
+  @ObservationIgnored public var onFilesChange: ((_ urls: [URL], _ structural: Bool) -> Void)?
 
   /// The selected tab's document, kept past its tab closing for
   /// `onSelectionChange`.
@@ -432,6 +435,7 @@ import Observation
       }
     }
     for directory in directories { tree.reload(directory: directory) }
+    onFilesChange?(changes.map { localURL(for: $0.url) }, structural)
     if gitIgnoreChanged { tree.reloadGitIgnore() }
     if structural || gitIgnoreChanged { scheduleIndexRebuild() }
     if manifestChanged { reloadDependencies(after: .seconds(1)) }

@@ -140,11 +140,21 @@ public struct CompletionList: Sendable {
   /// The completions at the caret; nil when the provider has none to offer
   /// (another provider may answer).
   func completions(for context: CompletionContext) async -> CompletionList?
+  /// Completions in steps: `update` takes a quick list while a slower, better one is asked for, and the list returned
+  /// replaces it. The list shown stays open in between; rows the user moved past keep their place.
+  func completions(
+    for context: CompletionContext, update: @escaping @MainActor (CompletionList) -> Void
+  ) async -> CompletionList?
   /// The item with its documentation and edits filled in.
   func resolve(_ item: CompletionItem) async -> CompletionItem?
 }
 
 extension CompletionProvider {
+  public func completions(
+    for context: CompletionContext, update: @escaping @MainActor (CompletionList) -> Void
+  ) async -> CompletionList? {
+    await completions(for: context)
+  }
   public var triggerCharacters: Set<String> { ["."] }
   public func resolve(_ item: CompletionItem) async -> CompletionItem? { nil }
 }

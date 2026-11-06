@@ -81,6 +81,9 @@ extension Notification.Name {
 struct LanguagesSettingsView: View {
   @AppStorage(EditorSettings.languageServersEnabled) private var enabled = true
   @AppStorage(EditorSettings.disabledLanguageServers) private var disabled = ""
+  @AppStorage(EditorSettings.usesScanner) private var usesScanner = true
+  @AppStorage(EditorSettings.usesSwiftModel) private var usesSwiftModel = true
+  @AppStorage(EditorSettings.serverDefinitions) private var serverDefinitions = ServerDefinitions.whenUnsure.rawValue
   private let tools = ToolsModel.shared
   private let editor = EditorConfigurationReader()
 
@@ -97,6 +100,27 @@ struct LanguagesSettingsView: View {
           text: PreviewSample.issues, configuration: editor.configuration,
           annotations: enabled ? PreviewSample.issueAnnotations : [])
       }
+    }
+    FormCard(
+      "Jumping and completion",
+      footer:
+        "The fastest answer shows first and the slower ones update it. A menu lists the places when the answer isn’t sure, or there are several; what you already moved past stays where it is. Turn a tier off to save memory and power."
+    ) {
+      FormRow("Code’s scanner", help: "Guesses from the code’s words, in every language, while the others work. About 8 MB", systemImage: "bolt", hue: .yellow) {
+        Toggle("Use Code’s scanner", isOn: $usesScanner).kitLabelsHidden()
+      }
+      FormRow("Swift model", help: "Swift’s types read from the source, answering in milliseconds. 150–200 MB for a large app", systemImage: "swift", hue: .orange) {
+        Toggle("Use the Swift model", isOn: $usesSwiftModel).kitLabelsHidden()
+      }
+      FormRow("Ask the language server", help: serverHelp, systemImage: "curlybraces", hue: .purple) {
+        KitPicker(
+          "Ask the language server", selection: $serverDefinitions,
+          options: [
+            ("When Unsure", ServerDefinitions.whenUnsure.rawValue), ("Always", ServerDefinitions.always.rawValue),
+            ("Never", ServerDefinitions.off.rawValue),
+          ])
+      }
+      .disabled(!enabled)
     }
     FormCard("Servers") {
       ForEach(LanguageServerCatalog.all.installedFirst { tools.paths[$0.command] != nil }) { server in
@@ -116,6 +140,14 @@ struct LanguagesSettingsView: View {
     }
     .disabled(!enabled)
     .onAppear { tools.refresh() }
+  }
+
+  private var serverHelp: String {
+    switch ServerDefinitions(rawValue: serverDefinitions) ?? .whenUnsure {
+    case .whenUnsure: return "For definitions only when the Swift model isn’t sure, and always in other languages"
+    case .always: return "Its answer decides each jump; the faster ones show while it works"
+    case .off: return "Never for definitions; it still reports issues and completes"
+    }
   }
 }
 

@@ -24,6 +24,9 @@ enum EditorSettings {
   static let actionsEnabled = "actions.enabled"
   static let languageServersEnabled = "languages.enabled"
   static let disabledLanguageServers = "languages.disabled"  // comma-separated server IDs
+  static let usesScanner = "languages.scanner"
+  static let usesSwiftModel = "languages.swiftModel"
+  static let serverDefinitions = "languages.serverDefinitions"  // ServerDefinitions' raw value
   static let formatOnSave = "formatting.onSave"
   static let usesBuiltInFormatter = "formatting.builtIn"
   static let disabledFormatters = "formatting.disabled"  // comma-separated formatter IDs
@@ -71,6 +74,10 @@ extension EditorSettings {
     settings.showsIssueMessages = bool(showsIssueMessages)
     settings.breakpointsEnabled = bool(breakpointsEnabled)
     settings.suggestsCompletions = bool(suggestsCompletions)
+    settings.usesScanner = bool(usesScanner)
+    settings.usesSwiftModel = bool(usesSwiftModel)
+    settings.serverDefinitions =
+      defaults.string(forKey: serverDefinitions).flatMap(ServerDefinitions.init) ?? .whenUnsure
     return settings
   }
 }
@@ -90,6 +97,9 @@ struct ServiceSettingsReader: DynamicProperty {
   @AppStorage(EditorSettings.showsIssueMessages) private var showsIssueMessages = true
   @AppStorage(EditorSettings.breakpointsEnabled) private var breakpointsEnabled = true
   @AppStorage(EditorSettings.suggestsCompletions) private var suggestsCompletions = true
+  @AppStorage(EditorSettings.usesScanner) private var usesScanner = true
+  @AppStorage(EditorSettings.usesSwiftModel) private var usesSwiftModel = true
+  @AppStorage(EditorSettings.serverDefinitions) private var serverDefinitions = ServerDefinitions.whenUnsure.rawValue
 
   var settings: ServiceSettings {
     var settings = ServiceSettings()
@@ -106,6 +116,9 @@ struct ServiceSettingsReader: DynamicProperty {
     settings.showsIssueMessages = showsIssueMessages
     settings.breakpointsEnabled = breakpointsEnabled
     settings.suggestsCompletions = suggestsCompletions
+    settings.usesScanner = usesScanner
+    settings.usesSwiftModel = usesSwiftModel
+    settings.serverDefinitions = ServerDefinitions(rawValue: serverDefinitions) ?? .whenUnsure
     return settings
   }
 }

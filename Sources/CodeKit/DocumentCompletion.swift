@@ -3,11 +3,13 @@
   import CodeAutocompletion
   import CodeEditor
   import CodeLSP
+  import CodeScan
+  import CodeSwiftModel
   import CodeWorkspace
 
-  /// Completions for a workspace document: from its language server when
-  /// one is running and completes code, else the file's words and the
-  /// language's keywords.
+  /// Completions for a workspace document, in steps: the Swift model's list (Swift) or Code's scanner's (other
+  /// languages) right away, then the language server's with the fast list's extra names, when the server takes longer
+  /// than a moment. Without a server, the fast list alone, else the file's words and the language's keywords.
   @MainActor final class DocumentCompletionProvider: CompletionProvider {
     weak var services: ProjectServices?
     weak var document: TextDocument?
@@ -23,6 +25,9 @@
       return (services.languageServers, url)
     }
 
+    /// How long the server's list is waited for before the fast list shows.
+    static let serverWait: Duration = .milliseconds(50)
+
     var triggerCharacters: Set<String> {
       guard let (servers, url) = server else { return words.triggerCharacters }
       let characters = servers.completionTriggerCharacters(url)
@@ -30,9 +35,118 @@
     }
 
     func completions(for context: CompletionContext) async -> CompletionList? {
-      guard let (servers, url) = server, let textView else {
+      await completions(for: context) { _ in }
+    }
+
+    func completions(
+      for context: CompletionContext, update: @escaping @MainActor (CompletionList) -> Void
+    ) async -> CompletionList? {
+      // The text as it is now: typing goes on while the tiers answer.
+      let text = context.text as String
+      let fast = Task { await self.fastCompletions(for: context, text: text) }
+      guard server != nil else {
+        if let list = await fast.value, !list.items.isEmpty { return list }
         return await words.completions(for: context)
       }
+      let slow = Task { await self.serverCompletions(for: context) }
+      let quick = await fast.value
+      // The server's list when it's quick enough, else the fast one in the meantime.
+      let early = await Self.value(of: slow, within: Self.serverWait)
+      if early == nil, let quick, !quick.items.isEmpty { update(quick) }
+      var list = early
+      if list == nil { list = await slow.value }
+      guard let list else { return quick }
+      return Self.merge(list, quick)
+    }
+
+    /// A task's value if it finishes within `limit`.
+    private static func value<T: Sendable>(of task: Task<T?, Never>, within limit: Duration) async -> T? {
+      await withTaskGroup(of: T?.self) { group in
+        group.addTask { await task.value }
+        group.addTask {
+          try? await Task.sleep(for: limit)
+          return nil
+        }
+        let first = await group.next() ?? nil
+        group.cancelAll()
+        return first
+      }
+    }
+
+    /// The server's items, then the fast list's names it doesn't have.
+    static func merge(_ list: CompletionList, _ fast: CompletionList?) -> CompletionList {
+      guard let fast, !fast.items.isEmpty else { return list }
+      func name(_ item: CompletionItem) -> Substring {
+        let text = item.filterText ?? item.label
+        return text.prefix { $0 != "(" && $0 != " " && $0 != ":" }
+      }
+      let names = Set(list.items.map(name))
+      return CompletionList(
+        items: list.items + fast.items.filter { !names.contains(name($0)) }, isIncomplete: list.isIncomplete)
+    }
+
+    /// The Swift model's list for a Swift file, Code's scanner's for another; nil when they're off.
+    private func fastCompletions(for context: CompletionContext, text: String) async -> CompletionList? {
+      guard let services, let url = document?.url, let textView else { return nil }
+      let position = textView.position(of: context.location)
+      let tiers = services.tiers
+      if services.settings.usesSwiftModel, CodeTiers.isSwift(url) {
+        guard
+          let list = await tiers.modelCompletions(
+            url: url, text: text, line: position.line, column: position.column), list.context != .none
+        else { return nil }
+        return CompletionList(
+          items: list.items.map { Self.item($0, context: context) }, isIncomplete: list.isIncomplete)
+      }
+      guard services.settings.usesScanner else { return nil }
+      let found = await tiers.scannerCompletions(url: url, text: text, line: position.line, column: position.column)
+      return CompletionList(
+        items: found.map {
+          CompletionItem(
+            label: $0.label, detail: $0.detail, kind: Self.kind($0.kind),
+            sortText: String(format: "%05d", 99999 - min($0.score, 99999)))
+        }, isIncomplete: found.count >= 150)
+    }
+
+    /// A Swift model's item. On an optional receiver it also writes the `?` before the dot.
+    static func item(_ entry: SwiftCompletionEntry, context: CompletionContext) -> CompletionItem {
+      var edits: [CompletionEdit] = []
+      let dot = context.wordRange.location - 1
+      if entry.needsUnwrap, dot >= 0, dot < context.text.length, context.text.character(at: dot) == 0x2E {
+        edits.append(CompletionEdit(range: NSRange(location: dot, length: 0), text: "?"))
+      }
+      let signature = entry.label.hasPrefix(entry.name) ? String(entry.label.dropFirst(entry.name.count)) : nil
+      return CompletionItem(
+        label: entry.name, labelDetail: signature.flatMap { $0.isEmpty ? nil : $0 },
+        detail: entry.detail.isEmpty ? (entry.module.isEmpty ? nil : entry.module) : entry.detail,
+        documentation: entry.module.isEmpty ? nil : entry.module,
+        kind: CompletionKind(rawValue: entry.kind.rawValue) ?? .text, filterText: entry.name,
+        insertText: entry.insertText, isSnippet: entry.isSnippet, additionalEdits: edits,
+        isDeprecated: entry.isDeprecated)
+    }
+
+    static func kind(_ kind: SymbolKind?) -> CompletionKind {
+      guard let kind else { return .keyword }
+      switch kind {
+      case .class, .typeAlias: return .class
+      case .struct: return .struct
+      case .enum: return .enum
+      case .enumMember: return .enumMember
+      case .interface: return .interface
+      case .method: return .method
+      case .function: return .function
+      case .constructor: return .constructor
+      case .field: return .field
+      case .property: return .property
+      case .constant: return .constant
+      case .module, .namespace, .extension: return .module
+      case .variable, .key: return .variable
+      }
+    }
+
+    /// The language server's list; nil when it has none or failed.
+    private func serverCompletions(for context: CompletionContext) async -> CompletionList? {
+      guard let (servers, url) = server, let textView else { return nil }
       let position = textView.position(of: context.location)
       let trigger: LSPCompletionTrigger
       switch context.trigger {
