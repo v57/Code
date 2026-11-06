@@ -64,8 +64,8 @@ import Observation
   public func setExpanded(_ node: FileNode, _ isExpanded: Bool) {
     if isExpanded {
       loadChildren(of: node)
-      expanded.insert(node.url)
-    } else {
+      expand(only: node.url)
+    } else if expanded.contains(node.url) {
       expanded.remove(node.url)
     }
   }
@@ -131,15 +131,21 @@ import Observation
     var node = root
     for name in target.dropFirst(base.count) {
       loadChildren(of: node)
-      if node !== root { expanded.insert(node.url) }
+      if node !== root { expand(only: node.url) }
       guard let next = node.children?.first(where: { $0.name == name }) else { return nil }
       node = next
     }
     if expandingTarget, node.isDirectory {
       loadChildren(of: node)
-      expanded.insert(node.url)
+      expand(only: node.url)
     }
     return node
+  }
+
+  /// Adds a folder to `expanded` when it isn't there: inserting an open folder again still counts as a change, and
+  /// every view that reads `expanded` (each row of the navigator's tree) would be built again, on every tab switch.
+  private func expand(only url: URL) {
+    if !expanded.contains(url) { expanded.insert(url) }
   }
 
   /// The path of `url` relative to the root ("Sources/App/main.swift").
