@@ -23,7 +23,7 @@ public struct EditorConfiguration: Equatable, Sendable {
   public var trimTrailingWhitespace: Bool
 
   public init(
-    themeID: String? = nil, fontName: String? = nil, fontSize: CGFloat = 13, tabWidth: Int = 4,
+    themeID: String? = nil, fontName: String? = nil, fontSize: CGFloat = 13, tabWidth: Int = 2,
     insertSpaces: Bool = true, wrapLines: Bool = true, showLineNumbers: Bool = true,
     highlightCurrentLine: Bool = true, autoCloseDelimiters: Bool = true,
     trimTrailingWhitespace: Bool = true

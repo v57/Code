@@ -128,7 +128,7 @@ struct EditorConfigurationReader: DynamicProperty {
   @AppStorage(EditorSettings.theme) private var theme = "xcode"
   @AppStorage(EditorSettings.fontName) private var fontName = ""
   @AppStorage(EditorSettings.fontSize) private var fontSize = EditorSettings.defaultFontSize
-  @AppStorage(EditorSettings.tabWidth) private var tabWidth = 4
+  @AppStorage(EditorSettings.tabWidth) private var tabWidth = 2
   @AppStorage(EditorSettings.insertSpaces) private var insertSpaces = true
   @AppStorage(EditorSettings.wrapLines) private var wrapLines = true
   @AppStorage(EditorSettings.showLineNumbers) private var showLineNumbers = true

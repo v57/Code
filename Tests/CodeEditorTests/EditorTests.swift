@@ -65,15 +65,15 @@
       let view = makeEditor("  func f() {}")
       view.setSelectedRange(NSRange(location: 12, length: 0))  // between { and }
       view.insertNewline(nil)
-      #expect(view.string == "  func f() {\n      \n  }")
-      #expect(view.selectedRange() == NSRange(location: 19, length: 0))
+      #expect(view.string == "  func f() {\n    \n  }")
+      #expect(view.selectedRange() == NSRange(location: 17, length: 0))
     }
 
     @Test func tabIndentsAndBacktabOutdentsSelectedLines() {
       let view = makeEditor("a\nb\nc")
       view.setSelectedRange(NSRange(location: 0, length: 3))
       view.insertTab(nil)
-      #expect(view.string == "    a\n    b\nc")
+      #expect(view.string == "  a\n  b\nc")
       view.insertBacktab(nil)
       #expect(view.string == "a\nb\nc")
       view.undoManager?.undo()
