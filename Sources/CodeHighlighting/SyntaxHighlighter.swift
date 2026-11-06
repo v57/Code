@@ -20,19 +20,34 @@ public struct SyntaxHighlighter: Sendable {
   private var lineTokens: [[CodeToken]]
   /// Lines whose start state changed but that were not rescanned yet.
   public private(set) var pending: [Int] = []
+  /// The first line never scanned (`lines.count` once all were): its start state is a placeholder, so a rescan
+  /// doesn't stop at it.
+  private var unscannedFrom: Int
   private let scanner: CodeScanner
 
   /// Scans all of `text`.
   public init(text: NSString, spec: LanguageSpec) {
+    self.init(text: text, spec: spec, scanningLines: .max)
+  }
+
+  /// Scans the first `limit` lines of `text`; the rest is `pending`, for `continuePending` (an editor colors what it
+  /// shows first and the rest a batch at a time).
+  public init(text: NSString, spec: LanguageSpec, scanningLines limit: Int) {
     self.spec = spec
     scanner = CodeScanner(spec: spec)
     lines = LineIndex(text)
     startStates = Array(repeating: .normal, count: lines.count)
     lineTokens = Array(repeating: [], count: lines.count)
+    let scanned = min(max(1, limit), lines.count)
+    unscannedFrom = 0
     var state = LineState.normal
-    for line in 0..<lines.count {
+    for line in 0..<scanned {
       startStates[line] = state
       state = scan(line, in: text)
+    }
+    if scanned < lines.count {
+      startStates[scanned] = state
+      pending = [scanned]
     }
   }
 
@@ -74,6 +89,11 @@ public struct SyntaxHighlighter: Sendable {
       if line >= oldChangedEnd { return line + lineDelta }
       return nil
     }
+    if unscannedFrom >= oldChangedEnd {
+      unscannedFrom += lineDelta
+    } else if unscannedFrom > changed.lowerBound {
+      unscannedFrom = changed.lowerBound
+    }
     return rescan(from: changed.lowerBound, through: changed.upperBound - 1, in: text, budget: budget)
   }
 
@@ -97,7 +117,7 @@ public struct SyntaxHighlighter: Sendable {
       let next = line + 1
       if next >= lines.count { break }
       if next > last {
-        if startStates[next] == end && !pending.contains(next) { break }
+        if startStates[next] == end && !pending.contains(next) && next < unscannedFrom { break }
         if scannedPastLast >= budget {
           startStates[next] = end
           if !pending.contains(next) { pending.append(next) }
@@ -118,6 +138,8 @@ public struct SyntaxHighlighter: Sendable {
     let result = scanner.scanLine(
       text.substring(with: range) as NSString, at: 0, state: startStates[line])
     lineTokens[line] = result.tokens
+    // Only in order: a line scanned past a stretch never scanned (an edit there) leaves the stretch unscanned.
+    if line == unscannedFrom { unscannedFrom += 1 }
     return result.end
   }
 }

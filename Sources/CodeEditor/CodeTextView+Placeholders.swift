@@ -15,7 +15,8 @@
       let clamped = NSIntersectionRange(range, NSRange(location: 0, length: text.length))
       let lines = text.lineRange(
         for: NSRange(location: min(range.location, text.length), length: clamped.length))
-      guard text.range(of: EditorPlaceholder.open, range: lines).location != NSNotFound else {
+      // Literal: a Unicode-aware search made glyph generation for a file's text twice as slow.
+      guard text.range(of: EditorPlaceholder.open, options: .literal, range: lines).location != NSNotFound else {
         return []
       }
       return EditorPlaceholder.ranges(in: text, range: lines)
@@ -211,8 +212,8 @@
       let lines = text.lineRange(
         for: NSIntersectionRange(range, NSRange(location: 0, length: text.length)))
       guard
-        text.range(of: "<#", range: lines).location != NSNotFound
-          || text.range(of: "#>", range: lines).location != NSNotFound
+        text.range(of: "<#", options: .literal, range: lines).location != NSNotFound
+          || text.range(of: "#>", options: .literal, range: lines).location != NSNotFound
       else { return }
       layoutManager.invalidateGlyphs(
         forCharacterRange: lines, changeInLength: 0, actualCharacterRange: nil)

@@ -15,7 +15,7 @@ public enum EditorPlaceholder {
     let end = NSMaxRange(range)
     while searchStart < end {
       let opening = text.range(
-        of: open, range: NSRange(location: searchStart, length: end - searchStart))
+        of: open, options: .literal, range: NSRange(location: searchStart, length: end - searchStart))
       guard opening.location != NSNotFound else { break }
       var i = NSMaxRange(opening)
       var closing = NSNotFound

@@ -16,15 +16,15 @@
   @MainActor public final class CodeTextView: NSTextView, NSTextStorageDelegate,
     NSLayoutManagerDelegate
   {
-    /// Lines rescanned per run-loop turn after an edit changes the state of
-    /// following lines (typing "/*" near the top of a long file).
-    static let rescanBudget = 2000
-    /// Smaller files are scanned synchronously when opened, so they never
-    /// show uncolored; larger ones are scanned off the main thread.
+    /// Lines rescanned past the edited ones while an edit is made, when it changes the state of following lines
+    /// (typing "/*" near the top of a long file); the rest follows in batches of `rescanBatchTime`.
+    static let rescanBudget = 200
+    /// The time a batch of the rescan that follows an edit, or of an opened file's scan, may take per run-loop turn.
+    static let rescanBatchTime: CFTimeInterval = 0.003
+    /// Smaller files are scanned on the main thread when opened: the first `openingScanLines` lines at once, so the
+    /// text in view never shows uncolored, the rest in batches. Larger ones are scanned off the main thread.
     static let synchronousScanLimit = 200_000
-    /// Longer texts are laid out as they come into view, with estimated
-    /// heights for the rest (UTF-16 units).
-    static let contiguousLayoutLimit = 500_000
+    static let openingScanLines = 150
 
     public private(set) var lineIndex: LineIndex
     public private(set) var spec: LanguageSpec?
@@ -46,6 +46,10 @@
     private var continueTask: Task<Void, Never>?
     /// Text whose colors changed and must be redrawn once the edit settles.
     private var dirtyRange: NSRange?
+    /// Text whose line attributes (indents, a theme's fonts) must be set again once the edit settles.
+    private var attributesDirtyRange: NSRange?
+    /// Colors changed while the editor was out of its window: it redraws when it's back.
+    private var redrawsInWindow = false
     private var isFlushScheduled = false
     var isApplyingExternalText = false
     /// An edit assist is changing the text itself (no assists on its edits).
@@ -154,11 +158,10 @@
       lineIndex = LineIndex(text)
       let storage = NSTextStorage(string: text)
       let layoutManager = NSLayoutManager()
-      // Non-contiguous layout estimates the height of text it hasn't laid
-      // out (badly, for wrapped lines), and the text in view can shift when
-      // the real height arrives. Laying out everything is exact but takes a
-      // while in long files, so only those get estimates.
-      layoutManager.allowsNonContiguousLayout = storage.length > Self.contiguousLayoutLimit
+      // The text in view is laid out first and the rest a slice per run-loop turn (`fillLayout`): laying out a
+      // whole file at once stalled opening it (a 60 KB file took half a second, mostly making glyphs). The
+      // estimated heights of text not laid out yet are replaced as the slices arrive, keeping the text in view still.
+      layoutManager.allowsNonContiguousLayout = true
       storage.addLayoutManager(layoutManager)
       let container = NSTextContainer(
         size: NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude))
@@ -168,8 +171,9 @@
       layoutManager.delegate = self
       lineEnding = Self.detectLineEnding(text as NSString)
       configure()
+      // The scan first: applying the theme then sets every line's attributes once, with the tokens.
+      startFullScan(invalidating: false)
       applyConfiguration(previous: nil)
-      startFullScan()
     }
 
     @available(*, unavailable)
@@ -326,8 +330,9 @@
         // text twice, and again on every appearance change, which stalled opening a large file).
         invalidateAllColors()
       } else if let storage = textStorage, storage.length > 0 {
-        // Colors are drawn from the theme (temporary attributes): redrawing is enough.
-        layoutManager?.invalidateDisplay(forCharacterRange: NSRange(location: 0, length: storage.length))
+        // Colors are drawn from the theme (temporary attributes): redrawing is enough. The whole view, not the
+        // whole text's range: that made glyphs for every character first.
+        needsDisplay = true
         onLayoutChange?()
       }
       rulerNeedsDisplay()
@@ -411,6 +416,16 @@
       applyWrapping()
     }
 
+    public override func viewDidMoveToWindow() {
+      super.viewDidMoveToWindow()
+      guard window != nil else { return }
+      if redrawsInWindow {
+        redrawsInWindow = false
+        needsDisplay = true
+      }
+      scheduleLayoutFill()
+    }
+
     /// Wrapped: the container follows the view's width. Unwrapped: lines run
     /// as long as they are and the view scrolls sideways.
     func applyWrapping() {
@@ -439,6 +454,7 @@
         enclosingScrollView?.horizontalScrollElasticity = .automatic
         sizeToFit()
       }
+      scheduleLayoutFill()
     }
 
     /// The width the scroll view shows of the text. The clip view runs under
@@ -517,7 +533,7 @@
       shiftDirtyRange(forEditAt: oldRange, newLength: editedRange.length)
       if lineDelta != 0 { shiftLineMarks(changed: changed, lineDelta: lineDelta) }
       // Changed lines get their indent and fonts again, highlighted or not.
-      markDirty(lines: changed)
+      markDirty(lines: changed, attributes: true)
       // Lines after the edit move with it; the edited lines are the ones the
       // new text covers (the storage may report a terminator it rewrote as
       // edited, which shouldn't flag the next line).
@@ -545,7 +561,7 @@
         let lines = highlighter!.edit(
           range: oldRange, replacementLength: editedRange.length, in: text,
           budget: Self.rescanBudget)
-        markDirty(lines: lines)
+        markDirty(lines: lines, attributes: !kindFonts.isEmpty)
         if !(highlighter?.pending.isEmpty ?? true) { scheduleContinue() }
       } else if highlightsSyntax, spec != nil {
         // A full scan is running for older text; start over once typing pauses.
@@ -554,19 +570,21 @@
       scheduleFlush()
     }
 
-    private func startFullScan() {
+    private func startFullScan(invalidating: Bool = true) {
       scanTask?.cancel()
       continueTask?.cancel()
       continueTask = nil
       scanGeneration += 1
       guard highlightsSyntax, let spec, let storage = textStorage else {
         highlighter = nil
-        invalidateAllColors()
+        if invalidating { invalidateAllColors() }
         return
       }
       if storage.length <= Self.synchronousScanLimit {
-        highlighter = SyntaxHighlighter(text: storage.mutableString, spec: spec)
-        invalidateAllColors()
+        highlighter = SyntaxHighlighter(
+          text: storage.mutableString, spec: spec, scanningLines: Self.openingScanLines)
+        if invalidating { invalidateAllColors() }
+        if !(highlighter?.pending.isEmpty ?? true) { scheduleContinue() }
         return
       }
       highlighter = nil
@@ -592,34 +610,51 @@
       }
     }
 
-    /// Finishes a rescan that stopped at the budget, a batch per turn so
-    /// typing stays responsive.
+    /// Finishes a rescan that stopped at the budget (or an opened file's scan), a batch of `rescanBatchTime` per
+    /// run-loop turn so typing and scrolling stay smooth.
     private func scheduleContinue() {
       guard continueTask == nil else { return }
       continueTask = Task { [weak self] in
         while !Task.isCancelled {
-          await Task.yield()
-          guard let self, let text = self.textStorage?.mutableString,
-            let lines = self.highlighter?.continuePending(in: text, budget: Self.rescanBudget)
+          try? await Task.sleep(for: .milliseconds(1))
+          guard !Task.isCancelled, let self, let text = self.textStorage?.mutableString,
+            self.highlighter?.pending.isEmpty == false
           else { break }
-          self.markDirty(lines: lines)
+          let began = CACurrentMediaTime()
+          while CACurrentMediaTime() - began < Self.rescanBatchTime,
+            let lines = self.highlighter?.continuePending(in: text, budget: 50)
+          {
+            self.markDirty(lines: lines, attributes: !self.kindFonts.isEmpty)
+          }
           self.flushDirty()
         }
         self?.continueTask = nil
       }
     }
 
-    private func markDirty(lines: Range<Int>) {
+    /// Marks `lines` for redrawing with their new colors, and for setting their line attributes again when
+    /// `attributes` (an edit's lines; rescanned lines only when the theme's fonts differ by kind).
+    private func markDirty(lines: Range<Int>, attributes: Bool) {
       guard !lines.isEmpty else { return }
       let start = lineIndex.starts[lines.lowerBound]
       let endRange = lineIndex.range(ofLine: lines.upperBound - 1)
       let range = NSRange(location: start, length: NSMaxRange(endRange) - start)
       dirtyRange = dirtyRange.map { NSUnionRange($0, range) } ?? range
+      if attributes {
+        attributesDirtyRange = attributesDirtyRange.map { NSUnionRange($0, range) } ?? range
+      }
     }
 
-    /// Keeps a not-yet-redrawn range pointing at the same text across an edit.
+    /// Keeps the not-yet-redrawn ranges pointing at the same text across an edit.
     private func shiftDirtyRange(forEditAt oldRange: NSRange, newLength: Int) {
-      guard var dirty = dirtyRange else { return }
+      dirtyRange = dirtyRange.map { Self.shifted($0, forEditAt: oldRange, newLength: newLength) }
+      attributesDirtyRange = attributesDirtyRange.map {
+        Self.shifted($0, forEditAt: oldRange, newLength: newLength)
+      }
+    }
+
+    private static func shifted(_ range: NSRange, forEditAt oldRange: NSRange, newLength: Int) -> NSRange {
+      var dirty = range
       let delta = newLength - oldRange.length
       if NSMaxRange(oldRange) <= dirty.location {
         dirty.location += delta
@@ -628,7 +663,7 @@
         let end = max(NSMaxRange(dirty) + delta, oldRange.location + newLength)
         dirty = NSRange(location: start, length: max(0, end - start))
       }
-      dirtyRange = dirty
+      return dirty
     }
 
     private func scheduleFlush() {
@@ -641,14 +676,40 @@
     /// layout manager has processed it), from `didChangeText` or the next turn.
     private func flushDirty() {
       isFlushScheduled = false
-      guard let dirty = dirtyRange, let storage = textStorage else { return }
+      guard let storage = textStorage else { return }
+      let all = NSRange(location: 0, length: storage.length)
+      if let dirty = attributesDirtyRange {
+        attributesDirtyRange = nil
+        let range = NSIntersectionRange(dirty, all)
+        if range.length > 0 {
+          applyLineAttributes(in: range)
+          invalidatePlaceholderGlyphs(in: range)
+          scheduleLayoutFill()
+        }
+      }
+      guard let dirty = dirtyRange else { return }
       dirtyRange = nil
-      let range = NSIntersectionRange(dirty, NSRange(location: 0, length: storage.length))
+      let range = NSIntersectionRange(dirty, all)
       guard range.length > 0 else { return }
-      applyLineAttributes(in: range)
-      invalidatePlaceholderGlyphs(in: range)
-      layoutManager?.invalidateDisplay(forCharacterRange: range)
+      redraw(characters: range)
       onLayoutChange?()
+    }
+
+    /// Redraws the part of `range` that is drawn (in view, or prepared around it for scrolling): colors are read
+    /// as text is drawn, so the rest shows them when it scrolls in. Invalidating all of `range` would make glyphs and
+    /// lay out text far out of view.
+    private func redraw(characters range: NSRange) {
+      guard window != nil else {
+        redrawsInWindow = true
+        return
+      }
+      guard let layoutManager, let textContainer else { return }
+      let drawn = preparedContentRect.union(visibleRect)
+        .offsetBy(dx: -textContainerOrigin.x, dy: -textContainerOrigin.y)
+      let glyphs = layoutManager.glyphRange(forBoundingRect: drawn, in: textContainer)
+      let characters = layoutManager.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
+      let shown = NSIntersectionRange(characters, range)
+      if shown.length > 0 { layoutManager.invalidateDisplay(forCharacterRange: shown) }
     }
 
     /// Redraws everything after a full scan or theme change, setting fonts
@@ -673,7 +734,9 @@
         }
         applyLineAttributesGradually()
       }
-      layoutManager?.invalidateDisplay(forCharacterRange: full)
+      // Redrawn as a view: invalidating the text's range made glyphs for all of it at once.
+      needsDisplay = true
+      scheduleLayoutFill()
       onLayoutChange?()
     }
 
@@ -1037,6 +1100,62 @@
         return word
       }
       return super.selectionRange(forProposedRange: proposedCharRange, granularity: granularity)
+    }
+
+    // MARK: - Layout in slices
+
+    /// Laying out the text not laid out yet, a slice per run-loop turn.
+    private var layoutFillTask: Task<Void, Never>?
+    /// Characters in a slice, adjusted as slices go so one takes about `layoutFillBudget`.
+    private var layoutFillSlice = 2000
+    /// The time a slice may take: well inside a 120 Hz frame, with room for drawing and events.
+    static let layoutFillBudget: CFTimeInterval = 0.003
+
+    /// Lays out what isn't laid out yet (the text past what was shown, or after a width or font change) a slice
+    /// per run-loop turn while the editor is in a window, so heights become exact without a stall.
+    func scheduleLayoutFill() {
+      guard layoutFillTask == nil, window != nil else { return }
+      layoutFillTask = Task { [weak self] in
+        while !Task.isCancelled {
+          // A turn of the run loop between slices (and before the first, so the text in view is drawn first).
+          try? await Task.sleep(for: .milliseconds(2))
+          guard let self, self.fillLayoutSlice() else { break }
+        }
+        self?.layoutFillTask = nil
+      }
+    }
+
+    /// Lays out the next slice; false once everything is laid out (or the editor left its window). The first line
+    /// in view stays where it is on screen while the text above it takes its real height.
+    private func fillLayoutSlice() -> Bool {
+      guard window != nil, let layoutManager, let textContainer, let storage = textStorage else { return false }
+      let start = layoutManager.firstUnlaidCharacterIndex()
+      guard start < storage.length else { return false }
+      let visible = visibleRect
+      var anchor: (character: Int, y: CGFloat)?
+      if visible.minY > textContainerOrigin.y {
+        let point = NSPoint(x: 0, y: visible.minY - textContainerOrigin.y)
+        let glyph = layoutManager.glyphIndex(for: point, in: textContainer)
+        let character = layoutManager.characterIndexForGlyph(at: glyph)
+        if character > start {
+          anchor = (character, layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil).minY)
+        }
+      }
+      let began = CACurrentMediaTime()
+      layoutManager.ensureLayout(
+        forCharacterRange: NSRange(location: start, length: min(layoutFillSlice, storage.length - start)))
+      let took = max(CACurrentMediaTime() - began, 0.000_1)
+      let fitting = Double(layoutFillSlice) * Self.layoutFillBudget / took
+      layoutFillSlice = max(200, min(100_000, Int((Double(layoutFillSlice) + fitting) / 2)))
+      if let anchor, let clip = enclosingScrollView?.contentView {
+        let glyph = layoutManager.glyphIndexForCharacter(at: anchor.character)
+        let delta = layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil).minY - anchor.y
+        if abs(delta) > 0.25 {
+          clip.scroll(to: NSPoint(x: clip.bounds.origin.x, y: clip.bounds.origin.y + delta))
+          enclosingScrollView?.reflectScrolledClipView(clip)
+        }
+      }
+      return layoutManager.firstUnlaidCharacterIndex() > start
     }
 
     // MARK: - Overscroll
