@@ -106,7 +106,9 @@ struct WelcomeScreen: View {
       .kitContextMenu {
         KitOpenWithRow(OpenWithApps.project(folder, git: false))
         Button("Open in New Window") { AppState.shared.open(folder) }
+          .kitMenuPreview("Opens \(folder.lastPathComponent) in a window of its own and keeps this one.")
         Button("Copy Path") { KitPasteboard.copy(folder.path) }
+          .kitMenuPreview(folder.path)
         Divider()
         if isRecent {
           Button("Remove from Recents") { recents.remove(folder) }
@@ -133,10 +135,12 @@ struct WelcomeScreen: View {
     }
     .kitContextMenu {
       Button(isOpen ? "Close Group" : "Open Group") { withAnimation(.kit) { collapsedGroups.toggle(group.id) } }
+        .kitMenuPreview(isOpen ? "Folds \(group.name)’s projects away." : "Lists \(group.name)’s projects.")
       Divider()
       if let folder = group.localURL {
         KitOpenWithRow(OpenWithApps.project(folder, xcode: false, git: false))
         Button("Copy Path") { KitPasteboard.copy(folder.path) }
+          .kitMenuPreview(folder.path)
         Divider()
       }
       Button("Remove Group from List") { withAnimation(.kit) { _ = removed.ids.insert(group.id) } }

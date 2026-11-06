@@ -52,24 +52,32 @@ struct TabBar: View {
   }
 
   @ViewBuilder private func menu(for document: TextDocument) -> some View {
+    let name = document.url.lastPathComponent
     Button("Close") { workspace.close(document) }
+      .kitMenuPreview(
+        document.saveState != .saved ? "Closes \(name). It has unsaved changes." : "Closes \(name)’s tab.")
     Button("Close Others") { workspace.closeOthers(document) }
+      .kitMenuPreview("Closes every tab but \(name).")
     Button("Close All") { workspace.closeAll() }
+      .kitMenuPreview(workspace.tabs.count == 1 ? "Closes the only tab." : "Closes all \(workspace.tabs.count) tabs.")
     if workspace.isPreview(document) {
       Button("Keep Open") { workspace.keep(document) }
         .kitMenuPreview("Keeps this tab when another file would replace it.")
     }
     Divider()
     Button("Open in New Window") { model.openInNewWindow(document) }
+      .kitMenuPreview("Moves \(name) into a window of its own.")
     Divider()
     Button("Reveal in Sidebar") {
       workspace.tree.reveal(document.url)
       model.sidebarSelection = document.url
     }
+    .kitMenuPreview("Opens its folders in the sidebar and selects it.")
     KitOpenWithRow(
       OpenWithApps.item(
         document.url, project: workspace.root, container: model.services.actions.selectedContainer, defaultApp: false))
     Button("Copy Path") { KitPasteboard.copy(document.url.path) }
+      .kitMenuPreview(document.url.path)
   }
 
   /// The display name, plus its folder when another tab has the same name.

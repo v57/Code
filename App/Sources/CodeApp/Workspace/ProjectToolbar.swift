@@ -53,12 +53,20 @@ private struct RunTools: View {
       .kitHelp(actions.canPerform(.run) ? "Run" : "Build", shortcut: actions.canPerform(.run) ? "⌘R" : "⌘B")
       .disabled(actions.selectedScheme == nil)
       .kitContextMenu {
+        let scheme = actions.selectedScheme?.name ?? "the scheme"
         Button("Run") { model.perform(.run) }
           .disabled(!actions.canPerform(.run))
+          .kitMenuPreview(
+            actions.canPerform(.run)
+              ? "Builds \(scheme), then runs it on \(actions.selectedDestination?.name ?? "the destination")."
+              : "\(scheme) has nothing to run.")
         Button("Test") { model.perform(.test) }
           .disabled(!actions.canPerform(.test))
+          .kitMenuPreview(
+            actions.canPerform(.test) ? "Builds \(scheme) and runs its tests." : "\(scheme) has no tests.")
         Button("Build") { model.perform(.build) }
           .disabled(!actions.canPerform(.build))
+          .kitMenuPreview("Builds \(scheme) without running it.")
         Divider()
         Button("Clean") { model.perform(.clean) }
           .disabled(!actions.canPerform(.clean))
@@ -252,6 +260,7 @@ private struct SchemeTools: View {
         let current = ProjectContainer.effective(
           picked: actions.pickedContainer(in: folder), in: actions.containers(in: folder))
         KitSubmenu(folder.lastPathComponent, value: current?.kind.title) { containerRows(in: folder) }
+          .kitMenuPreview(current.map { "Builds \(folder.lastPathComponent) from \($0.fileName)." })
       }
     } else if let folder = folders.first {
       containerRows(in: folder)
@@ -378,6 +387,7 @@ private struct SchemeMenu: View {
     }
     Divider()
     Button("Refresh Schemes") { actions.scan() }
+      .kitMenuPreview("Looks through \(root.lastPathComponent)’s projects and packages for schemes again.")
   }
 
   /// The schemes by kind: apps and tools as rows, libraries and tests folded when `folds`, the picked one above its
@@ -425,11 +435,22 @@ private struct SchemeMenu: View {
       ? scheme.toolchain.displayName : Self.key(scheme.directory) != main ? scheme.projectName : nil
     return MenuPick(scheme.name, isOn: actions.selectedScheme?.id == scheme.id) { actions.selectedSchemeID = scheme.id }
       .kitMenuHint(word)
+      .kitMenuPreview(Self.sentence(scheme))
       // No words never match: hidden while filtering.
       .kitMenuFilter(filterable ? scheme.name : "", kind: kind.word)
   }
 
   private static func key(_ folder: URL) -> String { folder.standardizedFileURL.path }
+
+  /// What a scheme does, with what, from where: "Runs, tests and builds with Xcode, from Code.xcodeproj."
+  static func sentence(_ scheme: ActionScheme) -> String {
+    let verbs: [(ActionKind, String)] = [(.run, "runs"), (.test, "tests"), (.build, "builds")]
+    let does = verbs.filter { scheme.supports($0.0) }.map(\.1)
+    let list =
+      does.count > 1 ? does.dropLast().joined(separator: ", ") + " and " + does.last! : does.first ?? "has no actions"
+    let place = scheme.xcodeContainer.map { URL(fileURLWithPath: $0).lastPathComponent } ?? scheme.projectName
+    return list.prefix(1).uppercased() + list.dropFirst() + " with \(scheme.toolchain.displayName), from \(place)."
+  }
 }
 
 /// Where to run: this computer, other machines and containers as rows; iPhones and iPads as tiles, three across,
@@ -474,6 +495,7 @@ private struct DestinationMenu: View {
     }
     Divider()
     Button("Refresh Devices") { actions.refreshDestinations() }
+      .kitMenuPreview("Lists the simulators, connected devices and machines again.")
   }
 
   private func rows(_ group: Family, selected: String?) -> some View {
@@ -481,6 +503,7 @@ private struct DestinationMenu: View {
       MenuPick(destination.name, isOn: destination.id == selected) { actions.selectedDestinationID = destination.id }
         .kitMenuHint(destination.detail)
         .kitMenuFilter(destination.name, kind: group.kind)
+        .kitMenuPreview(Self.sentence(destination))
         .disabled(!destination.isAvailable)
     }
   }
@@ -504,9 +527,24 @@ private struct DestinationMenu: View {
             isOn: destination.id == selected
           ) { actions.selectedDestinationID = destination.id }
           .kitMenuFilter(destination.name, kind: group.kind)
+          .kitMenuPreview(Self.sentence(destination))
           .disabled(!destination.isAvailable)
         }
       }
+    }
+  }
+
+  /// Where Run puts the app, for the menu's panel.
+  static func sentence(_ destination: RunDestination) -> String {
+    let name = [destination.name, destination.detail].compactMap { $0 }.joined(separator: ", ")
+    guard destination.isAvailable else { return "\(name) can’t run apps now." }
+    switch destination.kind {
+    case .mac: return "Runs on this Mac."
+    case .iOSSimulator: return "Runs in the \(name) simulator\(isBooted(destination) ? "" : ", starting it first")."
+    case .iOSDevice, .androidDevice: return "Installs on \(name) and runs it there."
+    case .androidEmulator, .androidVirtualDevice: return "Runs on the \(name) emulator."
+    case .remote: return "Runs on \(name)."
+    case .container: return "Runs in a container on \(name)."
     }
   }
 

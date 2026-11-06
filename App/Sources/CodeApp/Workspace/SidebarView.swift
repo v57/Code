@@ -336,11 +336,14 @@ struct FileMenu: View {
     let isFile = model.isFile(url)
     if isFile {
       Button("Open in New Tab") { workspace.open(url) }
+        .kitMenuPreview("Opens \(url.lastPathComponent) in a tab that stays.")
       Button("Open in New Window") { model.openInNewWindow(url) }
+        .kitMenuPreview("Opens \(url.lastPathComponent) in a window of its own.")
     }
     KitOpenWithRow(OpenWithApps.item(url, project: nil, defaultApp: isFile))
     Divider()
     Button("Copy Path") { copy(url.path) }
+      .kitMenuPreview(url.path)
     Divider()
     Button("Refresh Package Dependencies") { workspace.reloadDependencies() }
       .kitMenuPreview("Reads the project’s package dependencies again.")
@@ -349,32 +352,45 @@ struct FileMenu: View {
   @ViewBuilder private func projectMenu(node: FileNode?) -> some View {
     let folder = node.map { $0.isDirectory ? $0.url : $0.url.deletingLastPathComponent() } ?? workspace.root
     let container = model.services.actions.selectedContainer
+    let place = folder == workspace.root ? workspace.name : workspace.tree.relativePath(of: folder)
     Button("New File…") { model.ask(.newFile(in: folder)) }
+      .kitMenuPreview("Asks for a name, then makes an empty file in \(place).")
     Button("New Folder…") { model.ask(.newFolder(in: folder)) }
+      .kitMenuPreview("Asks for a name, then makes a folder in \(place).")
     if let node {
       Divider()
       if !node.isDirectory {
         Button("Open in New Tab") { workspace.open(node.url) }
+          .kitMenuPreview("Opens \(node.name) in a tab that stays.")
         Button("Open in New Window") { model.openInNewWindow(node.url) }
+          .kitMenuPreview("Opens \(node.name) in a window of its own.")
       }
       KitOpenWithRow(
         OpenWithApps.item(node.url, project: workspace.root, container: container, defaultApp: !node.isDirectory))
       Divider()
       Button("Copy Path") { copy(node.url.path) }
+        .kitMenuPreview(node.url.path)
       Button("Copy Relative Path") { copy(workspace.tree.relativePath(of: node.url)) }
+        .kitMenuPreview(workspace.tree.relativePath(of: node.url))
       Divider()
       Button("Rename") { model.rename(node.url) }
+        .kitMenuPreview("Edits \(node.name)’s name in the list. Open tabs follow it.")
       Button("Move to Trash", role: .destructive) { model.trashCandidate = node.url }
         .kitMenuPreview("Asks, then moves \(node.name) to the Trash. You can put it back from there.")
       Divider()
       if !node.isInHiddenFolder {
         if node.hiddenReason != nil {
           Button("Show in List") { workspace.setVisible(node.url, true) }
+            .kitMenuPreview("Shows \(node.name) in the navigator and Open Quickly again.")
         } else {
           Button("Hide from List") { workspace.setVisible(node.url, false) }
+            .kitMenuPreview(
+              "Keeps \(node.name) out of the navigator and Open Quickly in this project. It stays on disk.")
         }
         if !isGitIgnored(node) {
           Button("Add to .gitignore") { workspace.addToGitIgnore(node.url) }
+            .kitMenuPreview(
+              "Adds /\(workspace.tree.relativePath(of: node.url))\(node.isDirectory ? "/" : "") to the project’s .gitignore, which hides it.")
         }
       }
       editHiddenFilesButton
@@ -382,6 +398,7 @@ struct FileMenu: View {
       Divider()
       KitOpenWithRow(OpenWithApps.project(workspace.root, container: container))
       Button("Copy Path") { copy(workspace.root.path) }
+        .kitMenuPreview(workspace.root.path)
       Button("Reload") { workspace.tree.reloadAll() }
         .kitMenuPreview("Reads \(workspace.name)’s files from disk again.")
       Divider()
@@ -393,6 +410,7 @@ struct FileMenu: View {
   @ViewBuilder private var editHiddenFilesButton: some View {
     if !model.isChoosingVisibleFiles {
       Button("Edit Hidden Files") { model.isChoosingVisibleFiles = true }
+        .kitMenuPreview("Puts a checkbox on every file and folder to choose what this project hides.")
     }
   }
 

@@ -64,6 +64,10 @@ struct ProjectsSection<FileTree: View, Accessory: View, Fallback: View>: View {
       if let folder = project.localURL {
         Button("Open in New Window", systemImage: "macwindow.badge.plus") { AppState.shared.open(folder) }
           .disabled(folder.standardizedFileURL == root)
+          .kitMenuPreview(
+            folder.standardizedFileURL == root
+              ? "\(project.name) is open in this window."
+              : "Opens \(project.name) in a window of its own and keeps this one.")
       }
     }
     // Xcode and Git join the section's own Finder and Terminal (Code leaves itself out).
