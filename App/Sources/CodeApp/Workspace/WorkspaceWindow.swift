@@ -32,7 +32,7 @@ struct WorkspaceWindow: View {
   @SceneStorage("vault.account") private var accountID = VaultAccount.personal.id
   /// The account the project was opened in: the window goes back to Welcome if that account goes away.
   @State private var modelAccountID: String?
-  @AppStorage("settings.tab") private var settingsTab = "editor"
+  @KitStorage("settings.tab") private var settingsTab = "editor"
 
   var body: some View {
     VaultAccountScope(

@@ -117,7 +117,7 @@ private struct DependencyEntryRow: View {
   let url: URL
   let isDirectory: Bool
   @Environment(WindowModel.self) private var model
-  @AppStorage(EditorSettings.showExtensions) private var showExtensions = false
+  @Environment(\.showsFileExtensions) private var showExtensions
 
   var body: some View {
     SidebarRow(value: NavigatorItem.file(url), FileName.display(url, showExtensions: showExtensions)) {

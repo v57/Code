@@ -188,7 +188,7 @@ extension SearchQuery.Mode {
 private struct FileResultRow: View {
   let file: FileSearchResult
   @Binding var isExpanded: Bool
-  @AppStorage(EditorSettings.showExtensions) private var showExtensions = false
+  @Environment(\.showsFileExtensions) private var showExtensions
 
   var body: some View {
     let url = URL(fileURLWithPath: file.path)
@@ -211,7 +211,8 @@ private struct FileResultRow: View {
 private struct MatchRow: View {
   let match: SearchMatch
   let selection: FindSelection
-  @Environment(\.self) private var environment
+  /// Only the appearance: the whole environment (`\.self`) changes with anything, which built every match again.
+  @Environment(\.colorScheme) private var colorScheme
 
   var body: some View {
     SidebarRow(value: NavigatorItem.match(selection), match.preview) { EmptyView() }
@@ -224,6 +225,8 @@ private struct MatchRow: View {
     var text = AttributedString(match.preview)
     if let range = Range(match.range, in: text) {
       text[range].font = KitFont.mono.font.bold()
+      var environment = EnvironmentValues()
+      environment.colorScheme = colorScheme
       text[range].backgroundColor = Hue.yellow.soft(0.4).resolve(in: environment)
     }
     return text

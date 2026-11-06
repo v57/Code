@@ -19,13 +19,13 @@ struct WelcomeScreen: View {
   var current: URL?
   let open: (URL) -> Void
   /// Recent or Projects, kept for the next time Welcome shows.
-  @AppStorage("welcome.source") private var source = WelcomeSource.recent
+  @KitStorage("welcome.source") private var source = WelcomeSource.recent
   private var recents: RecentProjects { AppState.shared.recents }
 
   /// The groups closed in the Projects list (vault group ids).
-  @AppStorage("welcome.collapsedGroups") private var collapsedGroups = KitIDSet()
+  @KitStorage("welcome.collapsedGroups") private var collapsedGroups = KitIDSet()
   /// The projects and groups removed from Code's lists (vault ids).
-  @AppStorage(RemovedProjects.key) private var removed = KitIDSet()
+  @KitStorage(RemovedProjects.key) private var removed = KitIDSet()
   /// What a dropped folder of repositories holds that the vault doesn't have, and the folder.
   @State private var importOffer: VaultImportOffer?
   @State private var dropped: URL?

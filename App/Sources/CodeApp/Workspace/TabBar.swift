@@ -9,11 +9,13 @@ import SwiftUI
 struct TabBar: View {
   @Environment(Workspace.self) private var workspace
   @Environment(WindowModel.self) private var model
-  @AppStorage(EditorSettings.showExtensions) private var showExtensions = false
+  @KitStorage(EditorSettings.showExtensions) private var showExtensions = false
 
   var body: some View {
+    let names = Dictionary(
+      workspace.tabs.map { (FileName.display($0.url, showExtensions: showExtensions), 1) }, uniquingKeysWith: +)
     KitTabStrip(
-      tabs: workspace.tabs.map(tab), selection: selectedTab,
+      tabs: workspace.tabs.map { tab($0, names: names) }, selection: selectedTab,
       onClose: { id in
         if let document = document(id) { workspace.close(document) }
       },
@@ -36,10 +38,10 @@ struct TabBar: View {
     workspace.tabs.first { $0.id == id }
   }
 
-  private func tab(_ document: TextDocument) -> KitTab<TextDocument.ID> {
+  private func tab(_ document: TextDocument, names: [String: Int]) -> KitTab<TextDocument.ID> {
     KitTab(
-      id: document.id, title: title(for: document), isEdited: document.saveState != .saved,
-      isPreview: workspace.isPreview(document)
+      id: document.id, title: title(for: document, names: names), isEdited: document.saveState != .saved,
+      isPreview: workspace.isPreview(document), iconID: document.url
     ) {
       FileIconView(for: document.url, size: 14)
     }
@@ -80,13 +82,10 @@ struct TabBar: View {
       .kitMenuPreview(document.url.path)
   }
 
-  /// The display name, plus its folder when another tab has the same name.
-  private func title(for document: TextDocument) -> String {
+  /// The display name, plus its folder when another tab has the same name (`names` counts the tabs per name).
+  private func title(for document: TextDocument, names: [String: Int]) -> String {
     let name = FileName.display(document.url, showExtensions: showExtensions)
-    let twins = workspace.tabs.filter {
-      FileName.display($0.url, showExtensions: showExtensions) == name
-    }
-    let title = twins.count > 1 ? name + " — " + document.url.deletingLastPathComponent().lastPathComponent : name
+    let title = names[name, default: 0] > 1 ? name + " — " + document.url.deletingLastPathComponent().lastPathComponent : name
     return document.isMissing ? title + " (deleted)" : title
   }
 }

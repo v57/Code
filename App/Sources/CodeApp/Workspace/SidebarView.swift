@@ -20,64 +20,33 @@ struct SidebarView: View {
   @Environment(Workspace.self) private var workspace
   @State private var isRootExpanded = true
   @State private var findSelection: FindSelection?
+  /// Read here once for every row: an `@AppStorage` in each row never compares equal, so every row was built again
+  /// each time the tree was.
+  @KitStorage(EditorSettings.showExtensions) private var showExtensions = false
 
   var body: some View {
-    @Bindable var find = model.find
-    @Bindable var model = model
-    ScrollViewReader { proxy in
-      KitSidebar(
-        selection: selection, searchText: $find.text, searchPrompt: "Find in Project",
-        isSearching: $model.isFindLineOpen, columnVisibility: navigatorVisibility
-      ) {
-        switch model.navigator {
-        case .project: projectContent
-        case .find: FindNavigatorView(selection: $findSelection)
-        }
-      } bottomBar: {
-        Button("Open Folder…", systemImage: "folder") { AppState.shared.chooseFolder() }
-          .kitHelp("Open Folder…", shortcut: "⌘O")
-        Button(
-          workspace.visibility.showsHiddenFiles ? "Hide Hidden Files" : "Show Hidden Files",
-          systemImage: workspace.visibility.showsHiddenFiles ? "eye.slash" : "eye"
-        ) { workspace.visibility.showsHiddenFiles.toggle() }
-        .kitHelp(workspace.visibility.showsHiddenFiles ? "Hide Hidden Files" : "Show Hidden Files", shortcut: "⇧⌘.")
+    NavigatorSidebar(findSelection: $findSelection) {
+      switch model.navigator {
+      case .project: projectContent
+      case .find: FindNavigatorView(selection: $findSelection)
       }
-      .onReturn(activateSelection)
-      .kitRowDensity(.compact)
-      // Keep the selected file in view when it changes from outside the sidebar (a tab, Quick Open, a file opened
-      // from Finder).
-      .onChange(of: model.sidebarSelection) { _, url in
-        if let url { DispatchQueue.main.async { withKitAnimation { proxy.scrollTo(url) } } }
-      }
+    } bottomBar: {
+      Button("Open Folder…", systemImage: "folder") { AppState.shared.chooseFolder() }
+        .kitHelp("Open Folder…", shortcut: "⌘O")
+      Button(
+        workspace.visibility.showsHiddenFiles ? "Hide Hidden Files" : "Show Hidden Files",
+        systemImage: workspace.visibility.showsHiddenFiles ? "eye.slash" : "eye"
+      ) { workspace.visibility.showsHiddenFiles.toggle() }
+      .kitHelp(workspace.visibility.showsHiddenFiles ? "Hide Hidden Files" : "Show Hidden Files", shortcut: "⇧⌘.")
     }
+    .background { SidebarSelectionFollower() }
     .onDeleteCommand {
       // Only the project's own files: not a package's.
       if let url = model.sidebarSelection, url != workspace.root, workspace.tree.node(for: url) != nil {
         model.trashCandidate = url
       }
     }
-    .onChange(of: model.sidebarSelection) { _, url in
-      guard let url, model.isFile(url) else { return }
-      workspace.open(url, preview: true)
-    }
-    .onChange(of: find.text) { _, text in
-      // Typing in the search line searches the project; closing it goes back to the tree.
-      model.navigator = text.isEmpty ? .project : .find
-      if text.isEmpty { findSelection = nil }
-    }
-    .onChange(of: model.isFindLineOpen) { _, isOpen in
-      // ⇧⌘F and ⌘3 open the line on the Find navigator; closing it goes back to the tree.
-      if isOpen { model.navigator = .find } else if find.text.isEmpty { model.navigator = .project }
-    }
-    .task(id: find.text) {
-      guard !find.text.isEmpty else {
-        find.clear()
-        return
-      }
-      try? await Task.sleep(for: .milliseconds(250))
-      guard !Task.isCancelled else { return }
-      find.search(in: workspace)
-    }
+    .environment(\.showsFileExtensions, showExtensions)
     .dropDestination(for: URL.self) { urls, _ in
       // A folder dropped from Finder opens as a project.
       for url in urls where url.isFileURL && !url.path.hasPrefix(workspace.root.path + "/") {
@@ -122,9 +91,7 @@ struct SidebarView: View {
   }
 
   private var fileTree: some View {
-    KitOutline(treeItems, children: \.children, expanded: expandedFolders) { item in
-      FileTreeRow(node: item.node)
-    }
+    FileTreeOutline(isRootExpanded: isRootExpanded)
   }
 
   private var projectMenuButton: some View {
@@ -141,28 +108,62 @@ struct SidebarView: View {
     let kind = model.services.actions.selectedScheme?.toolchain.displayName
     return [kind, workspace.root.deletingLastPathComponent().abbreviatedPath].compactMap { $0 }
   }
+}
 
-  /// The project's top level, for the kit's outline (folders open from `workspace.tree.expanded`).
-  private var treeItems: [TreeItem] {
-    guard isRootExpanded else { return [] }
-    let children = { (node: FileNode) in Self.visibleChildren(of: node, workspace: workspace, model: model) }
-    return children(workspace.tree.root).map { TreeItem(node: $0, visibleChildren: children) }
+/// The kit's sidebar around the navigator's content, with the bindings it takes. A view of its own: making a
+/// `Binding(get:set:)` reads its value at once, so in `SidebarView`'s body the selection's made that body (and the
+/// tree's sections, given new closures) run again on every tab switch. Here the content comes in built, and stays the
+/// same value when only the selection changes.
+private struct NavigatorSidebar<Content: View, BottomBar: View>: View {
+  @Binding var findSelection: FindSelection?
+  let content: Content
+  let bottomBar: BottomBar
+  @Environment(WindowModel.self) private var model
+  @Environment(Workspace.self) private var workspace
+
+  init(
+    findSelection: Binding<FindSelection?>, @ViewBuilder content: () -> Content,
+    @ViewBuilder bottomBar: () -> BottomBar
+  ) {
+    _findSelection = findSelection
+    self.content = content()
+    self.bottomBar = bottomBar()
   }
 
-  /// The open folders: opening one reads it first; the session keeps them.
-  private var expandedFolders: Binding<Set<URL>> {
-    Binding(
-      get: { workspace.tree.expanded },
-      set: { expanded in
-        let tree = workspace.tree
-        for url in expanded.subtracting(tree.expanded) {
-          if let node = tree.node(for: url) { tree.setExpanded(node, true) }
-        }
-        for url in tree.expanded.subtracting(expanded) {
-          if let node = tree.node(for: url) { tree.setExpanded(node, false) }
-        }
-        workspace.saveSession()
-      })
+  var body: some View {
+    @Bindable var find = model.find
+    @Bindable var model = model
+    KitSidebar(
+      selection: selection, searchText: $find.text, searchPrompt: "Find in Project",
+      isSearching: $model.isFindLineOpen, columnVisibility: navigatorVisibility
+    ) {
+      content
+    } bottomBar: {
+      bottomBar
+    }
+    .onReturn(activateSelection)
+    // The selection stays in view when a tab, Quick Open or Finder changes it (no `ScrollViewReader` here: it built
+    // the whole tree again whenever the rows it could scroll to changed, on every tab switch).
+    .revealsSelection()
+    .kitRowDensity(.compact)
+    .onChange(of: find.text) { _, text in
+      // Typing in the search line searches the project; closing it goes back to the tree.
+      model.navigator = text.isEmpty ? .project : .find
+      if text.isEmpty { findSelection = nil }
+    }
+    .onChange(of: model.isFindLineOpen) { _, isOpen in
+      // ⇧⌘F and ⌘3 open the line on the Find navigator; closing it goes back to the tree.
+      if isOpen { model.navigator = .find } else if find.text.isEmpty { model.navigator = .project }
+    }
+    .task(id: find.text) {
+      guard !find.text.isEmpty else {
+        find.clear()
+        return
+      }
+      try? await Task.sleep(for: .milliseconds(250))
+      guard !Task.isCancelled else { return }
+      find.search(in: workspace)
+    }
   }
 
   private var selection: Binding<NavigatorItem?> {
@@ -188,12 +189,62 @@ struct SidebarView: View {
       set: { model.isNavigatorVisible = $0 != .detailOnly })
   }
 
-  // MARK: - Keyboard
-
   /// Return keeps the selected file open or folds and unfolds the selected folder (the kit's arrow keys move and fold).
   private func activateSelection() {
     guard model.navigator == .project, let url = model.sidebarSelection else { return }
     model.activateNavigatorItem(url)
+  }
+}
+
+/// Opens a file selected in the navigator in the preview tab. A view of its own, so a new selection updates only it:
+/// read in the sidebar's body (or a modifier on it) it built the whole tree again on every tab switch.
+private struct SidebarSelectionFollower: View {
+  @Environment(WindowModel.self) private var model
+  @Environment(Workspace.self) private var workspace
+
+  var body: some View {
+    Color.clear
+      .onChange(of: model.sidebarSelection) { _, url in
+        guard let url, model.isFile(url) else { return }
+        workspace.open(url, preview: true)
+      }
+  }
+}
+
+/// The project's files as the kit's outline. A view of its own, so the sidebar's body running again (a new selection)
+/// doesn't make new items: the outline compared them unequal (they hold a closure) and built every row again.
+private struct FileTreeOutline: View {
+  let isRootExpanded: Bool
+  @Environment(WindowModel.self) private var model
+  @Environment(Workspace.self) private var workspace
+
+  var body: some View {
+    KitOutline(treeItems, children: \.children, expanded: expandedFolders) { item in
+      FileTreeRow(node: item.node)
+    }
+  }
+
+  /// The project's top level, for the kit's outline (folders open from `workspace.tree.expanded`).
+  private var treeItems: [TreeItem] {
+    guard isRootExpanded else { return [] }
+    let children = { (node: FileNode) in SidebarView.visibleChildren(of: node, workspace: workspace, model: model) }
+    return children(workspace.tree.root).map { TreeItem(node: $0, visibleChildren: children) }
+  }
+
+  /// The open folders: opening one reads it first; the session keeps them.
+  private var expandedFolders: Binding<Set<URL>> {
+    Binding(
+      get: { workspace.tree.expanded },
+      set: { expanded in
+        let tree = workspace.tree
+        for url in expanded.subtracting(tree.expanded) {
+          if let node = tree.node(for: url) { tree.setExpanded(node, true) }
+        }
+        for url in tree.expanded.subtracting(expanded) {
+          if let node = tree.node(for: url) { tree.setExpanded(node, false) }
+        }
+        workspace.saveSession()
+      })
   }
 }
 
@@ -255,7 +306,7 @@ struct FileTreeRow: View {
   let node: FileNode
   @Environment(Workspace.self) private var workspace
   @Environment(WindowModel.self) private var model
-  @AppStorage(EditorSettings.showExtensions) private var showExtensions = false
+  @Environment(\.showsFileExtensions) private var showExtensions
 
   var body: some View {
     @Bindable var model = model

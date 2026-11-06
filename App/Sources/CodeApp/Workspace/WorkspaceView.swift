@@ -9,7 +9,7 @@ import SwiftUI
 struct WorkspaceView: View {
   @Environment(WindowModel.self) private var model
   @Environment(Workspace.self) private var workspace
-  @AppStorage(EditorSettings.hidesIgnoredFiles) private var hidesIgnoredFiles = true
+  @KitStorage(EditorSettings.hidesIgnoredFiles) private var hidesIgnoredFiles = true
   private let serviceSettings = ServiceSettingsReader()
   #if DEBUG
     @Environment(\.openSettings) private var openSettings
@@ -25,9 +25,7 @@ struct WorkspaceView: View {
       EditorArea()
       // The tabs float over the editor, as the toolbar does above them and the status bar under it: the editor runs
       // on under all of them. A single tab isn't shown.
-      .safeAreaInset(edge: .top, spacing: 0) {
-        if workspace.tabs.count > 1 { TabBar() }
-      }
+      .safeAreaInset(edge: .top, spacing: 0) { TabStrip() }
       .kitPane(.content)
       .codeStatusBar()
       .projectToolbar(model: model, actionsEnabled: serviceSettings.settings.actionsEnabled)
@@ -69,13 +67,7 @@ struct WorkspaceView: View {
     .onChange(of: hidesIgnoredFiles) { _, hides in
       workspace.hidesIgnoredFilesByDefault = hides
     }
-    .onChange(of: workspace.selectedTabID, initial: true) { _, _ in
-      // Follow the selected tab in the sidebar.
-      if let url = workspace.selectedDocument?.url, model.sidebarSelection != url {
-        workspace.tree.reveal(url)
-        model.sidebarSelection = url
-      }
-    }
+    .modifier(SelectedTabFollower())
     .onDisappear {
       AppState.shared.closeDetachedWindows(of: workspace)
       model.closeConsoleWindow()
@@ -110,6 +102,33 @@ struct WorkspaceView: View {
     case .newFile(let folder)?, .newFolder(let folder)?:
       return "In \(folder == workspace.root ? workspace.name : workspace.tree.relativePath(of: folder))."
     case nil: return nil
+    }
+  }
+}
+
+/// The tab strip over the editor, while more than one tab is open. A view of its own, so a tab opening or closing
+/// updates it alone: read in the window's body, the count rebuilt the split view, and with it every row of the
+/// navigator.
+private struct TabStrip: View {
+  @Environment(Workspace.self) private var workspace
+
+  var body: some View {
+    if workspace.tabs.count > 1 { TabBar() }
+  }
+}
+
+/// Follows the selected tab in the navigator. A modifier of its own for the same reason as `TabStrip`: every tab switch
+/// rebuilt the split view, the navigator's tree with it.
+private struct SelectedTabFollower: ViewModifier {
+  @Environment(WindowModel.self) private var model
+  @Environment(Workspace.self) private var workspace
+
+  func body(content: Content) -> some View {
+    content.onChange(of: workspace.selectedTabID, initial: true) { _, _ in
+      if let url = workspace.selectedDocument?.url, model.sidebarSelection != url {
+        workspace.tree.reveal(url)
+        model.sidebarSelection = url
+      }
     }
   }
 }

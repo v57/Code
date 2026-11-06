@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     UserDefaults.standard.removeObject(forKey: "openProjects")
     #if DEBUG
       DebugAutomation.start()
+      HitchMonitor.start()
     #endif
   }
 

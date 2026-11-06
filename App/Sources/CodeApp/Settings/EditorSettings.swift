@@ -1,4 +1,5 @@
 import CodeKit
+import ComponentKit
 import SwiftUI
 
 /// User-defaults keys for the settings, shared by the Settings window, the
@@ -84,22 +85,22 @@ extension EditorSettings {
 
 /// Reads the services' settings, so views update when they change.
 struct ServiceSettingsReader: DynamicProperty {
-  @AppStorage(EditorSettings.actionsEnabled) private var actionsEnabled = true
-  @AppStorage(EditorSettings.languageServersEnabled) private var languageServersEnabled = true
-  @AppStorage(EditorSettings.disabledLanguageServers) private var disabledLanguageServers = ""
-  @AppStorage(EditorSettings.formatOnSave) private var formatOnSave = true
-  @AppStorage(EditorSettings.usesBuiltInFormatter) private var usesBuiltInFormatter = false
-  @AppStorage(EditorSettings.disabledFormatters) private var disabledFormatters = ""
-  @AppStorage(EditorSettings.formatterRequiresConfig) private var formatterRequiresConfig = "{}"
-  @AppStorage(EditorSettings.formatterCommands) private var formatterCommands = "{}"
-  @AppStorage(EditorSettings.showsMinimap) private var showsMinimap = true
-  @AppStorage(EditorSettings.showsInlineIssues) private var showsInlineIssues = true
-  @AppStorage(EditorSettings.showsIssueMessages) private var showsIssueMessages = true
-  @AppStorage(EditorSettings.breakpointsEnabled) private var breakpointsEnabled = true
-  @AppStorage(EditorSettings.suggestsCompletions) private var suggestsCompletions = true
-  @AppStorage(EditorSettings.usesScanner) private var usesScanner = true
-  @AppStorage(EditorSettings.usesSwiftModel) private var usesSwiftModel = true
-  @AppStorage(EditorSettings.serverDefinitions) private var serverDefinitions = ServerDefinitions.whenUnsure.rawValue
+  @KitStorage(EditorSettings.actionsEnabled) private var actionsEnabled = true
+  @KitStorage(EditorSettings.languageServersEnabled) private var languageServersEnabled = true
+  @KitStorage(EditorSettings.disabledLanguageServers) private var disabledLanguageServers = ""
+  @KitStorage(EditorSettings.formatOnSave) private var formatOnSave = true
+  @KitStorage(EditorSettings.usesBuiltInFormatter) private var usesBuiltInFormatter = false
+  @KitStorage(EditorSettings.disabledFormatters) private var disabledFormatters = ""
+  @KitStorage(EditorSettings.formatterRequiresConfig) private var formatterRequiresConfig = "{}"
+  @KitStorage(EditorSettings.formatterCommands) private var formatterCommands = "{}"
+  @KitStorage(EditorSettings.showsMinimap) private var showsMinimap = true
+  @KitStorage(EditorSettings.showsInlineIssues) private var showsInlineIssues = true
+  @KitStorage(EditorSettings.showsIssueMessages) private var showsIssueMessages = true
+  @KitStorage(EditorSettings.breakpointsEnabled) private var breakpointsEnabled = true
+  @KitStorage(EditorSettings.suggestsCompletions) private var suggestsCompletions = true
+  @KitStorage(EditorSettings.usesScanner) private var usesScanner = true
+  @KitStorage(EditorSettings.usesSwiftModel) private var usesSwiftModel = true
+  @KitStorage(EditorSettings.serverDefinitions) private var serverDefinitions = ServerDefinitions.whenUnsure.rawValue
 
   var settings: ServiceSettings {
     var settings = ServiceSettings()
@@ -125,16 +126,16 @@ struct ServiceSettingsReader: DynamicProperty {
 
 /// Reads the editor settings and builds an `EditorConfiguration`.
 struct EditorConfigurationReader: DynamicProperty {
-  @AppStorage(EditorSettings.theme) private var theme = "xcode"
-  @AppStorage(EditorSettings.fontName) private var fontName = ""
-  @AppStorage(EditorSettings.fontSize) private var fontSize = EditorSettings.defaultFontSize
-  @AppStorage(EditorSettings.tabWidth) private var tabWidth = 2
-  @AppStorage(EditorSettings.insertSpaces) private var insertSpaces = true
-  @AppStorage(EditorSettings.wrapLines) private var wrapLines = true
-  @AppStorage(EditorSettings.showLineNumbers) private var showLineNumbers = true
-  @AppStorage(EditorSettings.highlightCurrentLine) private var highlightCurrentLine = true
-  @AppStorage(EditorSettings.autoCloseDelimiters) private var autoCloseDelimiters = true
-  @AppStorage(EditorSettings.trimTrailingWhitespace) private var trimTrailingWhitespace = true
+  @KitStorage(EditorSettings.theme) private var theme = "xcode"
+  @KitStorage(EditorSettings.fontName) private var fontName = ""
+  @KitStorage(EditorSettings.fontSize) private var fontSize = EditorSettings.defaultFontSize
+  @KitStorage(EditorSettings.tabWidth) private var tabWidth = 2
+  @KitStorage(EditorSettings.insertSpaces) private var insertSpaces = true
+  @KitStorage(EditorSettings.wrapLines) private var wrapLines = true
+  @KitStorage(EditorSettings.showLineNumbers) private var showLineNumbers = true
+  @KitStorage(EditorSettings.highlightCurrentLine) private var highlightCurrentLine = true
+  @KitStorage(EditorSettings.autoCloseDelimiters) private var autoCloseDelimiters = true
+  @KitStorage(EditorSettings.trimTrailingWhitespace) private var trimTrailingWhitespace = true
 
   var configuration: EditorConfiguration {
     EditorConfiguration(

@@ -17,9 +17,9 @@ struct ProjectsSection<FileTree: View, Accessory: View, Fallback: View>: View {
   @Environment(Workspace.self) private var workspace
   @Environment(WindowModel.self) private var model
   @Environment(\.vault) private var vault
-  @AppStorage("welcome.collapsedGroups") private var collapsedGroups = KitIDSet()
+  @KitStorage("welcome.collapsedGroups") private var collapsedGroups = KitIDSet()
   /// The projects and groups removed from Code's lists (vault ids).
-  @AppStorage(RemovedProjects.key) private var removed = KitIDSet()
+  @KitStorage(RemovedProjects.key) private var removed = KitIDSet()
 
   var body: some View {
     if let vault, case let tree = vault.codeProjectTree(removed: removed.ids), !tree.isEmpty {
