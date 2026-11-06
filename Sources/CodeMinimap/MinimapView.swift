@@ -104,10 +104,19 @@
 
     /// The bars of `tileLines` lines each, drawn once into a bitmap: scrolling
     /// only copies them, where drawing every bar again took a frame's time.
+    ///
+    /// A tile's bars are gathered here and drawn into its bitmap on a queue of their own, so a file opened (or a tab
+    /// switched to) doesn't wait for them: filling the rounded bars took tens of milliseconds for a long file. Until
+    /// its bitmap is ready a tile shows the one from before the text's last change (`staleTiles`), else nothing.
     private var tiles: [Int: CGImage] = [:]
+    private var staleTiles: [Int: CGImage] = [:]
+    /// The tiles being drawn, and the content they're drawn for (a bitmap for older content is dropped).
+    private var drawingTiles: Set<Int> = []
+    private var tileGeneration = 0
     /// What the tiles were drawn for: width, backing scale and line count.
     private var tileKey: (width: CGFloat, scale: CGFloat, lines: Int)?
     static let tileLines = 128
+    private static let tileQueue = DispatchQueue(label: "dev.v57.code.minimap-tiles", qos: .userInitiated)
 
     public override var isFlipped: Bool { true }
     public override var isOpaque: Bool { true }
@@ -118,14 +127,23 @@
 
     /// Redraws after the editor's text or colors changed.
     public func invalidateContent() {
-      tiles.removeAll()
+      staleTiles.merge(tiles) { $1 }
+      forgetTiles(keepingStale: true)
       needsDisplay = true
     }
 
     public override func viewDidMoveToWindow() {
       super.viewDidMoveToWindow()
       // A tab in the background keeps no bitmaps.
-      if window == nil { tiles.removeAll() }
+      if window == nil { forgetTiles(keepingStale: false) }
+    }
+
+    /// Drops the tiles, and the bitmaps still being drawn.
+    private func forgetTiles(keepingStale: Bool) {
+      tiles.removeAll()
+      if !keepingStale { staleTiles.removeAll() }
+      drawingTiles.removeAll()
+      tileGeneration += 1
     }
 
     // MARK: - Geometry
@@ -191,14 +209,20 @@
 
       drawMarks(lines: first...last, offset: offset, behind: true)
 
-      if let key = tileKey, key != (bounds.width, scale, count) { tiles.removeAll() }
+      if let key = tileKey, key != (bounds.width, scale, count) {
+        // Another line count keeps the old bitmaps until the new ones are drawn; another size can't use them.
+        if key.width == bounds.width, key.scale == scale { staleTiles.merge(tiles) { $1 } } else { staleTiles.removeAll() }
+        forgetTiles(keepingStale: true)
+      }
       tileKey = (bounds.width, scale, count)
       let tileRange = first / Self.tileLines...last / Self.tileLines
       // Only the tiles around the visible ones stay.
-      tiles = tiles.filter { tileRange.lowerBound - 2...tileRange.upperBound + 2 ~= $0.key }
+      let kept = tileRange.lowerBound - 2...tileRange.upperBound + 2
+      tiles = tiles.filter { kept ~= $0.key }
+      staleTiles = staleTiles.filter { kept ~= $0.key }
       for index in tileRange {
-        guard let image = tiles[index] ?? drawTile(index, scale: scale) else { continue }
-        tiles[index] = image
+        if tiles[index] == nil { drawTile(index, scale: scale) }
+        guard let image = tiles[index] ?? staleTiles[index] else { continue }
         let top = y(ofLine: Double(index * Self.tileLines), offset: offset)
         let height = CGFloat(Self.tileLines) * rowHeight
         // The view is flipped; the image's rows run bottom-up.
@@ -214,25 +238,14 @@
       drawViewport(offset: offset)
     }
 
-    /// The bars of tile `index`'s lines, over a clear background, at the
-    /// backing scale: one path per color. (NSBezierPath slows down with each
-    /// rounded rect added; a page of prose took most of a second.)
-    private func drawTile(_ index: Int, scale: CGFloat) -> CGImage? {
-      guard let dataSource else { return nil }
+    /// Starts drawing tile `index`: its lines' bars gathered here, one list per color, and drawn into a bitmap at
+    /// the backing scale on the tile queue; the view redraws when it's ready.
+    private func drawTile(_ index: Int, scale: CGFloat) {
+      guard let dataSource, !drawingTiles.contains(index) else { return }
       let first = index * Self.tileLines
       let end = min(first + Self.tileLines, dataSource.minimapLineCount)
-      let height = CGFloat(Self.tileLines) * rowHeight
-      guard first < end,
-        let context = CGContext(
-          data: nil, width: Int((bounds.width * scale).rounded(.up)), height: Int((height * scale).rounded(.up)),
-          bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
-          bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
-      else { return nil }
-      // Top-down, in points.
-      context.translateBy(x: 0, y: height * scale)
-      context.scaleBy(x: scale, y: -scale)
-
-      var paths: [UInt32: CGMutablePath] = [:]
+      guard first < end else { return }
+      var bars: [UInt32: [CGRect]] = [:]
       let maxX = bounds.maxX - 4
       for lineNumber in first..<end {
         let top = CGFloat(lineNumber - first) * rowHeight + (rowHeight - barHeight) / 2
@@ -240,20 +253,27 @@
           let x = Self.leadingInset + CGFloat(run.column) * columnWidth
           guard x < maxX else { break }
           let width = min(CGFloat(run.length) * columnWidth, maxX - x)
-          let color = theme.syntax.color(for: run.kind)
-          let path = paths[color] ?? CGMutablePath()
-          path.addRoundedRect(
-            in: CGRect(x: x, y: top, width: max(width, 1), height: barHeight), cornerWidth: 0.8, cornerHeight: 0.8)
-          paths[color] = path
+          bars[theme.syntax.color(for: run.kind), default: []].append(
+            CGRect(x: x, y: top, width: max(width, 1), height: barHeight))
         }
       }
-      let alpha: CGFloat = theme.isDark ? 0.75 : 0.6
-      for (color, path) in paths {
-        context.setFillColor(NSColor(hex: color).withAlphaComponent(alpha).cgColor)
-        context.addPath(path)
-        context.fillPath()
+      drawingTiles.insert(index)
+      let tile = MinimapTile(
+        bars: bars, width: bounds.width, height: CGFloat(Self.tileLines) * rowHeight, scale: scale,
+        alpha: theme.isDark ? 0.75 : 0.6)
+      let generation = tileGeneration
+      Self.tileQueue.async {
+        let image = MinimapTileImage(tile.draw())
+        DispatchQueue.main.async { [weak self] in
+          MainActor.assumeIsolated {
+            guard let self, generation == self.tileGeneration else { return }
+            self.drawingTiles.remove(index)
+            self.tiles[index] = image.image
+            self.staleTiles[index] = nil
+            self.needsDisplay = true
+          }
+        }
       }
-      return context.makeImage()
     }
 
     private func drawMarks(lines: ClosedRange<Int>, offset: CGFloat, behind: Bool) {
@@ -383,6 +403,46 @@
         super.scrollWheel(with: event)
       }
     }
+  }
+
+  /// A tile's bars, ready to draw off the main thread.
+  private struct MinimapTile: Sendable {
+    let bars: [UInt32: [CGRect]]
+    let width: CGFloat
+    let height: CGFloat
+    let scale: CGFloat
+    let alpha: CGFloat
+
+    /// The bars over a clear background, one path per color. (NSBezierPath slows down with each rounded rect added; a
+    /// page of prose took most of a second.)
+    func draw() -> CGImage? {
+      guard
+        let context = CGContext(
+          data: nil, width: Int((width * scale).rounded(.up)), height: Int((height * scale).rounded(.up)),
+          bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+          bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+      else { return nil }
+      // Top-down, in points.
+      context.translateBy(x: 0, y: height * scale)
+      context.scaleBy(x: scale, y: -scale)
+      for (color, rects) in bars {
+        let path = CGMutablePath()
+        for rect in rects { path.addRoundedRect(in: rect, cornerWidth: 0.8, cornerHeight: 0.8) }
+        context.setFillColor(
+          CGColor(
+            srgbRed: CGFloat((color >> 16) & 0xFF) / 255, green: CGFloat((color >> 8) & 0xFF) / 255,
+            blue: CGFloat(color & 0xFF) / 255, alpha: alpha))
+        context.addPath(path)
+        context.fillPath()
+      }
+      return context.makeImage()
+    }
+  }
+
+  /// A finished tile's bitmap, handed back to the main thread (a CGImage doesn't change once made).
+  private struct MinimapTileImage: @unchecked Sendable {
+    let image: CGImage?
+    init(_ image: CGImage?) { self.image = image }
   }
 
   extension NSColor {
