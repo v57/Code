@@ -62,7 +62,7 @@ struct WorkspaceWindow: View {
       }
       .onAppear { ProjectAccounts.findIcons(in: vault) }
     }
-    .frame(minWidth: 640, minHeight: 400)
+    .kitWindowMinimum(width: 640, height: 400)
     .background(WindowReader(reference: window, isWelcome: model == nil))
     .onAppear {
       AppState.shared.openWindow = openWindow
