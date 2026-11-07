@@ -145,7 +145,7 @@ public struct NotarizationSetupView: View {
           }
         } else {
           ForEach(identities, id: \.self) { identity in
-            FormRow(identity.name, help: "In the keychain", systemImage: "checkmark.seal.fill", hue: .green)
+            FormRow("\(identity.name)", help: "In the keychain", systemImage: "checkmark.seal.fill", hue: .green)
           }
         }
       } else {
@@ -188,7 +188,7 @@ public struct NotarizationSetupView: View {
     }
   }
 
-  private var checkHelp: String? {
+  private var checkHelp: LocalizedStringKey? {
     switch check {
     case .idle: return nil
     case .checking: return "Checking with Apple…"
@@ -206,7 +206,7 @@ public struct NotarizationSetupView: View {
     }
   }
 
-  private var checkError: String? {
+  private var checkError: LocalizedStringKey? {
     if case .done(.failed(let message)) = check { return "The profile doesn't work: \(message)" }
     return nil
   }
@@ -246,7 +246,7 @@ public struct NotarizationSetupView: View {
             .buttonStyle(.kit)
         }
       case .apiKey:
-        FormRow("Key file", help: keyURL?.lastPathComponent ?? "None", systemImage: "doc", hue: .gray) {
+        FormRow("Key file", help: keyURL.map { "\($0.lastPathComponent)" } ?? "None", systemImage: "doc", hue: .gray) {
           Button("Choose…") { showingKeyImporter = true }
             .buttonStyle(.kit)
         }
@@ -260,7 +260,7 @@ public struct NotarizationSetupView: View {
       }
       FormRow(
         "Save to Keychain", help: saving ? "Checking with Apple and saving…" : nil, systemImage: "lock.shield",
-        error: saveError
+        error: saveError.map { "\($0)" }
       ) {
         HStack(spacing: 8) {
           if saving { LiveIcon(systemImage: "lock.shield", status: .working, size: 20) }
