@@ -91,10 +91,15 @@
       }
       textView.onCommandHover = { [weak services, weak document] location, range in
         guard let services, let document else { return }
-        services.showSymbolInfo(in: document, at: location, range: range)
+        if services.symbolMenuPresenter != nil {
+          services.showSymbolMenu(in: document, at: location, range: range)
+        } else {
+          services.showSymbolInfo(in: document, at: location, range: range)
+        }
       }
       textView.onCommandHoverEnd = { [weak services, weak document] in
         guard let services, let document else { return }
+        services.hideSymbolMenu()
         services.hideSymbolInfo(in: document)
       }
       textView.onBreakpointsChange = { [weak services, weak document] lines in

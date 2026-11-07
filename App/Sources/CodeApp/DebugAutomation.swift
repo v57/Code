@@ -14,8 +14,9 @@
   /// Commands: `open:<path>[:line]`, `perform:run|build|test|clean`, `stop`,
   /// `scheme:<name>`, `destination:<name or id>`, `definition` (at the
   /// caret), `breakpoint` (toggle at the caret), `save`, `insert:<text>`,
-  /// `console:on|off`, `issues`, `back`, `quickhelp`, `commandhover[:off]`, `type:<text>` (as if
-  /// typed: completions open), `complete` (Esc), `key:up|down|return|tab|esc`,
+  /// `console:on|off`, `issues`, `back`, `quickhelp`, `commandhover[:off|release]`, `symbolrow:<index>|off` (highlights a
+  /// row of the symbol menu), `type:<text>` (as if typed: completions open), `complete` (Esc),
+  /// `key:up|down|return|tab|esc|cmdup|optreturn`,
   /// `hidden:on|off` (Show Hidden Files), `choose:on|off` (Choose Visible
   /// Files), `setvisible:<relative path>:on|off`, `quickopen:<query>|off`,
   /// `quickopenhidden:on|off`, `scroll:<lines>` (a scroll-wheel event over
@@ -107,9 +108,13 @@
           services.showQuickHelp(in: document, at: textView.selectedRange().location)
         }
       case "commandhover":
-        // ⌘ held over the symbol at the caret (`off`: let go).
+        // ⌘ held over the symbol at the caret (`off`: ended; `release`: ⌘ let go, then the pointer moves off).
         if let textView = document?.textView {
-          textView.commandHover(at: argument == "off" ? nil : textView.selectedRange().location)
+          if argument == "release" {
+            release(in: textView)
+          } else {
+            textView.commandHover(at: argument == "off" ? nil : textView.selectedRange().location)
+          }
         }
       case "breakpoint":
         if let textView = document?.textView {
@@ -146,8 +151,17 @@
           "up": #selector(NSResponder.moveUp(_:)), "down": #selector(NSResponder.moveDown(_:)),
           "return": #selector(NSResponder.insertNewline(_:)), "tab": #selector(NSResponder.insertTab(_:)),
           "backtab": #selector(NSResponder.insertBacktab(_:)), "esc": #selector(NSResponder.cancelOperation(_:)),
+          // The symbol menu's ⌘↑ and ⌥↩, as the editor's key bindings send them.
+          "cmdup": #selector(NSResponder.moveToBeginningOfDocument(_:)),
+          "optreturn": #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)),
         ]
         if let selector = selectors[argument] { document?.textView?.doCommand(by: selector) }
+      case "symbolrow":
+        // symbolrow:<index> highlights a row of the symbol menu, as the pointer does (`off`: none).
+        if let menu = services.symbolMenu {
+          let index = Int(argument)
+          menu.highlighted = index.flatMap { menu.content.rows.indices.contains($0) ? menu.content.rows[$0].id : nil }
+        }
       case "save": document?.save()
       case "projectgroup":
         // projectgroup:<name>:on|off opens or closes a group of the Projects card, as a click on its row does (a
@@ -286,6 +300,7 @@
           }
           lines.append("  text length \(textView.string.count) visible \(textView.visibleRect) clip \(textView.enclosingScrollView?.contentView.bounds ?? .zero) container \(textView.textContainer?.size ?? .zero) inset \(textView.textContainerInset) origin \(textView.textContainerOrigin)")
         }
+        lines.append("symbol menu:\n" + (services.symbolMenu?.summary ?? "-"))
         lines.append("tabs: \(model.workspace.tabs.map(\.name))")
         lines.append("history: back \(services.canGoBack) forward \(services.canGoForward)")
         lines.append(
@@ -318,6 +333,23 @@
 
     /// The document's editor is in a window.
     static func isShown(_ document: TextDocument) -> Bool { document.textView?.window != nil }
+
+    /// ⌘ let go over the editor, then the pointer moving 40pt down, as the events come.
+    private static func release(in textView: NSTextView) {
+      guard let window = textView.window else { return }
+      let point = window.mouseLocationOutsideOfEventStream
+      let flags = NSEvent.keyEvent(
+        with: .flagsChanged, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+        windowNumber: window.windowNumber, context: nil, characters: "", charactersIgnoringModifiers: "",
+        isARepeat: false, keyCode: 55)
+      if let flags { textView.flagsChanged(with: flags) }
+      let caret = textView.firstRect(forCharacterRange: textView.selectedRange(), actualRange: nil)
+      let away = window.convertPoint(fromScreen: NSPoint(x: caret.midX, y: caret.minY - 40))
+      let moved = NSEvent.mouseEvent(
+        with: .mouseMoved, location: away, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+        windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 0, pressure: 0)
+      if let moved { textView.mouseMoved(with: moved) }
+    }
 
     private static func split(_ command: String) -> (String, String) {
       guard let colon = command.firstIndex(of: ":") else { return (command, "") }

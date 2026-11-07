@@ -106,6 +106,7 @@ import SwiftUI
     services.actions.addFinishHandler { [weak self] _, _ in
       if let self, self.isInBackground { AppState.shared.backgroundProjectFinished(self) }
     }
+    SymbolMenuPanel.install(on: self)
   }
 
   // MARK: - Console

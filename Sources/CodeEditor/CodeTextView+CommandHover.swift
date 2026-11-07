@@ -3,7 +3,9 @@
 
   /// ⌘ held over a symbol: it's underlined as a link (a click jumps to its definition), and after a moment
   /// `onCommandHover` is asked to show what it is. Moving off it, letting go of ⌘, typing, clicking or scrolling ends
-  /// the hover (`onCommandHoverEnd`).
+  /// the hover (`onCommandHoverEnd`). Once what it shows is up (a menu, `pinCommandHover`), the hover stays as the
+  /// pointer moves off the symbol or ⌘ is let go: the menu takes the keys it wants, and typing, a click outside the
+  /// symbol, scrolling or ⌘ held over another symbol end it.
   extension CodeTextView {
     /// How long the pointer rests on a symbol before its information is asked for.
     static let commandHoverDelay: Duration = .milliseconds(350)
@@ -15,6 +17,9 @@
       var area: NSTrackingArea?
       /// The ask went out: its end must be said.
       var asked = false
+      /// What it showed is up and stays until the hover ends: the keys it takes, true when taken.
+      var keys: ((Selector) -> Bool)?
+      var isPinned: Bool { keys != nil }
     }
 
     public override func updateTrackingAreas() {
@@ -40,7 +45,7 @@
 
     public override func mouseExited(with event: NSEvent) {
       super.mouseExited(with: event)
-      endCommandHover()
+      if !commandHover.isPinned { endCommandHover() }
     }
 
     public override func scrollWheel(with event: NSEvent) {
@@ -53,7 +58,11 @@
       guard onCommandHover != nil, flags.intersection(.deviceIndependentFlagsMask) == .command, let point,
         let location = characterUnderPoint(point), let range = identifierRange(at: location),
         !isInsideNumber(range)
-      else { return endCommandHover() }
+      else {
+        // A menu that's up stays: the pointer is on its way to it, or ⌘ was let go to pick with the keys.
+        if commandHover.isPinned { return }
+        return endCommandHover()
+      }
       NSCursor.pointingHand.set()
       guard range != commandHover.range else { return }
       endCommandHover()
@@ -68,15 +77,59 @@
       }
     }
 
+    /// What the hover asked for is up: keep the symbol underlined, and give `keys` the key commands (`moveUp:`,
+    /// `insertNewline:`, `cancelOperation:`, …) until the hover ends. Also for a menu a ⌘-click opened.
+    public func pinCommandHover(range: NSRange, keys: @escaping (Selector) -> Bool) {
+      if commandHover.range != range {
+        commandHover.task?.cancel()
+        commandHover.task = nil
+        if let old = commandHover.range { invalidateHoverUnderline(old) }
+        commandHover.range = range
+        layoutManager?.invalidateDisplay(forCharacterRange: range)
+      }
+      commandHover.asked = true
+      commandHover.keys = keys
+    }
+
+    /// Ends the hover from outside (its menu closed): the underline goes.
+    public func closeCommandHover() { endCommandHover() }
+
+    /// The hover's menu is up.
+    public var isCommandHoverPinned: Bool { commandHover.isPinned }
+
+    /// A key command while the hover's menu is up: the menu's, or it ends the hover and goes on.
+    func commandHoverTakes(_ selector: Selector) -> Bool {
+      guard let keys = commandHover.keys else { return false }
+      if keys(selector) { return true }
+      endCommandHover()
+      return false
+    }
+
+    /// A click while the hover's menu is up: on the symbol it jumps (the link it's drawn as), anywhere else it ends
+    /// the hover and goes on. True when taken.
+    func commandHoverClick(_ event: NSEvent) -> Bool {
+      guard commandHover.isPinned, let range = commandHover.range else { return false }
+      let point = convert(event.locationInWindow, from: nil)
+      let location = characterUnderPoint(point)
+      endCommandHover()
+      guard event.clickCount == 1, let location, NSLocationInRange(location, range), let onCommandClick else { return false }
+      return onCommandClick(location)
+    }
+
+    private func invalidateHoverUnderline(_ range: NSRange) {
+      let length = (string as NSString).length
+      let clamped = NSIntersectionRange(range, NSRange(location: 0, length: length))
+      if clamped.length > 0 { layoutManager?.invalidateDisplay(forCharacterRange: clamped) }
+    }
+
     /// Takes the underline away and closes what the hover showed.
     func endCommandHover() {
+      commandHover.keys = nil
       commandHover.task?.cancel()
       commandHover.task = nil
       if let range = commandHover.range {
         commandHover.range = nil
-        let length = (string as NSString).length
-        let clamped = NSIntersectionRange(range, NSRange(location: 0, length: length))
-        if clamped.length > 0 { layoutManager?.invalidateDisplay(forCharacterRange: clamped) }
+        invalidateHoverUnderline(range)
         NSCursor.iBeam.set()
       }
       if commandHover.asked {

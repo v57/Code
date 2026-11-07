@@ -992,6 +992,7 @@
     }
 
     public override func mouseDown(with event: NSEvent) {
+      if commandHoverClick(event) { return }
       endCommandHover()
       if handleCommandClick(event) { return }
       if event.clickCount == 1, handleBannerClick(at: convert(event.locationInWindow, from: nil)) {
@@ -1005,6 +1006,7 @@
     public override func insertText(_ string: Any, replacementRange: NSRange) {
       // Assists act on single characters typed at the keyboard; pastes,
       // dictation and their own edits go straight through.
+      if isCommandHoverPinned { endCommandHover() }
       guard !isAssisting, NSApp.currentEvent?.type == .keyDown,
         let typed = (string as? String) ?? (string as? NSAttributedString)?.string
       else { return super.insertText(string, replacementRange: replacementRange) }
@@ -1027,12 +1029,14 @@
     }
 
     public override func doCommand(by selector: Selector) {
+      if commandHoverTakes(selector) { return }
       if commandHandler?(selector) == true { return }
       super.doCommand(by: selector)
     }
 
-    /// Esc asks for completions, as in Xcode.
+    /// Esc asks for completions, as in Xcode (or closes the ⌘-hover's menu).
     public override func cancelOperation(_ sender: Any?) {
+      if commandHoverTakes(#selector(NSResponder.cancelOperation(_:))) { return }
       if onCompletionRequest != nil { complete(sender) } else { super.cancelOperation(sender) }
     }
 
@@ -1056,7 +1060,8 @@
     }
 
     public override func keyDown(with event: NSEvent) {
-      endCommandHover()
+      // The hover's menu takes the key commands it wants (`doCommand`); typing ends it (`insertText`).
+      if !isCommandHoverPinned { endCommandHover() }
       // ⌃Space shows completions (when the system doesn't take it for
       // switching input sources).
       if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .control,
