@@ -124,10 +124,10 @@ struct WorkspaceWindow: View {
   }
 
   /// Shows another project in this window (the Projects card), or brings forward the window it is open in.
-  private func switchProject(to folder: URL) {
+  private static func switchProject(to folder: URL, from model: WindowModel?, root: Binding<URL?>) {
     let folder = folder.standardizedFileURL
     guard folder != model?.workspace.root, !AppState.shared.focus(folder) else { return }
-    root = folder
+    root.wrappedValue = folder
   }
 
   private func makeModel(_ root: URL?) {
@@ -174,7 +174,11 @@ struct WorkspaceWindow: View {
           root: root, hidesIgnoredFiles: EditorSettings.storedHidesIgnoredFiles,
           defaults: ScreenshotDemo.isOn ? ScreenshotDemo.defaults : .standard))
     let workspace = model.workspace
-    model.switchProject = { [self] in switchProject(to: $0) }
+    // Not `self`: the view's copy still holds the previous model in its state, so each model kept the one before
+    // it, and every project the window had shown stayed in memory.
+    model.switchProject = { [weak model, $root] folder in
+      Self.switchProject(to: folder, from: model, root: $root)
+    }
     AppState.shared.register(model, window: window)
     AppState.shared.recents.add(root)
     RemovedProjects.restore(root)
