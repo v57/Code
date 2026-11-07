@@ -243,6 +243,24 @@ private func names(_ text: String, _ language: String) -> [String] {
     }
   }
 
+  @Test func detailsHaveTheSignatureSummaryAndParents() throws {
+    try withFolder([
+      "A.py": "class Store:\n    def save(self, path):\n        \"\"\"Writes it.\"\"\"\n        pass\n",
+      "B.swift": "struct Thing {\n  /// Runs it,\n  /// fast.\n  ///\n  /// - Note: not twice.\n  func run(\n    times: Int) {}\n}\nfunc use(t: Thing) { t.run(times: 1) }\n",
+    ]) { root in
+      let index = WorkspaceIndex(roots: [root])
+      index.refresh()
+      let path = root + "/B.swift"
+      let source = index.source(path: path)!
+      let run = try #require(index.resolve(path: path, source: source, offset: offset(of: "run(times: 1", in: source)).first)
+      let details = try #require(index.details(run))
+      #expect(details.signature == "func run(times: Int)")
+      #expect(details.documentation == "Runs it, fast.")
+      #expect(details.parents.map(\.name) == ["Thing"])
+      #expect(details.parents.first?.kind == .struct)
+    }
+  }
+
   @Test func referencesSkipStringsCommentsAndShadows() throws {
     try withFolder([
       "A.swift": "func target() {}\n// target\nlet s = \"target\"\ntarget()\nfunc other() { let target = 1; print(target) }\n",

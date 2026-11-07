@@ -84,6 +84,16 @@
     @ObservationIgnored private var definitionLookup: Task<Void, Never>?
     /// The ⌘-hover being answered.
     @ObservationIgnored private var symbolInfoLookup: Task<Void, Never>?
+    #if os(macOS)
+      /// The symbol menu being answered, and the menu while it's up.
+      @ObservationIgnored var symbolMenuLookup: Task<Void, Never>?
+      @ObservationIgnored public internal(set) var symbolMenu: SymbolMenu?
+      /// Draws the symbol menu (the app's view): shows a menu under a symbol (its first line on screen) of a text
+      /// view, or (nil) takes it away. Without it ⌘ held over a symbol shows a popover with its declaration.
+      @ObservationIgnored public var symbolMenuPresenter: ((SymbolMenu?, CodeTextView?, NSRect) -> Void)?
+    #endif
+    /// Find References: the app's Find in Project, for a name as a whole word.
+    @ObservationIgnored public var findReferences: ((String) -> Void)?
     /// The definitions menu's rows, as shown.
     @ObservationIgnored private var definitionRows: [DefinitionChoices.Row] = []
     public let installer = ToolInstaller()
@@ -484,7 +494,7 @@
             }
             step = choices.receive(answer, from: tier, selectionMoved: menu.moved, selected: menu.selected)
           }
-          self.perform(step, rows: choices.rows, document: document, anchor: anchor)
+          if self.perform(step, rows: choices.rows, document: document, anchor: anchor) { return }
           if choices.isFinished { return }
         }
       }
@@ -505,10 +515,19 @@
       #endif
     }
 
-    /// Does what the tiers' answers so far call for.
+    /// Does what the tiers' answers so far call for; true when the symbol menu took over (several places, or guesses
+    /// while a better tier works), which answers on its own from then on.
+    @discardableResult
     private func perform(
       _ step: DefinitionChoices.Step, rows: [DefinitionChoices.Row], document: TextDocument, anchor: Int
-    ) {
+    ) -> Bool {
+      #if os(macOS)
+        if case .show = step, symbolMenuPresenter != nil, let textView = document.textView {
+          let range = textView.identifierRange(at: anchor) ?? NSRange(location: anchor, length: 0)
+          showSymbolMenu(in: document, at: anchor, range: range, fromClick: true)
+          return true
+        }
+      #endif
       switch step {
       case .wait, .none: break
       case .jump(let place):
@@ -518,7 +537,10 @@
         showStatus("No definition found")
       case .show(let shown, let selected), .update(let shown, let selected):
         #if os(macOS)
-          guard let completion = document.completion else { return open(shown[0].place) }
+          guard let completion = document.completion else {
+            open(shown[0].place)
+            return false
+          }
           let items = shown.map { Self.menuItem($0, root: workspace.root) }
           if case .show = step {
             completion.showChoices(items, at: anchor, selecting: selected) { [weak self] index in
@@ -535,6 +557,7 @@
           open(shown[0].place)
         #endif
       }
+      return false
     }
 
     /// Opens a definition (lines and columns from 0).
@@ -686,14 +709,14 @@
 
     /// Opens a file at a line and column (from 1), selecting `length`
     /// characters, and remembers where the editor was for Go Back.
-    public func open(_ url: URL, line: Int, column: Int = 1, length: Int = 0, remember: Bool = true) {
+    public func open(_ url: URL, line: Int, column: Int = 1, length: Int = 0, remember: Bool = true, preview: Bool = false) {
       // A jump to another file is remembered when its tab is selected.
       if remember, workspace.selectedDocument?.url == url.standardizedFileURL,
         let current = position(of: workspace.selectedDocument)
       {
         record(current)
       }
-      let document = workspace.open(url)
+      let document = workspace.open(url, preview: preview)
       if document.content == .text, document.textView != nil {
         document.goTo(line: line, column: column, length: length)
       } else {

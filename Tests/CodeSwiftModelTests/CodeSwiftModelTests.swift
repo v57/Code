@@ -1094,3 +1094,152 @@ private let bench = URL(fileURLWithPath: #filePath).deletingLastPathComponent().
     #expect(labels == [name("content"), name("other")])
   }
 }
+
+/// What Code's symbol menu shows: kind, name, declaration, summary, parents out to the module, a value's type.
+@Suite struct Details {
+  static let files: [String: String] = [
+    "Package.swift": """
+      // swift-tools-version:5.9
+      import PackageDescription
+      let package = Package(
+        name: "Atlas",
+        products: [.library(name: "Atlas", targets: ["Atlas"])],
+        targets: [
+          .target(name: "Atlas"),
+        ])
+      """,
+    "Sources/Atlas/Trip.swift": """
+      import Foundation
+
+      public struct Trip: Identifiable {
+        public let id = UUID()
+        public var name: String
+        /// A trip of `days` days from `start`,
+        /// with no stops yet.
+        ///
+        /// - Parameter name: What it's called.
+        @inlinable
+        public init(name: String, start: Date,
+                    days: Int) {
+          self.name = name
+        }
+      }
+      """,
+    "Sources/Atlas/TripStore.swift": """
+      public final class TripStore {
+        public private(set) var trips: [Trip] = []
+
+        /// Adds a trip and saves.
+        @discardableResult
+        public func create(named name: String, from start: Date, days: Int) throws -> Trip {
+          let trip = @@Trip(name: name, start: start, days: days)
+          trips.append(trip)
+          try @@save()
+          return @@trip
+        }
+
+        public func remove(_ old: Trip) throws {
+          @@trips.removeAll { $0.id == @@old.id }
+        }
+
+        private func save() throws {}
+      }
+
+      extension TripStore {
+        func @@clear() {}
+      }
+      """,
+  ]
+
+  private static func details(_ package: Package, _ word: String) -> [SymbolDetails] {
+    let mark = package.marks[word]!
+    return package.model.details(path: mark.path, line: mark.line, character: mark.character).details
+  }
+
+  @Test func aMethodsParentsAreItsTypeAndModule() throws {
+    let package = try Package(Self.files)
+    let found = Self.details(package, "save")
+    #expect(found.count == 1)
+    let save = try #require(found.first)
+    #expect(save.symbol.kind == .function)
+    #expect(save.symbol.name == "save()")
+    #expect(save.symbol.keyword == "func")
+    #expect(save.declaration == "private func save() throws")
+    #expect(save.symbol.line == 16)
+    #expect(save.parents.map(\.name) == ["TripStore", "Atlas"])
+    #expect(save.parents.map(\.kind) == [.classType, .module])
+    #expect(save.parents[0].line == 0)
+    // The module is where the manifest declares its target.
+    #expect(save.parents[1].path?.hasSuffix("/package/Package.swift") == true)
+    #expect(save.parents[1].line == 6)
+    #expect(save.parents[1].isSDK == false)
+  }
+
+  @Test func anInitializerHasItsLabelsDeclarationAndSummary() throws {
+    let package = try Package(Self.files)
+    let found = Self.details(package, "Trip")
+    let initializer = try #require(found.first { $0.symbol.kind == .initializer } ?? found.first)
+    #expect(initializer.symbol.name == "init(name:start:days:)")
+    #expect(initializer.declaration == "public init(name: String, start: Date, days: Int)")
+    #expect(initializer.documentation == "A trip of `days` days from `start`, with no stops yet.")
+    #expect(initializer.parents.map(\.name) == ["Trip", "Atlas"])
+    #expect(initializer.parents[0].kind == .structure)
+    #expect(initializer.parents[0].keyword == "struct")
+  }
+
+  @Test func aLocalHasItsTypeAndTheFunctionItsIn() throws {
+    let package = try Package(Self.files)
+    let trip = try #require(Self.details(package, "trip").first)
+    #expect(trip.symbol.kind == .local)
+    #expect(trip.declaration == "let trip: Trip")
+    #expect(trip.symbol.line == 6)
+    #expect(trip.parents.map(\.name) == ["create(named:from:days:)", "TripStore", "Atlas"])
+    #expect(trip.type?.name == "Trip")
+    #expect(trip.type?.kind == .structure)
+    #expect(trip.type?.path?.hasSuffix("Trip.swift") == true)
+  }
+
+  @Test func aParameterAndAProperty() throws {
+    let package = try Package(Self.files)
+    let old = try #require(Self.details(package, "old").first)
+    #expect(old.symbol.kind == .parameter)
+    #expect(old.declaration == "old: Trip")
+    #expect(old.parents.map(\.name) == ["remove(_:)", "TripStore", "Atlas"])
+    let trips = try #require(Self.details(package, "trips").first)
+    #expect(trips.symbol.kind == .property)
+    #expect(trips.symbol.keyword == "var")
+    #expect(trips.declaration == "public private(set) var trips: [Trip]")
+    #expect(trips.parents.map(\.name) == ["TripStore", "Atlas"])
+  }
+
+  @Test func anExtensionsMemberIsInsideTheType() throws {
+    let package = try Package(Self.files)
+    let clear = try #require(Self.details(package, "clear").first)
+    #expect(clear.parents.map(\.name) == ["TripStore", "Atlas"])
+    #expect(clear.parents[0].line == 0)
+  }
+
+  @Test func anInferredPropertyTypeIsWritten() throws {
+    let package = try Package([
+      "Sources/A/A.swift": "struct Box { var count = 1\n  var name = \"\"\n  func f() { _ = @@count + @@name.count } }"
+    ], useSDK: true)
+    #expect(Self.details(package, "count").first?.declaration == "var count: Int")
+    #expect(Self.details(package, "name").first?.declaration == "var name: String")
+  }
+
+  @Test func referencesAreCounted() throws {
+    let package = try Package(Self.files)
+    let mark = package.marks["save"]!
+    let answer = package.model.answer(path: mark.path, line: mark.line, character: mark.character)
+    // The declaration and the call.
+    #expect(package.model.referenceCount(of: answer) == 2)
+  }
+
+  @Test func anInterfaceIsSpelledAsCodeWritesIt() {
+    #expect(
+      Model.interfaceSpelling(
+        "public init(contentsOf url: __shared Foundation::URL, options: Foundation::Data.Foundation::ReadingOptions = []) throws")
+        == "public init(contentsOf url: URL, options: Data.ReadingOptions = []) throws")
+    #expect(Model.interfaceSpelling("func f(_ a: [Int: String])") == "func f(_ a: [Int: String])")
+  }
+}
