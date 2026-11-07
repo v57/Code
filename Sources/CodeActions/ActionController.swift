@@ -119,8 +119,8 @@
     @ObservationIgnored private var foundFolders: [String: String] = [:]
     /// The source picked, as last seen, so a choice that went away still shows.
     @ObservationIgnored private var savedBuildSource: BuildSource?
-    @ObservationIgnored private var didReceiveMachines = false
-    @ObservationIgnored private var didDetectRuntimes = false
+    @ObservationIgnored private(set) var didReceiveMachines = false
+    @ObservationIgnored private(set) var didDetectRuntimes = false
     /// The runtime being started: finding runtimes meanwhile doesn't call it stopped.
     @ObservationIgnored private var startingRuntime: String?
     @ObservationIgnored private var detectTask: Task<Void, Never>?
@@ -153,6 +153,20 @@
     public var issues: [BuildIssue] { current?.issues ?? [] }
     /// The newest run's output, else the notes.
     public var log: ActionLog { current?.log ?? notes }
+    /// The scheme, destination and tag (a preset's id) of the newest run still going, else of the newest run:
+    /// a preset's, not the toolbar's, when one ran.
+    public var runningScheme: ActionScheme? { newestRun?.scheme }
+    public var runningDestination: RunDestination? { newestRun?.destination }
+    public var runningTag: String? { newestRun?.tag }
+    private var newestRun: ActionRun? { runs.last(where: \.isWorking) ?? runs.last }
+    /// Whether a run started with `tag` (a preset's id) is still going.
+    public func isRunning(tag: String) -> Bool { runs.contains { $0.isWorking && $0.tag == tag } }
+    /// The newest run started with `tag` still going.
+    public func run(tag: String) -> ActionRun? { runs.last { $0.isWorking && $0.tag == tag } }
+    /// Every destination of the platforms the presets need, to tell which can run now (`refreshPresetDestinations`).
+    public internal(set) var presetDestinations: [RunDestination] = []
+    public internal(set) var hasPresetDestinations = false
+    @ObservationIgnored var presetDestinationsTask: Task<Void, Never>?
 
     /// Runs before an action starts (the app saves open files).
     @ObservationIgnored public var willPerform: (@MainActor () async -> Void)?
@@ -174,7 +188,7 @@
 
     /// Where the steps' durations are kept, for the progress estimate.
     @ObservationIgnored public var progressHistory: ProgressHistory = .standard
-    @ObservationIgnored private let defaults = UserDefaults.standard
+    @ObservationIgnored let defaults = UserDefaults.standard
     @ObservationIgnored private var destinationsTask: Task<Void, Never>?
 
     public init(root: URL) {
@@ -191,7 +205,7 @@
       testCounts = defaults.dictionary(forKey: key("testCounts")) as? [String: Int] ?? [:]
     }
 
-    private func key(_ name: String) -> String { "CodeActions.\(name):" + root.path }
+    func key(_ name: String) -> String { "CodeActions.\(name):" + root.path }
 
     /// A key for what each build source remembers on its own: this computer's are the keys it always had.
     private func sourceKey(_ name: String) -> String {
@@ -265,29 +279,8 @@
       // The copy of the project on the machine it's built from, when there is one; else this folder's schemes.
       let mirror = selectedBuildSource.machine == nil ? nil : mirrorFolder(of: selectedBuildSourceID)
       Task {
-        // Read the login shell's environment off the main thread first.
-        let found = await Task.detached(priority: .userInitiated) {
-          _ = ShellEnvironment.shared
-          guard let mirror, FileManager.default.fileExists(atPath: mirror.path) else {
-            return ProjectScanner.scanProjects(
-              root: root, excluded: excluded, picks: picks, allowing: { capabilities.canUse($0) })
-          }
-          let there = Dictionary(uniqueKeysWithValues: picks.map { (Self.rebased($0.key, from: root.path, to: mirror.path), $0.value) })
-          var scan = ProjectScanner.scanProjects(
-            root: mirror, excluded: excluded, picks: there, allowing: { capabilities.canUse($0) }, isMirror: true)
-          // The schemes stand for the project's own folders, which `SSHExecutor` maps to the ones there.
-          scan.schemes = scan.schemes.map { scheme in
-            var scheme = scheme
-            scheme.directory = URL(fileURLWithPath: Self.rebased(scheme.directory.path, from: mirror.path, to: root.path), isDirectory: true)
-            return scheme
-          }
-          scan.containers = scan.containers.map { container in
-            var container = container
-            container.directory = URL(fileURLWithPath: Self.rebased(container.directory.path, from: mirror.path, to: root.path), isDirectory: true)
-            return container
-          }
-          return scan
-        }.value
+        let found = await Self.findSchemes(
+          root: root, excluded: excluded, picks: picks, capabilities: capabilities, mirror: mirror)
         let schemes = found.schemes.filter { capabilities.canBuild($0) }
         self.schemes = schemes
         self.containers = found.containers
@@ -302,6 +295,36 @@
         }
         self.refreshDestinations()
       }
+    }
+
+    /// The schemes and containers of the project, or of its copy from a machine (`mirror`), with `picks` as the
+    /// containers picked per folder and what `capabilities` can use; off the main thread.
+    nonisolated static func findSchemes(
+      root: URL, excluded: Set<String>, picks: [String: String], capabilities: BuildCapabilities, mirror: URL?
+    ) async -> ProjectScanner.Scan {
+      // Read the login shell's environment off the main thread first.
+      await Task.detached(priority: .userInitiated) {
+        _ = ShellEnvironment.shared
+        guard let mirror, FileManager.default.fileExists(atPath: mirror.path) else {
+          return ProjectScanner.scanProjects(
+            root: root, excluded: excluded, picks: picks, allowing: { capabilities.canUse($0) })
+        }
+        let there = Dictionary(uniqueKeysWithValues: picks.map { (Self.rebased($0.key, from: root.path, to: mirror.path), $0.value) })
+        var scan = ProjectScanner.scanProjects(
+          root: mirror, excluded: excluded, picks: there, allowing: { capabilities.canUse($0) }, isMirror: true)
+        // The schemes stand for the project's own folders, which `SSHExecutor` maps to the ones there.
+        scan.schemes = scan.schemes.map { scheme in
+          var scheme = scheme
+          scheme.directory = URL(fileURLWithPath: Self.rebased(scheme.directory.path, from: mirror.path, to: root.path), isDirectory: true)
+          return scheme
+        }
+        scan.containers = scan.containers.map { container in
+          var container = container
+          container.directory = URL(fileURLWithPath: Self.rebased(container.directory.path, from: mirror.path, to: root.path), isDirectory: true)
+          return container
+        }
+        return scan
+      }.value
     }
 
     /// Lists the destinations for the selected scheme's platforms again.
@@ -333,14 +356,14 @@
     }
 
     /// The remote targets as destinations, for schemes that build for the Mac (or any computer).
-    private var remoteDestinations: [RunDestination] {
+    var remoteDestinations: [RunDestination] {
       guard selectedScheme?.platforms.contains(.mac) ?? true else { return [] }
       return remoteTargets.map {
         RunDestination(id: Self.remotePrefix + $0.id, name: $0.name, kind: .remote, detail: $0.detail)
       }
     }
 
-    private static let remotePrefix = "ssh:"
+    static let remotePrefix = "ssh:"
 
     /// The remote target a destination stands for.
     public func remoteTarget(for destination: RunDestination?) -> SSHExecutor.Target? {
@@ -422,7 +445,7 @@
       capabilities(of: selectedBuildSource)
     }
 
-    private func capabilities(of source: BuildSource) -> BuildCapabilities {
+    func capabilities(of source: BuildSource) -> BuildCapabilities {
       switch source.place {
       case .local: return .local
       case .container: return .container
@@ -610,7 +633,7 @@
     }
 
     /// Where the copy of the project on a machine is kept.
-    private func mirrorFolder(of id: String) -> URL {
+    func mirrorFolder(of id: String) -> URL {
       let caches = (try? FileManager.default.url(for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: true))
         ?? FileManager.default.temporaryDirectory
       return caches.appendingPathComponent("dev.v57.code/BuildFrom", isDirectory: true)
@@ -618,7 +641,7 @@
         .appendingPathComponent(root.lastPathComponent, isDirectory: true)
     }
 
-    nonisolated private static func rebased(_ path: String, from: String, to: String) -> String {
+    nonisolated static func rebased(_ path: String, from: String, to: String) -> String {
       path == from ? to : path.hasPrefix(from + "/") ? to + path.dropFirst(from.count) : path
     }
 
@@ -702,21 +725,26 @@
     /// Runs an action on `scheme` and `destination` rather than the selected ones (an app's queued installs). A run
     /// of the same action and scheme that is still going stops first; the other runs keep going, and a run of a
     /// project another run is building waits for that build (they share its build folder).
+    /// `source` builds from another place than the toolbar's, and `tag` marks the run (a preset's id).
     public func perform(
-      _ kind: ActionKind, scheme: ActionScheme, destination: RunDestination?, environment: [String: String] = [:]
+      _ kind: ActionKind, scheme: ActionScheme, destination: RunDestination?, environment: [String: String] = [:],
+      source: BuildSource? = nil, tag: String? = nil
     ) {
-      start(kind, scheme: scheme, destination: destination, source: selectedBuildSource, environment: environment)
+      start(
+        kind, scheme: scheme, destination: destination, source: source ?? selectedBuildSource,
+        environment: environment, tag: tag)
     }
 
     /// Runs `run`'s action again where it ran (the process stack's Restart): it replaces `run` if still going.
     public func restart(_ run: ActionRun) {
       start(
-        run.kind, scheme: run.scheme, destination: run.destination, source: run.source, environment: run.environment)
+        run.kind, scheme: run.scheme, destination: run.destination, source: run.source, environment: run.environment,
+        tag: run.tag)
     }
 
     private func start(
       _ kind: ActionKind, scheme: ActionScheme, destination: RunDestination?, source: BuildSource,
-      environment: [String: String]
+      environment: [String: String], tag: String?
     ) {
       let replaced = runs.filter { $0.isWorking && $0.kind == kind && $0.scheme.id == scheme.id }
       for run in replaced { stop(run) }
@@ -746,7 +774,7 @@
       let operation = "\(place)|\(kind.rawValue)"
       let run = ActionRun(
         kind: kind, scheme: scheme, destination: destination, source: source, environment: environment,
-        testsExpected: kind == .test ? testCounts[operation] : nil)
+        testsExpected: kind == .test ? testCounts[operation] : nil, tag: tag)
       run.operation = operation
       // What it waits for: the runs it replaces, and the earlier ones that may still build the same project there.
       let earlier = runs.filter { other in
@@ -896,7 +924,24 @@
       for handler in finishHandlers { handler(kind, succeeded) }
     }
 
-    private func appendStatus(_ text: String, kind: ActionLog.Entry.Kind, to log: ActionLog) {
+    /// Ends an action that couldn't start (a preset whose device is gone) as a failed run of `scheme` (the preset's
+    /// scheme name) with `message` in its log.
+    func failToStart(_ kind: ActionKind, scheme name: String, message: String, tag: String?) {
+      let scheme = ActionScheme(name: name, toolchain: .make, directory: root, commands: [:])
+      for run in runs where !run.isWorking && run.kind == kind && run.scheme.name == name { run.isDismissed = true }
+      let run = ActionRun(
+        kind: kind, scheme: scheme, destination: nil, source: selectedBuildSource, environment: [:],
+        testsExpected: nil, tag: tag)
+      run.isBuilding = false
+      run.finished = Date()
+      run.phase = .failed(message)
+      appendStatus(message, kind: .failure, to: run.log)
+      runs.append(run)
+      trimRuns()
+      finished(kind, succeeded: false)
+    }
+
+    func appendStatus(_ text: String, kind: ActionLog.Entry.Kind, to log: ActionLog) {
       log.append([ActionLog.Entry(text: text, kind: kind)])
     }
 

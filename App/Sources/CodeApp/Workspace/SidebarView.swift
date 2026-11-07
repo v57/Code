@@ -10,7 +10,7 @@ nonisolated enum NavigatorItem: Hashable, Sendable {
 
 /// The navigator: the kit's compact sidebar. The projects the v57 apps share lead in a card that stays closed until
 /// it's wanted; the project's file tree is a card whose header names the project (the kit's outline); a click opens a file in the preview tab, a double click (or Return) keeps it open, the kit's arrow
-/// keys move and fold. The bottom bar's search button opens the search line (⇧⌘F, ⌘3), which searches the project
+/// keys move and fold. The bottom bar's search button opens the search line (⇧⌘F, ⌥⌘3), which searches the project
 /// (Find in Project): while it has text, the sidebar lists the results instead of the tree.
 ///
 /// Hidden files (`.gitignore` matches, `.git`, items the user hid) are left out unless Show Hidden Files (⇧⌘.) is on,
@@ -152,7 +152,7 @@ private struct NavigatorSidebar<Content: View, BottomBar: View>: View {
       if text.isEmpty { findSelection = nil }
     }
     .onChange(of: model.isFindLineOpen) { _, isOpen in
-      // ⇧⌘F and ⌘3 open the line on the Find navigator; closing it goes back to the tree.
+      // ⇧⌘F and ⌥⌘3 open the line on the Find navigator; closing it goes back to the tree.
       if isOpen { model.navigator = .find } else if find.text.isEmpty { model.navigator = .project }
     }
     .task(id: find.text) {

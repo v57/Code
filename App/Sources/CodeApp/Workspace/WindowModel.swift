@@ -14,6 +14,10 @@ import SwiftUI
   let workspace: Workspace
   /// Schemes and actions, language servers, formatting, issues, breakpoints.
   let services: ProjectServices
+  /// The run presets under the title bar (`.dev/actions.json` and the vault's).
+  let presets: RunPresets
+  /// The Save Preset popover, under the Run button: the preset it starts from.
+  var presetDraft: PresetDraft?
   var isQuickOpenPresented = false
   /// Open Quickly's search text, cleared when it opens.
   var quickOpenQuery = ""
@@ -68,7 +72,7 @@ import SwiftUI
   /// What the navigator shows, as Xcode's navigator bar picks.
   enum Navigator: Hashable { case project, find }
   var navigator = Navigator.project
-  /// The navigator's search line (Find in Project) is open: ⇧⌘F and ⌘3 open it.
+  /// The navigator's search line (Find in Project) is open: ⇧⌘F and ⌥⌘3 open it.
   var isFindLineOpen = false
   /// Find in Project, shown in the Find navigator.
   let find = ProjectFind()
@@ -91,6 +95,13 @@ import SwiftUI
   init(workspace: Workspace) {
     self.workspace = workspace
     services = ProjectServices(workspace: workspace, settings: EditorSettings.storedServiceSettings)
+    presets = RunPresets(root: workspace.root, actions: services.actions)
+    // The services follow the files first; the presets read `.dev/actions.json` again when it changed.
+    let servicesHandler = workspace.onFilesChange
+    workspace.onFilesChange = { [weak presets] urls, structural in
+      servicesHandler?(urls, structural)
+      presets?.filesChanged(urls)
+    }
     workspace.onOpenDetached = { AppState.shared.focusDetachedWindow(for: $0.id) }
     installObserver = NotificationCenter.default.addObserver(
       forName: .codeToolInstalled, object: nil, queue: .main
@@ -186,6 +197,19 @@ import SwiftUI
       environment["NOTARY_PROFILE"] = profile
     }
     services.actions.perform(kind, environment: environment)
+  }
+
+  /// Save Preset…: the popover under the Run button, filled from the toolbar.
+  func savePreset() {
+    guard services.settings.actionsEnabled, services.actions.selectedScheme != nil else { return }
+    presetDraft = PresetDraft(preset: services.actions.presetFromToolbar(.run), editing: nil)
+  }
+
+  /// Runs the n-th preset of the bar (⌘1…⌘9, from 0).
+  func runPreset(at index: Int) {
+    let items = presets.items
+    guard services.settings.actionsEnabled, items.indices.contains(index) else { return }
+    presets.run(items[index])
   }
 
   /// Starts the Upload the sheet asked about.

@@ -249,7 +249,7 @@ Features
     edited lines.
   - Open Quickly (⇧⌘O, fuzzy), Go to Line (⌘L, "line:column"), ⌘0 toggles
     the navigator, "Line: Col:" in the bottom bar.
-  - Find in Project (⇧⌘F, Xcode's Find navigator, ⌘3; ⌘1 back to the files):
+  - Find in Project (⇧⌘F, Xcode's Find navigator, ⌥⌘3; ⌥⌘1 back to the files):
     Containing, Matching Word or Regular Expression, Ignoring or Matching
     Case, over the files Open Quickly lists (open documents' unsaved edits
     included); results by file as they come, a selection opens its match
@@ -258,10 +258,17 @@ Features
     files over 2 MB open without highlighting.
   - Xcode's toolbar: Run (⌘R; hold for Test, Build, Clean), Stop (⌘.), the
     scheme › destination picker, the activity view with a progress bar,
-    status and issue counts (click for the issue list, ⌘5). The Product and
+    status and issue counts (click for the issue list, ⌥⌘5). The Product and
     Debug menus, the console (⇧⌘Y, or a click on the title) with the log,
     filter and debug bar, under the title or in its own window; it opens
     when a Run's program starts, never while building.
+  - Run presets: Save Preset… (the Run button's menu) keeps an action with
+    its build source, project, scheme and destination as a card under the
+    title bar; a click (or ⌘1…⌘9) runs it without changing the toolbar.
+    Kept in the project's `.dev/actions.json` (hand edits show at once) or
+    in the Vault, where Code on your other Macs and iPad shows it. Right-
+    click for Edit…, Rename, Use in Toolbar, Keep in Vault and Remove; drag
+    to reorder.
   - Issues from the build and language servers in the editor: a tinted line
     and a message banner (click for all of the line's messages), counted
     once when both report them.

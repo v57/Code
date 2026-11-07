@@ -21,6 +21,8 @@ import Observation
   public let destination: RunDestination?
   /// Where it runs when not on this computer ("studio-mac", "Colima"); nil here.
   public let place: String?
+  /// What it was started with (a run preset's id); nil from the toolbar.
+  public let tag: String?
   public let started = Date()
   public internal(set) var phase: Phase
   public internal(set) var finished: Date?
@@ -51,8 +53,9 @@ import Observation
 
   init(
     kind: ActionKind, scheme: ActionScheme, destination: RunDestination?, source: BuildSource,
-    environment: [String: String], testsExpected: Int?
+    environment: [String: String], testsExpected: Int?, tag: String? = nil
   ) {
+    self.tag = tag
     self.kind = kind
     self.scheme = scheme
     self.destination = destination
