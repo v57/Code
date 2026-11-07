@@ -75,6 +75,8 @@ private func names(_ text: String, _ language: String) -> [String] {
     #expect(kinds("\"\"\"\na\n\"b\"\n\"\"\"", "Swift").map(\.1) == [.string])
     #expect(kinds(##"r#"a"b"#"##, "Rust").map(\.1) == [.string])
     #expect(kinds(#"R"x(a)")x""#, "C++").map(\.1) == [.string])
+    // C#'s verbatim strings: "" is a quote, a lone " closes.
+    #expect(kinds(#"$@"a""b"; x"#, "C#").map(\.0) == [#"$@"a""b""#, ";", "x"])
   }
 
   @Test func rustLifetimesAreNotCharacters() {

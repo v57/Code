@@ -473,7 +473,10 @@ public struct CodeScanner: Sendable {
     let esc = escape.map { charUTF16($0) }
     var i = start
     while i < text.length {
-      if let e = esc, text.character(at: i) == e {
+      // An escape that is also the closing quote (C#'s @"…": "" is a quote) escapes only when doubled.
+      if let e = esc, text.character(at: i) == e,
+        !prefix(text, close, at: i) || (i + 1 < text.length && text.character(at: i + 1) == e)
+      {
         i += 2
         continue
       }

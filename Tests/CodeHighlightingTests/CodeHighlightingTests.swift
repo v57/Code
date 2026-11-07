@@ -59,6 +59,12 @@ private func kindAt(_ code: String, _ language: String, _ offset: Int) -> Syntax
     #expect(kindAt(nums, "swift", (nums as NSString).range(of: "0b1010").location) == .number)
   }
 
+  @Test func csharpVerbatimStringsEndAtTheirQuote() {
+    let text = #"s = @"a""b"; x"#
+    let tokens = CodeHighlighter.tokens(in: text, language: "csharp").filter { $0.kind == .string }
+    #expect(tokens.map { (text as NSString).substring(with: $0.range) } == [#"@"a""b""#])
+  }
+
   // MARK: - Doc comments: /// markers are comments, prose is prose
 
   @Test func swiftDocComments() {

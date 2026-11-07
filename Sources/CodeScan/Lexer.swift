@@ -797,7 +797,8 @@ private func continueString(
         return (i &+ code.open.count, count &+ 1)
       }
     }
-    if c == escape, escape != 0 {
+    // An escape that is also the closing quote (C#'s @"…": "" is a quote) escapes only when doubled.
+    if c == escape, escape != 0, c != closeByte || (i &+ 1 < n && t[i &+ 1] == escape) || !matches(t, i, close) {
       i &+= 2
       continue
     }
