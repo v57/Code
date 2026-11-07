@@ -5,7 +5,11 @@
 #     archives, so the final link drops unused package code, and that link runs LLVM's machine outliner and drops the
 #     Swift code only Swift's own metadata records kept,
 #   - actool-icon-slim (beside this script) as the asset catalog compiler: an Icon Composer icon's flattened
-#     fallbacks are stored as HEVC instead of lossless (Assets.car 1.7 MB -> 140 KB).
+#     fallbacks are stored as HEVC instead of lossless (Assets.car 1.7 MB -> 140 KB),
+#   - for an archive (-archivePath): release-languages (beside this script) on its app, which copies the bundled
+#     languages from v57/Localizations, writes a stub .lproj per downloadable one, CFBundleLocalizations and
+#     V57Languages, and re-signs the app (LANGUAGE_SOURCES / LANGUAGES_BUNDLED in the project's release.env,
+#     V57_LANGUAGE_SOURCES / V57_LANGUAGES_BUNDLED, V57_LOCALIZATIONS_URL: see that script).
 # Apps are 35-50% smaller and run the same instructions. CodeActions' Install and Export, Dev's release.sh and the
 # apps' release scripts all archive through this script, so this folder is the one copy of these tools.
 #
@@ -18,6 +22,18 @@ here=${0:A:h}
 work=${RELEASE_TOOLS_WORK:-${TMPDIR:-/tmp}/xcodebuild-release-$UID}
 mkdir -p $work/icon-slim && install -C -m 755 $here/actool-icon-slim $work/icon-slim/actool || exit
 
-exec xcodebuild "$@" SWIFT_LTO=YES ALTERNATE_LINKER_PATH=$here/ld-archive-prelink \
+xcodebuild "$@" SWIFT_LTO=YES ALTERNATE_LINKER_PATH=$here/ld-archive-prelink \
   ASSETCATALOG_EXEC=$work/icon-slim/actool \
-  'OTHER_SWIFT_FLAGS=$(inherited) -Xfrontend -internalize-at-link -Xfrontend -conditional-runtime-records'
+  'OTHER_SWIFT_FLAGS=$(inherited) -Xfrontend -internalize-at-link -Xfrontend -conditional-runtime-records' || exit
+
+# An archive's app gets its translations. The project's folder (release.env) is the -project/-workspace one, else here.
+(( ${@[(Ie)archive]} )) || exit 0
+archive= project=$PWD
+for (( i = 1; i < $#; i++ )); do
+  case ${@[i]} in
+  -archivePath) archive=${@[i+1]} ;;
+  -project|-workspace) project=${${@[i+1]}:a:h} ;;
+  esac
+done
+[[ -n $archive ]] || { echo "xcodebuild-release: no -archivePath, so the archive's languages are left as built" >&2; exit 0 }
+$here/release-languages --project-dir $project ${archive:a}

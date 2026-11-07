@@ -3,7 +3,8 @@ import Foundation
 /// The tools Mac release archives link with (`Release/`): `xcodebuild-release` runs xcodebuild with Swift LTO,
 /// `ld-archive-prelink` as the linker (unused package code goes, LLVM's machine outliner runs, and Swift code only
 /// Swift's own metadata records kept goes) and `actool-icon-slim` for the icon (its flattened fallbacks as HEVC):
-/// apps 35–50% smaller. This is the one copy: Install and Export here, Dev's release.sh (`RELEASE_TOOLS`) and the
+/// apps 35–50% smaller. An archive's app then gets its translations (`release-languages`: the bundled languages from
+/// v57/Localizations, a stub `.lproj` per downloadable one, `CFBundleLocalizations` and `V57Languages`). This is the one copy: Install and Export here, Dev's release.sh (`RELEASE_TOOLS`) and the
 /// apps' release scripts (from the `../Code` checkout) all archive through it.
 public enum ReleaseTools {
   /// The folder of the tools, inside CodeActions' resources.
