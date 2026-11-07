@@ -247,6 +247,9 @@
       #expect(word(multiline, "swift", 5) == "\"\"\"\n  hi\n  \"\"\"")
       #expect(word(multiline, "swift", 17) == "\"\"\"\n  hi\n  \"\"\"")
       #expect(word("x = '''\nab\n\ncd'''", "python", 15) == "'''\nab\n\ncd'''")
+      let raw = "s = #\"\"\"\n  hi\n  \"\"\"#"
+      #expect(word(raw, "swift", 6) == "#\"\"\"\n  hi\n  \"\"\"#")
+      #expect(word(raw, "swift", 18) == "#\"\"\"\n  hi\n  \"\"\"#")
       #expect(word("x = `a\n\nb`", "javascript", 4) == "`a\n\nb`")
     }
 

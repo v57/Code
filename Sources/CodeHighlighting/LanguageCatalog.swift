@@ -280,6 +280,7 @@ public enum LanguageCatalog {
     name: "Swift", aliases: ["swift"], lineComments: ["//"], blockComments: [("/*", "*/")],
     nestedBlockComments: true,
     strings: [
+      StringDelim(open: "#\"\"\"", close: "\"\"\"#", escape: nil, multiline: true),
       StringDelim(open: "\"\"\"", multiline: true),
       StringDelim(open: "#\"", close: "\"#", escape: nil), StringDelim(open: "\""),
     ],

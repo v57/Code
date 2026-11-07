@@ -73,6 +73,7 @@ private func names(_ text: String, _ language: String) -> [String] {
   @Test func rawAndMultilineStrings() {
     #expect(kinds(##"#"a"b"#"##, "Swift").map(\.1) == [.string])
     #expect(kinds("\"\"\"\na\n\"b\"\n\"\"\"", "Swift").map(\.1) == [.string])
+    #expect(kinds("#\"\"\"\na \"\"\" b\n\"\"\"#", "Swift").map(\.1) == [.string])
     #expect(kinds(##"r#"a"b"#"##, "Rust").map(\.1) == [.string])
     #expect(kinds(#"R"x(a)")x""#, "C++").map(\.1) == [.string])
     // C#'s verbatim strings: "" is a quote, a lone " closes.
