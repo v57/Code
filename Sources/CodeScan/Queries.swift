@@ -518,11 +518,67 @@ extension WorkspaceIndex {
 
   /// A declaration's first line(s) and the documentation above it.
   public func describe(_ resolved: Resolved) -> String? {
-    guard let source = source(path: resolved.path) else { return nil }
+    guard let source = source(path: resolved.path), let (signature, docs) = signatureAndDocs(resolved, in: source) else {
+      return nil
+    }
+    var text = "```\(source.profile.spec.aliases.first ?? "")\n\(signature)\n```"
+    if !docs.isEmpty { text += "\n\n" + docs.joined(separator: "\n") }
+    return text
+  }
+
+  /// A declaration for a menu about it: its signature on one line, its doc comment's first paragraph, and the
+  /// declarations it's inside.
+  public struct Details: Sendable, Hashable {
+    public struct Parent: Sendable, Hashable {
+      public var name: String
+      public var kind: SymbolKind
+      /// Where its name is.
+      public var offset: Int
+    }
+
+    public var signature: String
+    public var documentation: String?
+    /// Nearest first.
+    public var parents: [Parent]
+  }
+
+  public func details(_ resolved: Resolved) -> Details? {
+    guard let source = source(path: resolved.path), let (signature, docs) = signatureAndDocs(resolved, in: source) else {
+      return nil
+    }
+    var paragraph: [String] = []
+    for line in docs.joined(separator: "\n").split(separator: "\n", omittingEmptySubsequences: false) {
+      let trimmed = line.trimmingCharacters(in: .whitespaces)
+      if trimmed.isEmpty || trimmed.hasPrefix("- ") || trimmed.hasPrefix("@") {
+        if paragraph.isEmpty { continue }
+        break
+      }
+      paragraph.append(trimmed)
+    }
+    // The symbol in this file's own table (an answer may come from the index's copy): its parents are this file's.
+    let symbols = source.symbols
+    var parents: [Details.Parent] = []
+    if let index = symbols.symbols.firstIndex(where: { $0.offset == resolved.symbol.offset }) {
+      var parent = symbols.symbols[index].parent
+      while parent >= 0, Int(parent) < symbols.symbols.count, parents.count < 8 {
+        let symbol = symbols.symbols[Int(parent)]
+        parents.append(Details.Parent(name: symbols.name(symbol), kind: symbol.kind, offset: Int(symbol.offset)))
+        parent = symbol.parent
+      }
+    }
+    // Lines joined inside brackets: `run(\n  times: Int)` reads `run(times: Int)`.
+    let joined = signature.replacingOccurrences(of: "( ", with: "(").replacingOccurrences(of: " )", with: ")")
+      .replacingOccurrences(of: "[ ", with: "[").replacingOccurrences(of: " ]", with: "]")
+    return Details(
+      signature: joined, documentation: paragraph.isEmpty ? nil : paragraph.joined(separator: " "), parents: parents)
+  }
+
+  /// Its signature: from the declaration's start up to its body or the line's end, over brackets left open; and the
+  /// comments right above it, cleaned.
+  private func signatureAndDocs(_ resolved: Resolved, in source: SourceFile) -> (String, [String])? {
     let tokens = source.tokens
     let index = source.tokenIndex(at: Int(resolved.symbol.offset))
     let t = source.text
-    // Its signature: from the declaration's start up to its body or the line's end, over brackets left open.
     var i = source.tokenIndex(at: Int(resolved.symbol.start))
     let first = i
     var depth = 0
@@ -542,7 +598,6 @@ extension WorkspaceIndex {
     }
     let signature = source.string(from: Int(resolved.symbol.start), to: end)
       .split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.joined(separator: " ")
-    // The comments right above it.
     var docs: [String] = []
     var above = first - 1
     var lineAbove = source.lines.line(of: Int(resolved.symbol.start)) - 1
@@ -555,9 +610,7 @@ extension WorkspaceIndex {
       lineAbove = source.lines.line(of: token.start) - 1
       above -= 1
     }
-    var text = "```\(source.profile.spec.aliases.first ?? "")\n\(signature)\n```"
-    if !docs.isEmpty { text += "\n\n" + docs.joined(separator: "\n") }
-    return text
+    return (signature, docs)
   }
 
   private func cleanComment(_ text: String) -> String {
