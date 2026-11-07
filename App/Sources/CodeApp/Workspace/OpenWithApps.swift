@@ -1,6 +1,7 @@
 import CodeKit
 import ComponentKit
 import Foundation
+import SwiftUI
 
 /// The apps a menu's Open With row offers (`KitOpenWithRow`), in the order the menus board draws them: Xcode, Git,
 /// the file manager, Terminal. Code leaves itself out; an app that isn't installed drops out of the row.
