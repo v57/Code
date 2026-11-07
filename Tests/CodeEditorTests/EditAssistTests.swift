@@ -207,6 +207,75 @@
       #expect(word(8) == NSRange(location: 7, length: 5))  // a word inside, as before
     }
 
+    /// The stops of ⌥→ (or ⌃→ with `subwords`) from the start, marked with "|".
+    private func stops(_ text: String, _ language: String = "swift", subwords: Bool = false) -> String {
+      let view = editor(text, caret: 0, language)
+      let ns = text as NSString
+      var marks: [Int] = []
+      var i = 0
+      while i < ns.length {
+        i = subwords ? view.subwordBoundary(from: i, forward: true) : view.wordBoundary(from: i, forward: true)
+        marks.append(i)
+      }
+      let out = NSMutableString(string: text)
+      for mark in marks.reversed() { out.insert("|", at: mark) }
+      return out as String
+    }
+
+    @Test func optionArrowsTakeNumbersPrefixedStringsAndContractionsWhole() {
+      #expect(stops("x = 3.14 + 0x1F + 1e-5") == "x| = 3.14| + 0x1F| + 1e-5|")
+      #expect(stops("// don't use it") == "// don't| use| it|")
+      #expect(stops("s = \"it's ok\"") == "s| = \"it's ok\"|")
+      #expect(stops("f(r\"x y\", b'z')", "python") == "f|(r\"x y\"|, b'z'|)|")
+      #expect(stops("s = @\"Hello World\";", "objective-c") == "s| = @\"Hello World\"|;|")
+      // A multi-line string's quotes aren't a word of their own: the caret goes into it.
+      #expect(stops("s = \"\"\"\n  hi\n  \"\"\"") == "s| = \"\"\"\n  hi|\n  \"\"\"|")
+    }
+
+    @Test func doubleClickSelectsWholeNumbersContractionsAndMultilineStrings() {
+      let word = { (text: String, language: String, at: Int) -> String in
+        let view = editor(text, caret: 0, language)
+        let range = view.selectionRange(
+          forProposedRange: NSRange(location: at, length: 0), granularity: .selectByWord)
+        return (text as NSString).substring(with: range)
+      }
+      #expect(word("x = 3.14", "swift", 6) == "3.14")
+      #expect(word("// don't", "swift", 4) == "don't")
+      #expect(word("f'x'", "python", 0) == "f")
+      #expect(word("f(r\"x y\")", "python", 3) == "r\"x y\"")
+      let multiline = "s = \"\"\"\n  hi\n  \"\"\""
+      #expect(word(multiline, "swift", 5) == "\"\"\"\n  hi\n  \"\"\"")
+      #expect(word(multiline, "swift", 17) == "\"\"\"\n  hi\n  \"\"\"")
+      #expect(word("x = '''\nab\n\ncd'''", "python", 15) == "'''\nab\n\ncd'''")
+      #expect(word("x = `a\n\nb`", "javascript", 4) == "`a\n\nb`")
+    }
+
+    @Test func controlArrowsMoveBySubwords() {
+      #expect(
+        stops("camelCase URLSession snake_case utf8", subwords: true)
+          == "camel|Case| URL|Session| snake|_case| utf|8|")
+      let view = editor("URLSession")
+      view.moveSubwordBackward(nil)
+      #expect(view.selectedRange().location == 3)
+      view.moveSubwordBackwardAndModifySelection(nil)
+      #expect(view.selectedRange() == NSRange(location: 0, length: 3))
+      let key = { (flags: NSEvent.ModifierFlags, arrow: Int) -> NSEvent in
+        let character = String(UnicodeScalar(UInt16(arrow))!)
+        return NSEvent.keyEvent(
+          with: .keyDown, location: .zero, modifierFlags: flags.union(.function), timestamp: 0, windowNumber: 0,
+          context: nil, characters: character, charactersIgnoringModifiers: character, isARepeat: false,
+          keyCode: 0)!
+      }
+      #expect(
+        CodeTextView.subwordCommand(for: key(.control, NSRightArrowFunctionKey))
+          == #selector(CodeTextView.moveSubwordForward(_:)))
+      #expect(
+        CodeTextView.subwordCommand(for: key([.control, .option, .shift], NSLeftArrowFunctionKey))
+          == #selector(CodeTextView.moveSubwordBackwardAndModifySelection(_:)))
+      #expect(CodeTextView.subwordCommand(for: key(.option, NSLeftArrowFunctionKey)) == nil)
+      #expect(CodeTextView.subwordCommand(for: key([.control, .command], NSLeftArrowFunctionKey)) == nil)
+    }
+
     @Test func saveTrimsTrailingWhitespaceOfEditedLinesOnly() {
       let view = editor("a\nb  \nc", caret: 1)
       view.insertText("  ", replacementRange: view.selectedRange())  // edits line 1

@@ -227,7 +227,7 @@
       guard let text = textStorage?.mutableString, proposed.location < text.length else {
         return nil
       }
-      func isIdentifier(_ i: Int) -> Bool { Self.isIdentifier(at: i, in: text) }
+      func isIdentifier(_ i: Int) -> Bool { isWordCharacter(at: i, in: text) }
       func run(at i: Int) -> NSRange {
         if isIdentifier(i) {
           var start = i

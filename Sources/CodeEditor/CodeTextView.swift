@@ -1065,6 +1065,10 @@
         complete(nil)
         return
       }
+      if let subword = Self.subwordCommand(for: event) {
+        doCommand(by: subword)
+        return
+      }
       super.keyDown(with: event)
     }
 
@@ -1094,9 +1098,12 @@
       if granularity == .selectByWord, let placeholder = placeholder(around: proposedCharRange) {
         return placeholder
       }
-      // A double-click on a string's quote selects the string.
+      // A double-click on a string's quote selects the string, one on a number the number.
       if granularity == .selectByWord, let literal = stringLiteral(atQuote: proposedCharRange) {
         return literal
+      }
+      if granularity == .selectByWord, let number = numberLiteral(at: proposedCharRange) {
+        return number
       }
       // A double-click on a bracket selects the bracketed block, as in Xcode.
       if granularity == .selectByWord, let block = delimitedBlock(at: proposedCharRange) {
