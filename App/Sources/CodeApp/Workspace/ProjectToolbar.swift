@@ -40,7 +40,7 @@ private struct NavigationTools: View {
   }
 }
 
-/// ▶ (Run; its context menu has Test, Build and Clean) and ■ (Stop).
+/// ▶ (Run; its context menu has Test, Build, Clean and Save Preset…, whose popover hangs under it) and ■ (Stop).
 private struct RunTools: View {
   let model: WindowModel
 
@@ -72,11 +72,35 @@ private struct RunTools: View {
           .disabled(!actions.canPerform(.clean))
           .kitMenuPreview(
             "Deletes \(actions.selectedScheme.map { "\($0.name)’s" } ?? "the scheme’s") build products. The next build starts over.")
+        Divider()
+        let preset = actions.presetFromToolbar(.run)
+        Button("Save Preset…", systemImage: "bookmark") { model.savePreset() }
+          .disabled(actions.selectedScheme == nil)
+          .kitMenuPreview(
+            "Puts “\(preset.name)” under the title bar: \(Self.list(preset)). Next you can rename it and keep it in the Vault.")
+      }
+      .kitPopover(isPresented: savingPreset) {
+        if let draft = model.presetDraft { SavePresetView(draft: draft) }
       }
       Button("Stop", systemImage: "stop.fill") { actions.stop() }
         .kitHelp("Stop", shortcut: "⌘.")
         .disabled(!actions.isRunning)
     }
+  }
+
+  /// The popover of a new preset (an edited one hangs under its card).
+  private var savingPreset: Binding<Bool> {
+    Binding(
+      get: { model.presetDraft != nil && model.presetDraft?.editing == nil },
+      set: { if !$0, model.presetDraft?.editing == nil { model.presetDraft = nil } })
+  }
+
+  /// "studio-mac, Git-Local, Git and iPad Pro": the preset's four parts in a sentence.
+  static func list(_ preset: RunPreset) -> String {
+    let parts = [preset.fromName, (preset.project as NSString).deletingPathExtension, preset.scheme, preset.target]
+      .filter { !$0.isEmpty }
+    guard parts.count > 1 else { return parts.first ?? "" }
+    return parts.dropLast().joined(separator: ", ") + " and " + parts.last!
   }
 }
 
@@ -122,8 +146,11 @@ private struct ProjectTitle: View {
 
   private var status: String {
     let actions = model.services.actions
-    let scheme = actions.selectedScheme?.name ?? ""
-    let destination = actions.selectedDestination?.name ?? RunDestination.localName
+    // What runs, or ran: a preset's own choices, else the toolbar's.
+    let scheme = (actions.isRunning ? actions.runningScheme : nil)?.name ?? actions.selectedScheme?.name ?? ""
+    let destination =
+      (actions.isRunning ? actions.runningDestination : nil)?.name ?? actions.selectedDestination?.name
+      ?? RunDestination.localName
     switch actions.state {
     case .running(let kind):
       if model.services.debugger != nil {
@@ -191,7 +218,7 @@ private struct SchemeTools: View {
               }
             }
           }
-          .kitHelp("Show Issues", shortcut: "⌘5")
+          .kitHelp("Show Issues", shortcut: "⌥⌘5")
           .kitMenu(isPresented: $model.isIssuesPresented) { IssuesMenu(services: services) }
         }
       }

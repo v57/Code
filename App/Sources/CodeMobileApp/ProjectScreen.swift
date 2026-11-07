@@ -100,6 +100,8 @@ struct ProjectScreen: View {
   @ViewBuilder private func content(_ controller: ActionController) -> some View {
     VStack(alignment: .leading, spacing: 12) {
       if idiom == .phone { SchemeTools(controller: controller, session: session) }
+      // The project's presets kept in the vault, as on the Mac, wrapping.
+      PresetBar(projectID: project.id, controller: controller, vault: session.vault)
       KitSegmented(
         selection: $pane,
         segments: [
@@ -415,5 +417,53 @@ struct IssueRow: View {
     .padding(.vertical, 8)
     .textSelection(.enabled)
     .accessibilityElement(children: .combine)
+  }
+}
+
+/// The project's run presets kept in the vault (Code on a Mac saved them), as the Mac's cards, wrapping under the
+/// project's header. A tap runs one on its machine: the project's own for "local", else the one it names. A Run on a
+/// device (an iPhone at the Mac) is left to the Mac.
+struct PresetBar: View {
+  let projectID: String
+  let controller: ActionController
+  let vault: Vault
+
+  var body: some View {
+    let presets = vault.presets(of: projectID).compactMap { record -> (String, RunPreset)? in
+      guard let action = ActionKind(rawValue: record.action) else { return nil }
+      return (
+        record.id,
+        RunPreset(
+          name: record.name, action: action, from: record.from, project: record.project, scheme: record.scheme,
+          target: record.target)
+      )
+    }
+    if !presets.isEmpty {
+      KitFlowLayout(spacing: 6) {
+        ForEach(presets, id: \.0) { id, preset in
+          let reason = reason(preset)
+          let isRunning = controller.isRunning && controller.runningTag == id
+          Button {
+            controller.perform(preset: preset, tag: id)
+          } label: {
+            RunPresetCard(
+              preset, inVault: true,
+              status: isRunning ? .working(progress: controller.progress?.fraction) : .idle,
+              isAvailable: reason == nil)
+          }
+          .buttonStyle(KitRowButtonStyle(cornerRadius: 9))
+          .disabled(reason != nil || controller.isRunning)
+          .kitHelp(preset.name, meta: reason ?? preset.parts, systemImage: RunPresetCard.symbol(preset.action))
+        }
+      }
+    }
+  }
+
+  /// Why it can't run from here, if it can't.
+  private func reason(_ preset: RunPreset) -> String? {
+    if preset.action == .run, !["", RunDestination.localName, preset.from].contains(preset.target) {
+      return "Runs on \(preset.target) from the Mac it’s connected to."
+    }
+    return controller.state(of: preset).reason
   }
 }

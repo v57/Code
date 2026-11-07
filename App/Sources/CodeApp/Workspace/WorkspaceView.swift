@@ -26,6 +26,8 @@ struct WorkspaceView: View {
       // The tabs float over the editor, as the toolbar does above them and the status bar under it: the editor runs
       // on under all of them. A single tab isn't shown.
       .safeAreaInset(edge: .top, spacing: 0) { TabStrip() }
+      // The run presets over the tabs, under the title bar's groups.
+      .presetBar()
       .kitPane(.content)
       .codeStatusBar()
       .projectToolbar(model: model, actionsEnabled: serviceSettings.settings.actionsEnabled)

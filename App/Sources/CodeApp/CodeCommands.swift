@@ -142,6 +142,25 @@ struct CodeCommands: Commands {
         .keyboardShortcut(".")
         .disabled(actions?.isRunning != true)
       Divider()
+      // ⌘1…⌘9 run the bar's first nine presets.
+      Button("Save Preset…") { model?.savePreset() }
+        .disabled(actions?.selectedScheme == nil || !actionsEnabled)
+      if let model, actionsEnabled {
+        let presets = model.presets.items
+        if !presets.isEmpty {
+          Menu("Run Preset") {
+            ForEach(Array(presets.enumerated()), id: \.element.id) { index, item in
+              if index < 9 {
+                Button(item.preset.name) { model.runPreset(at: index) }
+                  .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: .command)
+              } else {
+                Button(item.preset.name) { model.runPreset(at: index) }
+              }
+            }
+          }
+        }
+      }
+      Divider()
       Button("Refresh Schemes") { actions?.scan() }
         .disabled(actions == nil || !actionsEnabled)
       Button("Refresh Run Destinations") { actions?.refreshDestinations() }
@@ -209,19 +228,19 @@ struct CodeCommands: Commands {
       }
       .keyboardShortcut("0")
       .disabled(model == nil)
-      // Xcode's navigator shortcuts: ⌘1 files, ⌘3 Find.
+      // Xcode's navigator shortcuts with ⌥ (⌥⌘1 files, ⌥⌘3 Find): ⌘1…⌘9 run the presets.
       Button("Show Project Navigator") {
         model?.setNavigatorVisible(true)
         model?.navigator = .project
       }
-      .keyboardShortcut("1")
+      .keyboardShortcut("1", modifiers: [.command, .option])
       .disabled(model == nil)
       Button("Show Find Navigator") {
         model?.setNavigatorVisible(true)
         model?.navigator = .find
         model?.isFindLineOpen = true
       }
-      .keyboardShortcut("3")
+      .keyboardShortcut("3", modifiers: [.command, .option])
       .disabled(model == nil)
       Menu("Hidden Files") {
         Button(hiddenFilesTitle) { model?.toggleHiddenFiles() }
@@ -251,7 +270,7 @@ struct CodeCommands: Commands {
       .keyboardShortcut("y", modifiers: [.command, .shift])
       .disabled(model == nil)
       Button("Show Issues") { model?.isIssuesPresented = true }
-        .keyboardShortcut("5", modifiers: [.command])
+        .keyboardShortcut("5", modifiers: [.command, .option])
         .disabled(model == nil || !actionsEnabled)
       Divider()
       Button("Zoom In") { zoom(by: 1) }

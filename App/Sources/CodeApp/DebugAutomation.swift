@@ -28,7 +28,10 @@
   /// `focus` (the editor takes the keyboard), `menu:project|scheme|destination|off` (opens a kit menu),
   /// `navigator:on|off`, `size:<width>x<height>` (the window's content size), `newfile[:folder]` (New File or
   /// New Folder's prompt), `rename:<path>` (renames a navigator row in place), `drop:<path>` (Welcome takes the
-  /// folder as if it was dropped on it).
+  /// folder as if it was dropped on it), `savepreset[:off]` (Save Preset…'s popover), `presetsave:file|vault` (saves the
+  /// toolbar's Run as a preset without the popover), `presetrun:<n>` (⌘n), `presetvault:<n>` (Keep in Vault),
+  /// `presetedit:<n>` (Edit…), `presettoolbar:<n>` (Use in Toolbar), `presetremove:<n>`, `presetmove:<n>:<m>` (drags
+  /// the n-th before the m-th).
   ///
   /// Launched with `-DebugAutomationName <name>`, the app listens for that
   /// name instead, so other Debug instances ignore the commands.
@@ -252,6 +255,24 @@
       case "back": services.goBack()
       case "continue": services.debugger?.continueRunning()
       case "step": services.debugger?.stepOver()
+      case "savepreset": if argument == "off" { model.presetDraft = nil } else { model.savePreset() }
+      case "presetsave":
+        model.presets.add(services.actions.presetFromToolbar(.run), inVault: argument == "vault")
+      case "presetrun": if let n = Int(argument) { model.runPreset(at: n - 1) }
+      case "presetvault", "presetedit", "presettoolbar", "presetremove", "presetmove":
+        let items = model.presets.items
+        let numbers = argument.split(separator: ":").compactMap { Int($0) }
+        guard let n = numbers.first, items.indices.contains(n - 1) else { break }
+        let item = items[n - 1]
+        switch name {
+        case "presetvault": model.presets.toggleVault(item)
+        case "presetedit": model.presetDraft = PresetDraft(preset: item.preset, editing: item)
+        case "presettoolbar": Task { await services.actions.useInToolbar(item.preset) }
+        case "presetremove": model.presets.remove(item)
+        default:
+          let target = numbers.count > 1 && items.indices.contains(numbers[1] - 1) ? items[numbers[1] - 1] : nil
+          model.presets.move(item, before: target)
+        }
       case "dump":
         // Writes the window's state for checking from the shell.
         let actions = services.actions
@@ -287,6 +308,12 @@
           lines.append("  text length \(textView.string.count) visible \(textView.visibleRect) clip \(textView.enclosingScrollView?.contentView.bounds ?? .zero) container \(textView.textContainer?.size ?? .zero) inset \(textView.textContainerInset) origin \(textView.textContainerOrigin)")
         }
         lines.append("tabs: \(model.workspace.tabs.map(\.name))")
+        lines.append("presets file error: \(model.presets.fileError ?? "-")")
+        lines += model.presets.items.map { item in
+          "  preset \(item.id): \(item.preset.name) [\(item.preset.action.rawValue) \(item.preset.parts)] "
+            + "\(item.isInVault ? "vault" : "file") state \(model.presets.state(of: item)) running \(model.presets.isRunning(item))"
+        }
+        lines.append("running: \(actions.runningScheme?.name ?? "-") on \(actions.runningDestination?.name ?? "-") tag \(actions.runningTag ?? "-")")
         lines.append("history: back \(services.canGoBack) forward \(services.canGoForward)")
         lines.append(
           "detached: "
