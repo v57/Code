@@ -60,6 +60,8 @@
     private var isInEdit = false
     /// Closers inserted by auto-close, not typed yet: typing one steps over it
     /// (Xcode's type-over). Dropped when the caret leaves its line.
+    /// The selection the last ⇧⌥ arrow made and the end it moved, so the next one moves the same end.
+    var wordSelection: (range: NSRange, head: Int)?
     var typeOverMarkers: [Int] = [] {
       didSet { syncTypeOverCharacters() }
     }
@@ -1091,6 +1093,10 @@
     ) -> NSRange {
       if granularity == .selectByWord, let placeholder = placeholder(around: proposedCharRange) {
         return placeholder
+      }
+      // A double-click on a string's quote selects the string.
+      if granularity == .selectByWord, let literal = stringLiteral(atQuote: proposedCharRange) {
+        return literal
       }
       // A double-click on a bracket selects the bracketed block, as in Xcode.
       if granularity == .selectByWord, let block = delimitedBlock(at: proposedCharRange) {

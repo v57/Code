@@ -130,6 +130,83 @@
       #expect(drag == NSRange(location: 0, length: 18))
     }
 
+    @Test func optionArrowsMoveByNames() {
+      let view = editor("x = Some.value + 1", caret: 4)
+      view.moveWordRight(nil)
+      #expect(view.selectedRange().location == 8)
+      view.moveWordRight(nil)
+      #expect(view.selectedRange().location == 14)
+      view.moveWordLeft(nil)
+      #expect(view.selectedRange().location == 9)
+      view.moveWordLeft(nil)
+      #expect(view.selectedRange().location == 4)
+    }
+
+    @Test func optionArrowsTakeAStringLiteralAsOneWord() {
+      let view = editor("print(\"Hello World\")", caret: 6)
+      view.moveWordRight(nil)
+      #expect(view.selectedRange().location == 19)
+      view.moveWordLeft(nil)
+      #expect(view.selectedRange().location == 6)
+      view.moveWordLeft(nil)
+      #expect(view.selectedRange().location == 0)
+      // Inside the string, word by word.
+      view.setSelectedRange(NSRange(location: 7, length: 0))
+      view.moveWordRight(nil)
+      #expect(view.selectedRange().location == 12)
+      // From before "print": the name first, then the string.
+      view.setSelectedRange(NSRange(location: 0, length: 0))
+      view.moveWordRight(nil)
+      #expect(view.selectedRange().location == 5)
+      view.moveWordRight(nil)
+      #expect(view.selectedRange().location == 19)
+      // Interpolations and raw strings stay in the one word; an unclosed string doesn't count.
+      let interpolated = editor("f(\"a \\(b + 1) c\", #\"r\"#)", caret: 2)
+      interpolated.moveWordRight(nil)
+      #expect(interpolated.selectedRange().location == 16)
+      interpolated.moveWordRight(nil)
+      #expect(interpolated.selectedRange().location == 23)
+      let unclosed = editor("f(\"ab cd", caret: 2)
+      unclosed.moveWordRight(nil)
+      #expect(unclosed.selectedRange().location == 5)
+    }
+
+    @Test func shiftOptionArrowsExtendFromTheSameEnd() {
+      let view = editor("a.bc.d", caret: 4)
+      view.moveWordLeftAndModifySelection(nil)
+      #expect(view.selectedRange() == NSRange(location: 2, length: 2))
+      view.moveWordLeftAndModifySelection(nil)
+      #expect(view.selectedRange() == NSRange(location: 0, length: 4))
+      view.moveWordRightAndModifySelection(nil)
+      #expect(view.selectedRange() == NSRange(location: 1, length: 3))
+      view.moveWordRightAndModifySelection(nil)
+      view.moveWordRightAndModifySelection(nil)
+      #expect(view.selectedRange() == NSRange(location: 4, length: 2))
+    }
+
+    @Test func optionDeleteDeletesOneName() {
+      let view = editor("Some.value")
+      view.deleteWordBackward(nil)
+      #expect(view.string == "Some.")
+      view.deleteWordBackward(nil)
+      #expect(view.string == "")
+      view.undoManager?.undo()
+      let string = editor("x(\"a b\")", caret: 2)
+      string.deleteWordForward(nil)
+      #expect(string.string == "x()")
+    }
+
+    @Test func doubleClickOnAQuoteSelectsTheString() {
+      let view = editor("print(\"Hello \\\"World\")")
+      let word = { (at: Int) in
+        view.selectionRange(forProposedRange: NSRange(location: at, length: 0), granularity: .selectByWord)
+      }
+      #expect(word(6) == NSRange(location: 6, length: 15))
+      #expect(word(20) == NSRange(location: 6, length: 15))
+      #expect(word(14) == NSRange(location: 14, length: 1))  // an escaped quote is itself
+      #expect(word(8) == NSRange(location: 7, length: 5))  // a word inside, as before
+    }
+
     @Test func saveTrimsTrailingWhitespaceOfEditedLinesOnly() {
       let view = editor("a\nb  \nc", caret: 1)
       view.insertText("  ", replacementRange: view.selectedRange())  // edits line 1

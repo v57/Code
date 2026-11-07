@@ -227,14 +227,7 @@
       guard let text = textStorage?.mutableString, proposed.location < text.length else {
         return nil
       }
-      func isIdentifier(_ i: Int) -> Bool {
-        guard i >= 0, i < text.length else { return false }
-        let unit = text.character(at: i)
-        if unit == 0x5F || unit == 0x24 { return true }  // _ $
-        if UTF16.isLeadSurrogate(unit) || UTF16.isTrailSurrogate(unit) { return false }
-        guard let scalar = Unicode.Scalar(unit) else { return false }
-        return scalar.properties.isAlphabetic || scalar.properties.numericType != nil
-      }
+      func isIdentifier(_ i: Int) -> Bool { Self.isIdentifier(at: i, in: text) }
       func run(at i: Int) -> NSRange {
         if isIdentifier(i) {
           var start = i
@@ -260,6 +253,16 @@
       guard proposed.length > 0 else { return head }
       let last = min(text.length - 1, NSMaxRange(proposed) - 1)
       return NSUnionRange(head, run(at: last))
+    }
+
+    /// Whether the UTF-16 unit at `i` is part of a name: a letter, digit, `_` or `$`.
+    static func isIdentifier(at i: Int, in text: NSString) -> Bool {
+      guard i >= 0, i < text.length else { return false }
+      let unit = text.character(at: i)
+      if unit == 0x5F || unit == 0x24 { return true }  // _ $
+      if UTF16.isLeadSurrogate(unit) || UTF16.isTrailSurrogate(unit) { return false }
+      guard let scalar = Unicode.Scalar(unit) else { return false }
+      return scalar.properties.isAlphabetic || scalar.properties.numericType != nil
     }
 
     /// ⌘←: to the first non-blank character, or to column 0 when already
