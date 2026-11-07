@@ -958,6 +958,24 @@
       return NSRect(x: 0, y: rect.minY + textContainerOrigin.y, width: bounds.width, height: rect.height)
     }
 
+    /// The text on the caret's line (all its wrapped fragments, from its first character to its last), in view
+    /// coordinates; nil while text is selected. What floats over the editor moves out of its way.
+    public func caretLineTextRect() -> NSRect? {
+      guard let layoutManager, let textContainer, selectedRange().length == 0 else { return nil }
+      var range = lineIndex.range(ofLine: lineIndex.line(containing: selectedRange().location))
+      // Without its line break, whose glyph runs to the end of the fragment.
+      let text = string as NSString
+      while range.length > 0, let scalar = UnicodeScalar(text.character(at: NSMaxRange(range) - 1)),
+        CharacterSet.newlines.contains(scalar)
+      {
+        range.length -= 1
+      }
+      guard range.length > 0 else { return nil }
+      let glyphs = layoutManager.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
+      let rect = layoutManager.boundingRect(forGlyphRange: glyphs, in: textContainer)
+      return rect.offsetBy(dx: textContainerOrigin.x, dy: textContainerOrigin.y)
+    }
+
     /// Corner radius of the current-line highlight, which runs from the
     /// gutter (drawn by the ruler) to just short of the right edge, as in Xcode.
     static let lineHighlightRadius: CGFloat = 5

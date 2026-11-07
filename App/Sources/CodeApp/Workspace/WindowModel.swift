@@ -29,6 +29,10 @@ import SwiftUI
   private(set) var isConsoleDetached = false
   /// That window, while it is open.
   @ObservationIgnored private var consoleWindow: WindowReference?
+  /// The run the console was last asked to show (a process card's Open in Console); it scrolls there.
+  private(set) var consoleFocus: ConsoleFocus?
+  /// A Debug build's command for the editor's process stack (`DebugAutomation`'s `stack:`).
+  var processStackDebug: ProcessStackDebug?
   var isIssuesPresented = false
   /// The kit menu open in the window's chrome (the toolbar's scheme and destination, the project card's "…").
   var openMenu: ChromeMenu?
@@ -97,12 +101,6 @@ import SwiftUI
         self?.services.reopenShownDocuments()
       }
     }
-    services.actions.didFinish = { [weak self] kind, succeeded in
-      // A failed action without issues to show shows its log instead.
-      if !succeeded, kind != .run, self?.services.actions.issues.isEmpty == true {
-        self?.showConsole()
-      }
-    }
     services.actions.addFinishHandler { [weak self] _, _ in
       if let self, self.isInBackground { AppState.shared.backgroundProjectFinished(self) }
     }
@@ -124,6 +122,16 @@ import SwiftUI
   func showConsole() {
     guard !isConsoleDetached, !isConsoleVisible else { return }
     withKitAnimation(.kitFast) { isConsoleVisible = true }
+  }
+
+  /// Shows the console at `run`'s output (its last block selected), under the title or in its window.
+  func showConsole(at run: ActionRun) {
+    consoleFocus = ConsoleFocus(run: run.id)
+    if isConsoleDetached {
+      consoleWindow?.bringToFront()
+    } else {
+      showConsole()
+    }
   }
 
   func hideConsole() {
@@ -160,8 +168,8 @@ import SwiftUI
     consoleWindow?.close()
   }
 
-  /// Runs an action. The console stays shut, while it builds and once a Run's program starts: it opens from ⇧⌘Y or the
-  /// title, or when an action fails without issues to list. Export first asks for a notary profile when none is set up,
+  /// Runs an action. The console stays shut: the run floats on the editor as a circle (`ProcessStack`), whose card
+  /// shows its output and opens the console at it. Export first asks for a notary profile when none is set up,
   /// and Upload for its build number.
   func perform(_ kind: ActionKind) {
     guard services.settings.actionsEnabled else { return }
@@ -307,4 +315,10 @@ extension WindowModel {
         if isOpen { self.openMenu = menu } else if self.openMenu == menu { self.openMenu = nil }
       })
   }
+}
+
+/// A run the console should scroll to; `token` makes asking again a change.
+struct ConsoleFocus: Equatable {
+  var run: ActionRun.ID
+  var token = UUID()
 }

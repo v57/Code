@@ -158,7 +158,7 @@ import SwiftUI
 
   /// Stops what `folder` runs in the background (the Projects card's menu); its project then leaves.
   func stopBackgroundProject(_ folder: URL) {
-    backgroundProjects[folder.standardizedFileURL]?.services.actions.stop()
+    backgroundProjects[folder.standardizedFileURL]?.services.actions.stopAll()
   }
 
   /// Quitting: nothing outlives the app.

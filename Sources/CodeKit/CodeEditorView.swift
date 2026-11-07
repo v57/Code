@@ -19,6 +19,9 @@
     private var appliedAnnotations: [LineAnnotation]?
     private var sectionsTask: Task<Void, Never>?
     private var minimapSource: MinimapAdapter?
+    /// Told where the minimap and the caret's line are (`CodeEditorView.onOverlayGeometryChange`).
+    var onOverlayGeometryChange: (@MainActor (EditorOverlayGeometry) -> Void)?
+    private var reportedGeometry: EditorOverlayGeometry?
 
     init(document: TextDocument, configuration: EditorConfiguration) {
       scrollView = CodeEditorScrollView(
@@ -39,9 +42,37 @@
       NotificationCenter.default.addObserver(
         forName: NSView.boundsDidChangeNotification, object: scrollView.contentView, queue: .main
       ) { [weak self] _ in
-        MainActor.assumeIsolated { self?.container.minimap.refresh() }
+        MainActor.assumeIsolated {
+          self?.container.minimap.refresh()
+          self?.reportOverlayGeometry()
+        }
       }
+      container.onLayout = { [weak self] in self?.reportOverlayGeometry() }
       updateSections()
+    }
+
+    func forgetReportedGeometry() { reportedGeometry = nil }
+
+    /// Tells `onOverlayGeometryChange` where the minimap and the caret's line are now, when that changed.
+    func reportOverlayGeometry() {
+      guard let handler = onOverlayGeometryChange, let content = container.window?.contentView else { return }
+      let scrollView = container.scrollView
+      let textView = scrollView.textView
+      let trailing =
+        !container.minimap.isHidden
+        ? container.minimap.frame.width
+        : scrollView.hasVerticalScroller ? (scrollView.verticalScroller?.frame.width ?? 0) : 0
+      var caretLine: CGRect?
+      if let rect = textView.caretLineTextRect(), rect.intersects(textView.visibleRect) {
+        var frame = textView.convert(rect, to: content)
+        if !content.isFlipped { frame.origin.y = content.bounds.height - frame.maxY }
+        caretLine = frame
+      }
+      let geometry = EditorOverlayGeometry(trailingInset: trailing, caretLine: caretLine)
+      guard geometry != reportedGeometry else { return }
+      reportedGeometry = geometry
+      // On the next turn: this runs during layout and view updates.
+      Task { @MainActor in handler(geometry) }
     }
 
     /// The editor for `document`, made on first use.
@@ -162,6 +193,7 @@
 
     private func layoutChanged() {
       updateMarks()
+      reportOverlayGeometry()
       container.minimap.invalidateContent()
     }
 
@@ -215,6 +247,9 @@
       }
     }
 
+    /// Called after each layout (the minimap shown or hidden, the size changed).
+    var onLayout: (() -> Void)?
+
     init(scrollView: CodeEditorScrollView) {
       self.scrollView = scrollView
       super.init(frame: NSRect(x: 0, y: 0, width: 600, height: 400))
@@ -250,6 +285,7 @@
       scrollView.hasVerticalScroller = width == 0
       scrollView.frame = NSRect(x: 0, y: 0, width: bounds.width - width, height: bounds.height)
       minimap.frame = NSRect(x: bounds.width - width, y: 0, width: width, height: bounds.height)
+      onLayout?()
     }
   }
 
@@ -373,13 +409,17 @@
     /// and scrolls on under the bars.
     public var unobscuredFrame: CGRect?
     public var onSelectionChange: @MainActor (EditorSelection) -> Void
+    /// Told where the minimap and the caret's line are, as they change (scrolling, typing, resizing).
+    public var onOverlayGeometryChange: (@MainActor (EditorOverlayGeometry) -> Void)?
 
     public init(
       document: TextDocument, revision: Int, configuration: EditorConfiguration = .init(),
       services: ProjectServices? = nil, marks: Int = 0, features: EditorFeatures = .init(),
       unobscuredFrame: CGRect? = nil,
-      onSelectionChange: @escaping @MainActor (EditorSelection) -> Void = { _ in }
+      onSelectionChange: @escaping @MainActor (EditorSelection) -> Void = { _ in },
+      onOverlayGeometryChange: (@MainActor (EditorOverlayGeometry) -> Void)? = nil
     ) {
+      self.onOverlayGeometryChange = onOverlayGeometryChange
       self.document = document
       self.revision = revision
       self.configuration = configuration
@@ -398,18 +438,23 @@
       textView.configuration = configuration
       // Reported on the next turn: selection changes during a view update
       // must not update SwiftUI state.
-      textView.onSelectionChange = { selection in
+      textView.onSelectionChange = { [weak editor] selection in
         Task { @MainActor in onSelectionChange(selection) }
+        editor?.reportOverlayGeometry()
       }
+      editor.onOverlayGeometryChange = onOverlayGeometryChange
       editor.sync(with: document)
       if let services { editor.connect(services, document: document) }
       editor.apply(services, document: document, features: features)
+      // Another tab's editor comes in: tell this view where its things are, even if they're where they were.
+      if editor.container.superview !== host { editor.forgetReportedGeometry() }
       host.show(editor.container, focusing: textView)
       let container = editor.container
       host.onContentInsetsChange = { [weak container] insets in container?.contentInsets = insets }
       host.unobscuredFrame = unobscuredFrame
       container.contentInsets = host.contentInsets
       editor.applyPendingSelection(of: document)
+      editor.reportOverlayGeometry()
       let selection = textView.currentSelection
       Task { @MainActor in onSelectionChange(selection) }
     }
@@ -441,6 +486,12 @@
     /// been shown.
     public func goTo(line: Int, column: Int = 1, length: Int = 0) {
       textView?.goTo(line: line, column: column, length: length)
+    }
+
+    /// Gives this document's editor the keyboard again (after a panel over it that took it closes).
+    public func focusEditor() {
+      guard let textView, let window = textView.window else { return }
+      window.makeFirstResponder(textView)
     }
 
     /// The completion list of this document's editor, once it has been

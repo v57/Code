@@ -49,7 +49,7 @@
 
   /// The toolbar's model for one project folder, like Xcode's: the schemes
   /// found in the folder, the run destinations of the selected scheme, and
-  /// the action running now with its progress, log and issues.
+  /// the actions run (`runs`, several at once), each with its progress, log and issues.
   @MainActor @Observable public final class ActionController {
     public enum State: Equatable, Sendable {
       case idle
@@ -124,15 +124,35 @@
     /// The runtime being started: finding runtimes meanwhile doesn't call it stopped.
     @ObservationIgnored private var startingRuntime: String?
     @ObservationIgnored private var detectTask: Task<Void, Never>?
-    /// The source the running action builds from.
-    @ObservationIgnored private var runningSource: BuildSource?
-    public private(set) var state: State = .idle
-    public private(set) var progress: ActionProgress?
-    /// The step running now ("Build", "Install", "Run").
-    public private(set) var stepTitle: String?
-    /// Issues from the last action's log.
-    public private(set) var issues: [BuildIssue] = []
-    public let log = ActionLog()
+    /// The actions run, newest last: every one still going (several run at once) and the last ones finished
+    /// (`keptRuns` in all).
+    public private(set) var runs: [ActionRun] = []
+    /// Output that belongs to no run (starting a container runtime).
+    public let notes = ActionLog()
+    /// Tests each test operation ran the last time, for "31 / 48 tests".
+    @ObservationIgnored private var testCounts: [String: Int] = [:]
+
+    /// The newest run: the one `state`, `progress`, `stepTitle`, `issues` and `log` tell of.
+    public var current: ActionRun? { runs.last }
+
+    public var state: State {
+      guard let run = current else { return .idle }
+      let date = run.finished ?? run.started
+      switch run.phase {
+      case .waiting, .running: return .running(run.kind)
+      case .succeeded: return .succeeded(run.kind, date)
+      case .failed(let message): return .failed(run.kind, date, message)
+      case .stopped: return .stopped(run.kind, date)
+      }
+    }
+
+    public var progress: ActionProgress? { current?.progress }
+    /// The step the newest run is on ("Build", "Install", "Run").
+    public var stepTitle: String? { current?.stepTitle }
+    /// Issues from the newest run's log.
+    public var issues: [BuildIssue] { current?.issues ?? [] }
+    /// The newest run's output, else the notes.
+    public var log: ActionLog { current?.log ?? notes }
 
     /// Runs before an action starts (the app saves open files).
     @ObservationIgnored public var willPerform: (@MainActor () async -> Void)?
@@ -154,12 +174,6 @@
 
     /// Where the steps' durations are kept, for the progress estimate.
     @ObservationIgnored public var progressHistory: ProgressHistory = .standard
-    @ObservationIgnored private var tracker: ProgressTracker?
-    /// What the log said last, under the tracker's fraction.
-    @ObservationIgnored private var progressMessage = ""
-    @ObservationIgnored private var progressTimer: Task<Void, Never>?
-    @ObservationIgnored private var task: Task<Void, Never>?
-    @ObservationIgnored private var context: ActionContext?
     @ObservationIgnored private let defaults = UserDefaults.standard
     @ObservationIgnored private var destinationsTask: Task<Void, Never>?
 
@@ -174,6 +188,7 @@
       selectedSchemeID = defaults.string(forKey: sourceKey("pickedScheme"))
       pickedContainers = defaults.dictionary(forKey: sourceKey("containers")) as? [String: String] ?? [:]
       selectedDestinationID = defaults.string(forKey: sourceKey("destination"))
+      testCounts = defaults.dictionary(forKey: key("testCounts")) as? [String: Int] ?? [:]
     }
 
     private func key(_ name: String) -> String { "CodeActions.\(name):" + root.path }
@@ -221,14 +236,13 @@
         ?? destinations.first { $0.isAvailable }
     }
 
-    public var isRunning: Bool {
-      if case .running = state { return true }
-      return false
-    }
+    /// Some run is going (or waiting to).
+    public var isRunning: Bool { runs.contains { $0.isWorking } }
 
+    /// The newest run's action while it's going.
     public var runningKind: ActionKind? {
-      if case .running(let kind) = state { return kind }
-      return nil
+      guard let run = current, run.isWorking else { return nil }
+      return run.kind
     }
 
     public var errorCount: Int { issues.filter { $0.severity == .error }.count }
@@ -483,9 +497,9 @@
       startingRuntime = runtime.id
       let id = "container:" + runtime.id
       buildSourceStatuses[id] = .checking
-      log.clear()
-      appendStatus("Starting \(runtime.displayName)", kind: .status)
-      let sink = OutputSink(directory: root) { [weak self] batch, _ in self?.log.append(batch) }
+      notes.clear()
+      appendStatus("Starting \(runtime.displayName)", kind: .status, to: notes)
+      let sink = OutputSink(directory: root) { [weak self] batch, _ in self?.notes.append(batch) }
       let executor = localExecutor
       Task {
         var failure: String?
@@ -505,7 +519,7 @@
         startingRuntime = nil
         if let failure {
           buildSourceStatuses[id] = .unavailable(failure)
-          appendStatus(failure, kind: .failure)
+          appendStatus(failure, kind: .failure, to: notes)
         }
         refreshBuildSources()
       }
@@ -650,9 +664,8 @@
 
     /// What an action's end says of its source. Returns why it failed when the source was out of reach: `ssh` and the
     /// in-process client exit with 255 when they can't connect or sign in.
-    private func noteOutcome(of failure: Error?, cancelled: Bool) -> String? {
-      guard let source = runningSource, !source.isLocal, !cancelled else { return nil }
-      runningSource = nil
+    private func noteOutcome(of failure: Error?, cancelled: Bool, source: BuildSource) -> String? {
+      guard !source.isLocal, !cancelled else { return nil }
       if source.container != nil {
         if failure != nil { refreshBuildSources() }
         return nil
@@ -679,29 +692,38 @@
       return scheme.supports(kind)
     }
 
-    /// Runs an action on the selected scheme and destination, stopping the
-    /// one running now. `environment` adds variables for its commands
-    /// (Export's `NOTARY_PROFILE`).
+    /// Runs an action on the selected scheme and destination, alongside the runs going now (one of the same action
+    /// and scheme stops first). `environment` adds variables for its commands (Export's `NOTARY_PROFILE`).
     public func perform(_ kind: ActionKind, environment: [String: String] = [:]) {
       guard let scheme = selectedScheme else { return }
       perform(kind, scheme: scheme, destination: selectedDestination, environment: environment)
     }
 
-    /// Runs an action on `scheme` and `destination` rather than the selected ones (an app's queued installs).
+    /// Runs an action on `scheme` and `destination` rather than the selected ones (an app's queued installs). A run
+    /// of the same action and scheme that is still going stops first; the other runs keep going, and a run of a
+    /// project another run is building waits for that build (they share its build folder).
     public func perform(
       _ kind: ActionKind, scheme: ActionScheme, destination: RunDestination?, environment: [String: String] = [:]
     ) {
-      let previous = task
-      if isRunning { stop() }
-      log.clear()
-      issues = []
-      progress = ActionProgress(message: "Preparing")
-      stepTitle = nil
-      state = .running(kind)
+      start(kind, scheme: scheme, destination: destination, source: selectedBuildSource, environment: environment)
+    }
+
+    /// Runs `run`'s action again where it ran (the process stack's Restart): it replaces `run` if still going.
+    public func restart(_ run: ActionRun) {
+      start(
+        run.kind, scheme: run.scheme, destination: run.destination, source: run.source, environment: run.environment)
+    }
+
+    private func start(
+      _ kind: ActionKind, scheme: ActionScheme, destination: RunDestination?, source: BuildSource,
+      environment: [String: String]
+    ) {
+      let replaced = runs.filter { $0.isWorking && $0.kind == kind && $0.scheme.id == scheme.id }
+      for run in replaced { stop(run) }
+      // The new run takes the place of the last one's result on the editor (the console keeps it).
+      for run in runs where !run.isWorking && run.kind == kind && run.scheme.id == scheme.id { run.isDismissed = true }
       // The debugger (the override) runs here, never on another machine. Builds here go to ~/Developer/Builds
       // when it exists (`BuildFolders`), a container's to its volume; another machine builds where its tools do.
-      let source = selectedBuildSource
-      runningSource = source
       let destination = destination ?? source.destination(image: ContainerImages.image(for: scheme, root: root))
       let remote = !source.isLocal || destination?.kind == .remote
       let building =
@@ -710,7 +732,6 @@
         (remote ? nil : stepsOverride?(kind, building, destination))
         ?? ActionPlanner.steps(
           for: kind, scheme: building, destination: destination, signing: remoteTarget(for: destination)?.signing)
-      if let note = Self.note(kind, source: source, destination: destination) { appendStatus(note, kind: .status) }
 
       // Steps are stages, named so that Run's build and Build's share their
       // history. Run's last step runs the app, which has no end to estimate.
@@ -723,15 +744,32 @@
       // Tests run after the build in the same command (see `receive`).
       if kind == .test { planned = planned.flatMap { [$0, Self.testsStage(after: $0)] } }
       let operation = "\(place)|\(kind.rawValue)"
+      let run = ActionRun(
+        kind: kind, scheme: scheme, destination: destination, source: source, environment: environment,
+        testsExpected: kind == .test ? testCounts[operation] : nil)
+      run.operation = operation
+      // What it waits for: the runs it replaces, and the earlier ones that may still build the same project there.
+      let earlier = runs.filter { other in
+        other.isBuilding
+          && (replaced.contains { $0 === other }
+            || (other.scheme.directory == scheme.directory && other.source.id == source.id))
+      }
+      runs.append(run)
+      trimRuns()
+      if let note = Self.note(kind, source: source, destination: destination) {
+        appendStatus(note, kind: .status, to: run.log)
+      }
+      run.progress = ActionProgress(message: "Preparing")
+      run.progressMessage = "Preparing"
       let tracker = ProgressTracker(
         operation: operation, stages: progressHistory.plan(for: operation) ?? planned,
         history: progressHistory)
-      self.tracker = tracker
-      progressMessage = "Preparing"
-      startProgressTimer()
+      run.tracker = tracker
 
-      let sink = OutputSink(directory: scheme.directory, pathsThere: pathsThere(source)) { [weak self] batch, events in
-        self?.receive(batch, events)
+      let sink = OutputSink(directory: scheme.directory, pathsThere: pathsThere(source)) {
+        [weak self, weak run] batch, events in
+        guard let self, let run else { return }
+        self.receive(batch, events, for: run)
       }
       let context = ActionContext(
         directory: scheme.directory,
@@ -739,24 +777,38 @@
         executor: executor(for: destination, scheme: scheme, source: source),
         confirm: confirm.map { confirm in { @Sendable question in await confirm(question) } }
       ) { line in sink.add(line) }
-      self.context = context
+      run.context = context
 
-      task = Task {
-        await previous?.value
-        await willPerform?()
+      run.task = Task {
+        for other in earlier {
+          if !replaced.contains(where: { $0 === other }), other.isBuilding {
+            run.phase = .waiting(other.title)
+            run.progress = ActionProgress(message: "Waiting for \(other.title)")
+          }
+          while other.isBuilding && !context.isCancelled {
+            try? await Task.sleep(for: .milliseconds(150))
+          }
+        }
         var failure: Error?
+        if !context.isCancelled {
+          run.phase = .running
+          run.progress = ActionProgress(message: "Preparing")
+          startProgressTimer(for: run)
+          await willPerform?()
+        }
         for (step, stage) in zip(steps, stages) {
           if context.isCancelled { break }
           sink.flush()
-          stepTitle = step.title
+          run.stepTitle = step.title
           if step.title == "Run" && kind == .run {
             // The build is done; the app runs as long as it likes.
             tracker.complete()
-            progress = nil
+            run.progress = nil
+            run.isBuilding = false
           } else {
             tracker.begin(stage)
-            progressMessage = step.title
-            updateProgress()
+            run.progressMessage = step.title
+            updateProgress(of: run)
           }
           do {
             try await step.work(context)
@@ -768,47 +820,71 @@
         sink.flush()
         await Task.yield()
         if failure == nil && !context.isCancelled { tracker.complete() } else { tracker.cancel() }
-        finish(kind, failure: failure, context: context)
+        finish(run, failure: failure)
       }
     }
 
-    private func finish(_ kind: ActionKind, failure: Error?, context: ActionContext) {
-      // A newer action replaced this one.
-      guard self.context === context else { return }
+    private func finish(_ run: ActionRun, failure: Error?) {
+      guard let context = run.context else { return }
+      let kind = run.kind
       let cancelled = context.isCancelled
-      self.context = nil
-      tracker = nil
-      progressTimer?.cancel()
-      progressTimer = nil
-      progress = nil
-      stepTitle = nil
-      let date = Date()
-      let unreachable = noteOutcome(of: failure, cancelled: cancelled)
+      run.context = nil
+      run.tracker = nil
+      run.progressTimer?.cancel()
+      run.progressTimer = nil
+      run.progress = nil
+      run.stepTitle = nil
+      run.isBuilding = false
+      run.finished = Date()
+      let unreachable = noteOutcome(of: failure, cancelled: cancelled, source: run.source)
       if cancelled {
-        state = .stopped(kind, date)
-        appendStatus("Stopped", kind: .status)
+        run.phase = .stopped
+        appendStatus("Stopped", kind: .status, to: run.log)
         finished(kind, succeeded: false)
-      } else if let failure {
+        return
+      }
+      if kind == .test, run.testsRun > 0 {
+        testCounts[run.operation] = run.testsRun
+        defaults.set(testCounts, forKey: key("testCounts"))
+      }
+      if let failure {
         let message = (failure as? LocalizedError)?.errorDescription ?? failure.localizedDescription
         // The activity view says what failed in few words: the errors, or
         // the exit code when the log had none it could read.
         var summary = message
         if case .failed(let status, _)? = failure as? ActionError {
-          summary = errorCount > 0 ? "\(errorCount) error\(errorCount == 1 ? "" : "s")" : "Exit code \(status)"
+          let errors = run.errorCount
+          summary = errors > 0 ? Self.errors(errors, kind, tests: run.testsRun) : "Exit code \(status)"
         }
         if let unreachable { summary = unreachable }
-        state = .failed(kind, date, summary)
-        appendStatus(message, kind: .failure)
+        run.phase = .failed(summary)
+        appendStatus(message, kind: .failure, to: run.log)
         finished(kind, succeeded: false)
-      } else if kind != .run && errorCount > 0 {
-        state = .failed(kind, date, "\(errorCount) error\(errorCount == 1 ? "" : "s")")
+      } else if kind != .run && run.errorCount > 0 {
+        run.phase = .failed(Self.errors(run.errorCount, kind, tests: run.testsRun))
         finished(kind, succeeded: false)
       } else {
-        state = .succeeded(kind, date)
-        appendStatus("\(kind.title) \(kind == .run ? "finished" : "succeeded")", kind: .status)
+        run.phase = .succeeded
+        appendStatus("\(kind.title) \(kind == .run ? "finished" : "succeeded")", kind: .status, to: run.log)
         finished(kind, succeeded: true)
       }
     }
+
+    /// "2 errors"; a test's errors are its failed tests ("2 failed", "2 of 40 failed").
+    private static func errors(_ count: Int, _ kind: ActionKind, tests: Int = 0) -> String {
+      guard kind == .test else { return "\(count) error\(count == 1 ? "" : "s")" }
+      return tests >= count ? "\(count) of \(tests) failed" : "\(count) failed"
+    }
+
+    /// Keeps the runs still going and the newest finished ones, `keptRuns` in all.
+    private func trimRuns() {
+      while runs.count > Self.keptRuns, let index = runs.firstIndex(where: { !$0.isWorking }) {
+        runs.remove(at: index)
+      }
+    }
+
+    /// Runs kept for the console and the stack, counting those still going.
+    public nonisolated static let keptRuns = 12
 
     /// Adds a callback for finished actions, called after `didFinish`.
     public func addFinishHandler(_ handler: @escaping @MainActor (ActionKind, Bool) -> Void) {
@@ -820,32 +896,60 @@
       for handler in finishHandlers { handler(kind, succeeded) }
     }
 
-    private func appendStatus(_ text: String, kind: ActionLog.Entry.Kind) {
+    private func appendStatus(_ text: String, kind: ActionLog.Entry.Kind, to log: ActionLog) {
       log.append([ActionLog.Entry(text: text, kind: kind)])
     }
 
-    /// Stops the running action (Xcode's ⌘.).
+    /// Stops the newest run still going (Xcode's ⌘.).
     public func stop() {
-      guard isRunning, let context else { return }
-      context.cancel()
+      guard let run = runs.last(where: \.isWorking) else { return }
+      stop(run)
     }
 
-    private func receive(_ batch: [ActionLog.Entry], _ events: [BuildLogParser.Event]) {
-      log.append(batch)
-      var known = Set(issues.map(\.id))
+    /// Stops `run` if it's still going (or waiting to).
+    public func stop(_ run: ActionRun) {
+      guard run.isWorking else { return }
+      run.context?.cancel()
+    }
+
+    /// Stops every run still going.
+    public func stopAll() {
+      for run in runs where run.isWorking { stop(run) }
+    }
+
+    /// Takes `run` off the editor's stack; the console keeps it.
+    public func dismiss(_ run: ActionRun) {
+      run.isDismissed = true
+    }
+
+    /// Takes every finished run off the editor's stack.
+    public func hideFinished() {
+      for run in runs where !run.isWorking { run.isDismissed = true }
+    }
+
+    /// Forgets the finished runs and the notes (the console's Clear).
+    public func clearFinished() {
+      runs.removeAll { !$0.isWorking }
+      notes.clear()
+    }
+
+    private func receive(_ batch: [ActionLog.Entry], _ events: [BuildLogParser.Event], for run: ActionRun) {
+      run.log.append(batch)
+      var known = Set(run.issues.map(\.id))
       // A running program's output isn't build progress.
-      let measured = isRunning && !(runningKind == .run && stepTitle == "Run")
+      let measured = run.phase == .running && !run.isRunningApp
       for event in events {
         switch event {
         case .issue(let issue):
-          if known.insert(issue.id).inserted { issues.append(issue) }
+          if known.insert(issue.id).inserted { run.issues.append(issue) }
         case .progress(let progress) where measured:
-          if !progress.message.isEmpty { progressMessage = progress.message }
-          if let fraction = progress.fraction { tracker?.report(fraction: fraction) }
+          if !progress.message.isEmpty { run.progressMessage = progress.message }
+          if let fraction = progress.fraction { run.tracker?.report(fraction: fraction) }
         case .count(let done, let total) where measured:
-          tracker?.update(units: Double(done), of: Double(total))
+          run.tracker?.update(units: Double(done), of: Double(total))
         case .unit(let unit) where measured:
-          guard let tracker else { break }
+          if unit == .test { run.testsRun += 1 }
+          guard let tracker = run.tracker else { break }
           // Tests follow the build in the same command: a stage of their own.
           if unit == .test, let stage = tracker.snapshot().stage, !stage.id.hasSuffix("|tests") {
             tracker.begin(Self.testsStage(after: stage))
@@ -854,7 +958,7 @@
         default: break
         }
       }
-      if measured { updateProgress() }
+      if measured { updateProgress(of: run) }
     }
 
     /// The tests a test command runs once it has built them.
@@ -863,21 +967,21 @@
     }
 
     /// The tracker's estimate under the log's last message.
-    private func updateProgress() {
-      guard let tracker, isRunning, !(runningKind == .run && stepTitle == "Run") else { return }
+    private func updateProgress(of run: ActionRun) {
+      guard let tracker = run.tracker, run.phase == .running, !run.isRunningApp else { return }
       let snapshot = tracker.snapshot()
       let next = ActionProgress(
-        fraction: snapshot.fraction, message: progressMessage, remaining: snapshot.remaining)
-      if next != progress { progress = next }
+        fraction: snapshot.fraction, message: run.progressMessage, remaining: snapshot.remaining)
+      if next != run.progress { run.progress = next }
     }
-
     /// Moves the estimate with time between log lines.
-    private func startProgressTimer() {
-      progressTimer?.cancel()
-      progressTimer = Task { [weak self] in
+    private func startProgressTimer(for run: ActionRun) {
+      run.progressTimer?.cancel()
+      run.progressTimer = Task { [weak self, weak run] in
         while !Task.isCancelled {
           try? await Task.sleep(for: .milliseconds(250))
-          self?.updateProgress()
+          guard let self, let run else { return }
+          self.updateProgress(of: run)
         }
       }
     }

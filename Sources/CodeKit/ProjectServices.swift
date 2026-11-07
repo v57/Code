@@ -186,7 +186,7 @@
       if !settings.usesSwiftModel { tiers.dropSwiftModel() }
       guard let previous, isReady else { return }
       if settings.actionsEnabled && !previous.actionsEnabled { actions.scan() }
-      if !settings.actionsEnabled && previous.actionsEnabled { actions.stop() }
+      if !settings.actionsEnabled && previous.actionsEnabled { actions.stopAll() }
       // Servers turned back on: open the shown files again.
       if settings.languageServersEnabled != previous.languageServersEnabled
         || settings.disabledLanguageServers != previous.disabledLanguageServers
@@ -781,7 +781,7 @@
 
     /// Stops servers and running actions (the window is closing).
     public func shutDown() {
-      actions.stop()
+      actions.stopAll()
       debugger?.stop()
       languageServers.stopAll()
     }

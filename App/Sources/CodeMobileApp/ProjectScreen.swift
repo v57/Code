@@ -349,7 +349,8 @@ struct LogView: View {
             RunBlock(
               run.name, command: run.command, id: run.id, systemImage: run.systemImage, status: run.status,
               progress: run.progress, warnings: run.warnings, output: run.output,
-              stop: run.status.isWorking ? { controller.stop() } : nil)
+              stop: run.status.isWorking
+                ? { controller.runs.first { $0.id == run.runID }.map(controller.stop) } : nil)
           }
         }
         .padding(.bottom, KitMetrics.gutter)

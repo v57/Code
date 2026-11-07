@@ -1,9 +1,9 @@
 import CodeActions
 import ComponentKit
 
-/// An action's log cut into the kit's run blocks (`RunBlock`), for the Mac's console and the iPhone and iPad log: a
-/// new block at each command line (`$ …`), its output under it; the last block carries the action's state, the ones
-/// before it passed. A long block shows its last `shownLines` lines.
+/// The actions' logs cut into the kit's run blocks (`RunBlock`), for the Mac's console and the iPhone and iPad log:
+/// each run's blocks in the order they started, a new block at each command line (`$ …`), its output under it; a run's
+/// last block carries its state, the ones before it passed. A long block shows its last `shownLines` lines.
 ///
 /// ```swift
 /// RunBlocks {
@@ -23,17 +23,46 @@ public enum ActionRuns {
     public var progress: String?
     public var warnings: String?
     public var output: String
+    /// The action run the block belongs to; nil for the notes (a container runtime starting).
+    public var runID: ActionRun.ID?
   }
 
   /// Lines of output a block shows: the end of a long log.
   public static let shownLines = 400
 
-  /// The blocks of `actions`' log; with a `filter`, only the output lines that contain it.
+  /// The blocks of every run `actions` keeps, oldest first, after the notes; with a `filter`, only the output lines
+  /// that contain it.
   @MainActor public static func runs(from actions: ActionController, filter: String = "") -> [Run] {
-    _ = actions.log.revision
-    let (kind, finalStatus) = state(of: actions)
+    var result = blocks(
+      of: actions.notes, id: "notes", name: nil, systemImage: "terminal", status: .done, progress: nil,
+      filter: filter)
+    for run in actions.runs {
+      result += blocks(
+        of: run.log, id: run.id.uuidString, name: run.title, systemImage: run.kind.symbolName,
+        status: status(of: run), progress: run.isRunningApp ? nil : run.progress?.message, filter: filter
+      ).map {
+        var block = $0
+        block.runID = run.id
+        return block
+      }
+    }
+    return result
+  }
+
+  /// The blocks of one run: a new block at each command line, the last one carrying the run's status.
+  @MainActor public static func runs(of run: ActionRun, filter: String = "") -> [Run] {
+    blocks(
+      of: run.log, id: run.id.uuidString, name: run.title, systemImage: run.kind.symbolName,
+      status: status(of: run), progress: run.isRunningApp ? nil : run.progress?.message, filter: filter)
+  }
+
+  @MainActor private static func blocks(
+    of log: ActionLog, id: String, name: String?, systemImage: String, status finalStatus: WorkStatus,
+    progress: String?, filter: String
+  ) -> [Run] {
+    _ = log.revision
     var blocks: [(command: String?, lines: [String])] = []
-    for entry in actions.log.entries {
+    for entry in log.entries {
       if entry.kind == .command {
         blocks.append((String(entry.text.dropFirst(entry.text.hasPrefix("$ ") ? 2 : 0)), []))
         continue
@@ -42,6 +71,8 @@ public enum ActionRuns {
       if !filter.isEmpty, !entry.text.localizedCaseInsensitiveContains(filter) { continue }
       blocks[blocks.count - 1].lines.append(entry.text)
     }
+    // A run that hasn't printed yet (waiting for another's build) still shows; the notes only when they say something.
+    if blocks.isEmpty, name != nil { blocks.append((nil, [])) }
     return blocks.enumerated().map { index, block in
       let isLast = index == blocks.count - 1
       let status = isLast ? finalStatus : .done
@@ -53,22 +84,22 @@ public enum ActionRuns {
       }
       let warnings = block.lines.filter { $0.contains("warning:") }.count
       return Run(
-        id: "\(index)", name: kind?.title, command: block.command ?? kind?.title ?? "Output",
-        systemImage: kind?.symbolName ?? "terminal", status: status,
-        progress: isLast && status.isWorking ? actions.progress?.message : nil,
+        id: "\(id)-\(index)", name: name, command: block.command ?? name ?? "Output",
+        systemImage: systemImage, status: status,
+        progress: isLast && status.isWorking ? progress : nil,
         warnings: warnings == 0 ? nil : warnings == 1 ? "1 warning" : "\(warnings) warnings",
         output: lines.joined(separator: "\n"))
     }
   }
 
-  /// The action the log belongs to and how its last command stands.
-  @MainActor private static func state(of actions: ActionController) -> (ActionKind?, WorkStatus) {
-    switch actions.state {
-    case .idle: return (nil, .done)
-    case .running(let kind): return (kind, .working(progress: actions.progress?.fraction))
-    case .succeeded(let kind, _): return (kind, .done)
-    case .failed(let kind, _, let message): return (kind, .failed(message))
-    case .stopped(let kind, _): return (kind, .paused())
+  /// How a run stands, for its live icon.
+  @MainActor public static func status(of run: ActionRun) -> WorkStatus {
+    switch run.phase {
+    case .waiting: return .paused()
+    case .running: return .working(progress: run.isRunningApp ? nil : run.progress?.fraction)
+    case .succeeded: return .done
+    case .failed(let message): return .failed(message)
+    case .stopped: return .paused()
     }
   }
 }

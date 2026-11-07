@@ -17,6 +17,8 @@ struct EditorArea: View {
   private let settings = EditorConfigurationReader()
   private let serviceSettings = ServiceSettingsReader()
   @State private var safeFrame: CGRect?
+  /// Where the minimap and the caret's line are, for the process stack.
+  @State private var overlayGeometry: EditorOverlayGeometry?
 
   var body: some View {
     Group {
@@ -51,8 +53,16 @@ struct EditorArea: View {
         ) { selection in
           // The status bar shows the project window's editor.
           if detachedDocument == nil { model.selection = selection }
+        } onOverlayGeometryChange: { geometry in
+          if detachedDocument == nil { overlayGeometry = geometry }
         }
         .ignoresSafeArea(.container, edges: .vertical)
+        .overlay {
+          // The project's builds, tests and runs float on the project window's editor.
+          if detachedDocument == nil {
+            ProcessStack(geometry: overlayGeometry, safeTop: safeFrame?.minY)
+          }
+        }
       }
 
     case .binary:

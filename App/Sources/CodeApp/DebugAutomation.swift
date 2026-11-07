@@ -76,6 +76,43 @@
       case "perform":
         if let kind = ActionKind(rawValue: argument) { model.perform(kind) }
       case "stop": services.actions.stop()
+      case "stack":
+        // stack:hover:<n>|open:<n>|off|esc|click:<x>:<y>, the editor’s process stack (circles from the top, from 0).
+        let parts = argument.split(separator: ":")
+        let index = parts.count > 1 ? Int(parts[1]) ?? 0 : 0
+        switch parts.first {
+        case "esc":
+          // A real Esc key event through the window (a card open on the stack closes).
+          guard let window = document?.textView?.window else { break }
+          for type in [NSEvent.EventType.keyDown, .keyUp] {
+            if let event = NSEvent.keyEvent(
+              with: type, location: .zero, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+              windowNumber: window.windowNumber, context: nil, characters: "\u{1b}",
+              charactersIgnoringModifiers: "\u{1b}", isARepeat: false, keyCode: 53)
+            {
+              window.sendEvent(event)
+            }
+          }
+        case "click":
+          // stack:click:<x>:<y>, a real click at a point of the window (top-left origin), through the window.
+          guard let window = document?.textView?.window, parts.count > 2, let x = Double(parts[1]),
+            let y = Double(parts[2]), let height = window.contentView?.bounds.height
+          else { break }
+          // Key, so the click isn't taken as the one that brings the window forward.
+          window.makeKey()
+          for type in [NSEvent.EventType.leftMouseDown, .leftMouseUp] {
+            if let event = NSEvent.mouseEvent(
+              with: type, location: NSPoint(x: x, y: height - y), modifierFlags: [],
+              timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil,
+              eventNumber: 0, clickCount: 1, pressure: 1)
+            {
+              window.sendEvent(event)
+            }
+          }
+        case "hover": model.processStackDebug = ProcessStackDebug(action: .hover(index))
+        case "open": model.processStackDebug = ProcessStackDebug(action: .open(index))
+        default: model.processStackDebug = ProcessStackDebug(action: .off)
+        }
       case "back": services.goBack()
       case "forward": services.goForward()
       case "tab":
@@ -308,6 +345,14 @@
           "quick open: "
             + index.search(model.quickOpenQuery, includingHidden: model.quickOpenIncludesHiddenFiles, limit: 10)
             .map { $0.path + ($0.isHidden ? " (hidden)" : "") }.joined(separator: ", "))
+        lines.append(
+          "runs: "
+            + actions.runs.map {
+              "\($0.title) \($0.phase)\($0.isDismissed ? " dismissed" : "") step \($0.stepTitle ?? "-") "
+                + "\($0.progress?.message ?? "-") tests \($0.testsRun)"
+            }.joined(separator: "; "))
+        lines.append(
+          "responder: \(document?.textView?.window?.firstResponder.map { String(describing: type(of: $0)) } ?? "-")")
         lines.append("log tail:")
         lines += actions.log.entries.suffix(15).map { "  " + $0.text }
         try? lines.joined(separator: "\n").write(

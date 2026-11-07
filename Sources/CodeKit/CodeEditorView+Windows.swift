@@ -268,14 +268,18 @@
     public var features: EditorFeatures
     public var unobscuredFrame: CGRect?
     public var onSelectionChange: @MainActor (EditorSelection) -> Void
+    /// Not told yet here: the stack over the editor stays at its place.
+    public var onOverlayGeometryChange: (@MainActor (EditorOverlayGeometry) -> Void)?
     @Environment(\.colorScheme) private var colorScheme
 
     public init(
       document: TextDocument, revision: Int, configuration: EditorConfiguration = .init(),
       services: ProjectServices? = nil, marks: Int = 0, features: EditorFeatures = .init(),
       unobscuredFrame: CGRect? = nil,
-      onSelectionChange: @escaping @MainActor (EditorSelection) -> Void = { _ in }
+      onSelectionChange: @escaping @MainActor (EditorSelection) -> Void = { _ in },
+      onOverlayGeometryChange: (@MainActor (EditorOverlayGeometry) -> Void)? = nil
     ) {
+      self.onOverlayGeometryChange = onOverlayGeometryChange
       self.document = document
       self.revision = revision
       self.configuration = configuration
@@ -383,6 +387,9 @@
     public func goTo(line: Int, column: Int = 1, length: Int = 0) {
       textView?.goTo(line: line, column: column, length: length)
     }
+
+    /// Gives this document's editor the keyboard (not yet here: the editor keeps its own focus).
+    public func focusEditor() {}
 
     /// This document's editor, once it has been shown.
     public var textView: (any CodeTextEditing)? { editorState as? PortableDocumentEditor }

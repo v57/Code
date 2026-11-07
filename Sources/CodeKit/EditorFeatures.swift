@@ -19,3 +19,13 @@ public struct EditorFeatures: Equatable, Sendable {
     self.suggestsCompletions = suggestsCompletions
   }
 }
+
+/// Where things floating over the editor keep clear of: the minimap (or the scroller) at its trailing edge, and the
+/// caret's line.
+public struct EditorOverlayGeometry: Equatable, Sendable {
+  /// The width the minimap takes at the editor's trailing edge, or the scroller's when there's no minimap.
+  public var trailingInset: CGFloat
+  /// The text of the caret's line, in its window's content space (origin at the top left: SwiftUI's global space);
+  /// nil when it's off screen, empty, or text is selected.
+  public var caretLine: CGRect?
+}

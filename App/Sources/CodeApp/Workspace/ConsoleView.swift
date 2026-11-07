@@ -3,9 +3,10 @@ import CodeKit
 import ComponentKit
 import SwiftUI
 
-/// The console, on the panel ground: the debug tools while debugging, and the last action's output as the kit's run
-/// blocks, one per command it ran (the build, the install, the program), each with its live icon, exit chip and output;
-/// a passed command folds to its header. LLDB's prompt sits under them while debugging. It floats under the toolbar's
+/// The console, on the panel ground: the debug tools while debugging, and the runs' output (every run still going and
+/// the last ones finished, in the order they started) as the kit's run blocks, one per command a run ran (the build,
+/// the install, the program), each with its live icon, exit chip and output; a passed command folds to its header. A
+/// process card's Open in Console scrolls it to that run (`WindowModel.consoleFocus`). LLDB's prompt sits under them while debugging. It floats under the toolbar's
 /// title (`ConsoleOverlay`), or fills a window of its own (`ConsoleWindow`).
 struct ConsoleView: View {
   enum Placement { case overlay, window }
@@ -27,18 +28,23 @@ struct ConsoleView: View {
           systemImage: "terminal", title: "No Output",
           message: "Run, build or test a scheme to see what it prints here.")
       } else {
-        ScrollView {
-          RunBlocks(selection: $selectedRun) {
-            ForEach(runs) { run in
-              RunBlock(
-                run.name, command: run.command, id: run.id, systemImage: run.systemImage, status: run.status,
-                progress: run.progress, warnings: run.warnings, output: run.output,
-                stop: run.status.isWorking ? { services.actions.stop() } : nil)
+        ScrollViewReader { proxy in
+          ScrollView {
+            RunBlocks(selection: $selectedRun) {
+              ForEach(runs) { run in
+                RunBlock(
+                  run.name, command: run.command, id: run.id, systemImage: run.systemImage, status: run.status,
+                  progress: run.progress, warnings: run.warnings, output: run.output,
+                  stop: run.status.isWorking ? { stop(run.runID) } : nil)
+                .id(run.id)
+              }
             }
+            .padding(KitMetrics.gutter)
           }
-          .padding(KitMetrics.gutter)
+          .defaultScrollAnchor(.bottom)
+          .onAppear { scroll(to: model.consoleFocus, in: runs, proxy: proxy) }
+          .onChange(of: model.consoleFocus) { _, focus in scroll(to: focus, in: runs, proxy: proxy) }
         }
-        .defaultScrollAnchor(.bottom)
       }
       if let debugger = services.debugger {
         HStack(spacing: 6) {
@@ -58,6 +64,21 @@ struct ConsoleView: View {
     }
   }
 
+  private func stop(_ id: ActionRun.ID?) {
+    let actions = model.services.actions
+    if let run = actions.runs.first(where: { $0.id == id }) { actions.stop(run) }
+  }
+
+  /// Selects the asked-for run's last block and scrolls to it.
+  private func scroll(to focus: ConsoleFocus?, in runs: [ActionRuns.Run], proxy: ScrollViewProxy) {
+    guard let focus, let block = runs.last(where: { $0.runID == focus.run }) else { return }
+    selectedRun = block.id
+    // After the console has laid out its blocks.
+    Task { @MainActor in
+      withKitAnimation { proxy.scrollTo(block.id, anchor: .top) }
+    }
+  }
+
   private var bar: some View {
     let services = model.services
     return HStack(spacing: KitMetrics.gutter) {
@@ -68,9 +89,11 @@ struct ConsoleView: View {
       KitSearchField(text: $filter, prompt: "Filter")
         .frame(width: 180)
       ToolGroup(iconOnly: true) {
-        Button("Copy Log", systemImage: "doc.on.doc") { KitPasteboard.copy(services.actions.log.text) }
+        Button("Copy Log", systemImage: "doc.on.doc") {
+          KitPasteboard.copy(services.actions.runs.map(\.log.text).joined(separator: "\n"))
+        }
           .kitHelp("Copy Log")
-        Button("Clear Console", systemImage: "trash") { services.actions.log.clear() }
+        Button("Clear Console", systemImage: "trash") { services.actions.clearFinished() }
           .kitHelp("Clear Console")
         switch placement {
         case .overlay:
