@@ -202,6 +202,39 @@ struct ProjectIconTests {
     #expect(SVGImage(data: Data("<svg></svg>".utf8)) == nil)
   }
 
+  @Test func readsSVGStrokes() throws {
+    // Git's glyph: a branch drawn with a round-capped stroke and dots filled.
+    let svg = try #require(
+      SVGImage(
+        data: Data(
+          """
+          <svg viewBox="0 0 10 10"><g stroke="#fff" stroke-width="2"><path d="M5 2v6" fill="none" stroke-linecap="round"/>
+          <line x1="0" y1="9" x2="10" y2="9" stroke-dasharray="2"/><circle cx="2" cy="2" r="1" stroke="none"/></g></svg>
+          """.utf8)))
+    #expect(svg.shapes.count == 3)
+    let branch = svg.shapes[0].path
+    // The caps reach a half width past each end.
+    #expect(branch.boundingBoxOfPath.insetBy(dx: -0.01, dy: -0.01).contains(CGRect(x: 4, y: 1, width: 2, height: 8)))
+    #expect(branch.contains(CGPoint(x: 5, y: 1.5)) && !branch.contains(CGPoint(x: 6.5, y: 5)))
+    let dashes = svg.shapes[1].path
+    #expect(dashes.contains(CGPoint(x: 1, y: 9)) && !dashes.contains(CGPoint(x: 3, y: 9)))
+    #expect(svg.shapes[2].path.boundingBoxOfPath == CGRect(x: 1, y: 1, width: 2, height: 2))
+  }
+
+  @Test func drawsStrokedSVGLayers() throws {
+    let svg = ##"<svg viewBox="0 0 10 10"><path d="M5 0v10" fill="none" stroke="#fff" stroke-width="4"/></svg>"##
+    let json = """
+      {"fill":{"solid":"srgb:1,0,0,1"},"groups":[{"layers":[{"image-name":"bar.svg",
+        "fill":{"solid":"srgb:0,0,1,1"},"position":{"scale":102.4}}]}]}
+      """
+    let root = try folder(
+      iconBundle("AppIcon.icon", json: json, assets: ["bar.svg": Data(svg.utf8)]))
+    let data = try #require(
+      ProjectIcon.thumbnail(of: root.appendingPathComponent("AppIcon.icon/icon.json"), pixels: 16))
+    #expect(isClose(try pixel(data, 8, 2), [0, 0, 255, 255]))
+    #expect(isClose(try pixel(data, 2, 8), [255, 0, 0, 255]))
+  }
+
   @Test func readsIconComposerColors() throws {
     let p3 = try #require(IconFill.color("display-p3:0.95884,0.89502,0.29815,1.00000"))
     #expect(p3.numberOfComponents == 4 && p3.colorSpace?.name == CGColorSpace.displayP3)

@@ -7,9 +7,10 @@ import Foundation
 #if canImport(CoreGraphics)
   import CoreGraphics
 
-  /// The filled shapes of a simple SVG, as Icon Composer layers and SF Symbol exports are: paths, rectangles,
-  /// circles, ellipses and polygons with their fills, opacities and transforms, nested in groups. Strokes,
-  /// gradients, masks, text and references are left out.
+  /// The shapes of a simple SVG, as Icon Composer layers and SF Symbol exports are: paths, rectangles, circles,
+  /// ellipses, lines, polylines and polygons with their fills, strokes (widths, caps, joins and dashes), opacities
+  /// and transforms, nested in groups. A stroke is kept as the filled outline it draws. Gradients, masks, text and
+  /// references are left out.
   struct SVGImage {
     struct Shape {
       var path: CGPath
@@ -347,7 +348,7 @@ import Foundation
     }
   }
 
-  /// Collects an SVG's filled shapes, with the fill, opacity and transform each inherits from its groups.
+  /// Collects an SVG's shapes, with the fill, stroke, opacity and transform each inherits from its groups.
   final class SVGReader: NSObject, XMLParserDelegate {
     struct Style {
       var color: CGColor? = CGColor(
@@ -355,6 +356,14 @@ import Foundation
       var opacity: CGFloat = 1
       var fillOpacity: CGFloat = 1
       var evenOdd = false
+      var stroke: CGColor?
+      var strokeOpacity: CGFloat = 1
+      var strokeWidth: CGFloat = 1
+      var lineCap = CGLineCap.butt
+      var lineJoin = CGLineJoin.miter
+      var miterLimit: CGFloat = 4
+      var dashes: [CGFloat] = []
+      var dashOffset: CGFloat = 0
       var transform = CGAffineTransform.identity
     }
 
@@ -380,14 +389,29 @@ import Foundation
       if element == "svg", root == nil { root = attributes }
       let style = self.style(attributes, inheriting: styles.last ?? Style())
       styles.append(style)
-      guard let path = shape(element, attributes), let color = style.color else { return }
-      let alpha = style.opacity * style.fillOpacity
+      guard let path = shape(element, attributes) else { return }
+      // The fill, then the stroke over it.
+      if let color = style.color, element != "line" {
+        add(path, color: color, alpha: style.opacity * style.fillOpacity, evenOdd: style.evenOdd, style)
+      }
+      if let color = style.stroke, style.strokeWidth > 0 {
+        // Dashes that add up to nothing are a solid line.
+        let dashed =
+          style.dashes.reduce(0, +) > 0
+          ? path.copy(dashingWithPhase: style.dashOffset, lengths: style.dashes) : path
+        let outline = dashed.copy(
+          strokingWithWidth: style.strokeWidth, lineCap: style.lineCap, lineJoin: style.lineJoin,
+          miterLimit: style.miterLimit)
+        add(outline, color: color, alpha: style.opacity * style.strokeOpacity, evenOdd: false, style)
+      }
+    }
+
+    func add(_ path: CGPath, color: CGColor, alpha: CGFloat, evenOdd: Bool, _ style: Style) {
       var transform = style.transform
       guard alpha > 0, let transformed = path.copy(using: &transform) else { return }
       shapes.append(
         .init(
-          path: transformed, color: color.copy(alpha: color.alpha * alpha) ?? color,
-          evenOdd: style.evenOdd))
+          path: transformed, color: color.copy(alpha: color.alpha * alpha) ?? color, evenOdd: evenOdd))
     }
 
     func parser(
@@ -418,6 +442,35 @@ import Foundation
         style.fillOpacity = opacity
       }
       if let rule = properties["fill-rule"] { style.evenOdd = rule == "evenodd" }
+      if let stroke = properties["stroke"], let color = SVGImage.color(stroke) { style.stroke = color }
+      if let opacity = properties["stroke-opacity"].flatMap(SVGImage.length) {
+        style.strokeOpacity = opacity
+      }
+      if let width = properties["stroke-width"].flatMap(SVGImage.length) { style.strokeWidth = width }
+      switch properties["stroke-linecap"] {
+      case "round": style.lineCap = .round
+      case "square": style.lineCap = .square
+      case "butt": style.lineCap = .butt
+      default: break
+      }
+      switch properties["stroke-linejoin"] {
+      case "round": style.lineJoin = .round
+      case "bevel": style.lineJoin = .bevel
+      case "miter", "miter-clip", "arcs": style.lineJoin = .miter
+      default: break
+      }
+      if let limit = properties["stroke-miterlimit"].flatMap(SVGImage.length), limit >= 1 {
+        style.miterLimit = limit
+      }
+      if let dashes = properties["stroke-dasharray"] {
+        let lengths = SVGImage.numbers(dashes)
+        // An odd list repeats to make an even one; a negative length voids it.
+        style.dashes =
+          lengths.contains { $0 < 0 } ? [] : lengths.count % 2 == 1 ? lengths + lengths : lengths
+      }
+      if let offset = properties["stroke-dashoffset"].flatMap(SVGImage.length) {
+        style.dashOffset = offset
+      }
       if let transform = attributes["transform"] {
         style.transform = SVGImage.transform(transform).concatenating(parent.transform)
       }
@@ -451,6 +504,11 @@ import Foundation
           ellipseIn: CGRect(
             x: value("cx") - rx, y: value("cy") - ry, width: 2 * rx, height: 2 * ry), transform: nil
         )
+      case "line":
+        let path = CGMutablePath()
+        path.move(to: CGPoint(x: value("x1"), y: value("y1")))
+        path.addLine(to: CGPoint(x: value("x2"), y: value("y2")))
+        return path
       case "polygon", "polyline":
         let numbers = SVGImage.numbers(attributes["points"] ?? "")
         guard numbers.count >= 4 else { return nil }
@@ -459,7 +517,8 @@ import Foundation
           between: stride(from: 0, to: numbers.count - 1, by: 2).map {
             CGPoint(x: numbers[$0], y: numbers[$0 + 1])
           })
-        path.closeSubpath()
+        // A polyline is open: its fill closes it, its stroke doesn't.
+        if element == "polygon" { path.closeSubpath() }
         return path
       default: return nil
       }
