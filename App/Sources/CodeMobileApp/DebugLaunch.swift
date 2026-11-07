@@ -15,6 +15,8 @@
   /// - `CODE_DEBUG_PERFORM`: `build`, `test` or `clean`, run once the schemes are found.
   /// - `CODE_DEBUG_SIGNING`: `unsigned`, `loginKeychain` or `desktopSession`, how Xcode builds sign on every device
   ///   for this launch (the vault's choice stays as it is).
+  /// - `CODE_DEBUG_PRESETS`: presets as `.dev/actions.json` holds them (`{"presets": [{"name", "action", …}]}`),
+  ///   shown under the debug projects as the vault's would be (none are written to the vault).
   /// - `CODE_DEBUG_RUN`: a shell command run once on the project's device over this device's SSH login (as an
   ///   action's command runs), its output and status in `Documents/code-debug-run.txt`.
   ///
@@ -54,6 +56,16 @@
         return RemoteProject(id: "debug-" + remote.name, name: remote.name, targets: [target] + others)
       }
     }
+
+    /// `CODE_DEBUG_PRESETS`: the presets of a debug project, with their ids.
+    static func presets(of projectID: String) -> [(String, RunPreset)] {
+      guard projectID.hasPrefix("debug-") else { return [] }
+      return debugPresets.enumerated().map { ("debug-preset-\($0)", $1) }
+    }
+
+    private static let debugPresets: [RunPreset] = ProcessInfo.processInfo.environment["CODE_DEBUG_PRESETS"].flatMap {
+      try? RunPresetFile.decode(Data($0.utf8))
+    } ?? []
 
     /// `CODE_DEBUG_SIGNING`: how Xcode builds sign for this launch.
     static let signing = ProcessInfo.processInfo.environment["CODE_DEBUG_SIGNING"].flatMap(RemoteSigning.init(rawValue:))

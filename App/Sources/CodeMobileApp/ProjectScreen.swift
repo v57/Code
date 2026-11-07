@@ -428,8 +428,9 @@ struct PresetBar: View {
   let controller: ActionController
   let vault: Vault
 
-  var body: some View {
-    let presets = vault.presets(of: projectID).compactMap { record -> (String, RunPreset)? in
+  /// The vault's presets for the project, with their record ids.
+  private var presets: [(String, RunPreset)] {
+    var presets = vault.presets(of: projectID).compactMap { record -> (String, RunPreset)? in
       guard let action = ActionKind(rawValue: record.action) else { return nil }
       return (
         record.id,
@@ -438,6 +439,14 @@ struct PresetBar: View {
           target: record.target)
       )
     }
+    #if DEBUG
+      presets += DebugLaunch.presets(of: projectID)
+    #endif
+    return presets
+  }
+
+  var body: some View {
+    let presets = presets
     if !presets.isEmpty {
       KitFlowLayout(spacing: 6) {
         ForEach(presets, id: \.0) { id, preset in
@@ -452,7 +461,9 @@ struct PresetBar: View {
               isAvailable: reason == nil)
           }
           .buttonStyle(KitRowButtonStyle(cornerRadius: 9))
-          .disabled(reason != nil || controller.isRunning)
+          // While one runs the others wait (as the bar's actions do); the running one stays lit, and a tap starts it
+          // over, as on the Mac.
+          .disabled(reason != nil || (controller.isRunning && !isRunning))
           .kitHelp(preset.name, meta: reason ?? preset.parts, systemImage: RunPresetCard.symbol(preset.action))
         }
       }

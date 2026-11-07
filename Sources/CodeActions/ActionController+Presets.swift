@@ -56,15 +56,26 @@ extension ActionController {
   }
 
   /// The build source a preset names: this computer for "local", else the machine or runtime of that name.
+  /// On iPhone and iPad the machines are the project's devices (its remote destinations), each building as this
+  /// side's own source does.
   public func source(named from: String) -> BuildSource? {
-    from == RunPreset.local || from.isEmpty ? .local : buildSources.first { $0.name == from }
+    if from == RunPreset.local || from.isEmpty { return .local }
+    #if os(iOS)
+      return destinations.contains { $0.kind == .remote && $0.name == from } ? .local : nil
+    #else
+      return buildSources.first { $0.name == from }
+    #endif
   }
 
   /// Whether a preset can run now, from what is known without asking anyone: its machine, its scheme (when its project
   /// is the one the toolbar lists), its device (`refreshPresetDestinations`).
   public func state(of preset: RunPreset) -> RunPresetState {
     guard let source = source(named: preset.from) else {
-      return didReceiveMachines ? .unavailable("\(preset.from) isn’t one of your machines now.") : .ready
+      #if os(iOS)
+        return .unavailable("\(root.lastPathComponent) isn’t on \(preset.from), or it can’t be reached from here.")
+      #else
+        return didReceiveMachines ? .unavailable("\(preset.from) isn’t one of your machines now.") : .ready
+      #endif
     }
     if case .unavailable(let reason)? = source.isLocal ? nil : buildSourceStatuses[source.id] {
       return .unavailable(reason)
