@@ -183,13 +183,13 @@ enum MachineProbe {
       "for t in \(tools.map(\.tool).joined(separator: " ")); do command -v \"$t\" >/dev/null 2>&1 && echo \"\(marker)tool $t\"; done",
     ]
     if let find {
-      let name = shellQuote(find.name)
+      let name = posixShellQuote(find.name)
       var places = ["\"$HOME\"/\(name)"]
       for parent in ["Developer", "Projects", "src", "code", "workspace"] {
         places += ["\"$HOME\"/\(parent)/\(name)", "\"$HOME\"/\(parent)/*/\(name)"]
       }
-      if let relative = find.relativePath { places.insert("\"$HOME\"/\(shellQuote(relative))", at: 0) }
-      lines.append("origin=\(shellQuote(find.origin ?? ""))")
+      if let relative = find.relativePath { places.insert("\"$HOME\"/\(posixShellQuote(relative))", at: 0) }
+      lines.append("origin=\(posixShellQuote(find.origin ?? ""))")
       lines.append(
         """
         for d in \(places.joined(separator: " ")); do
@@ -203,7 +203,7 @@ enum MachineProbe {
         """)
     }
     lines.append("exit 0")
-    return "sh -c " + shellQuote(lines.joined(separator: "\n"))
+    return "sh -c " + posixShellQuote(lines.joined(separator: "\n"))
   }
 
   static func parse(_ lines: [String]) -> Answer {

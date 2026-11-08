@@ -172,7 +172,7 @@ public enum ProjectScanner {
   }
 }
 
-/// Shell quoting for paths and names put into commands.
+/// Shell quoting for paths and names put into commands run on this computer (cmd's rules on Windows).
 public func shellQuote(_ text: String) -> String {
   #if os(Windows)
     // cmd: double quotes; programs read \" as a quote inside them (the C runtime's rule).
@@ -180,10 +180,21 @@ public func shellQuote(_ text: String) -> String {
     if !text.isEmpty, text.unicodeScalars.allSatisfy(safe.contains) { return text }
     return "\"" + text.replacingOccurrences(of: "\"", with: "\\\"") + "\""
   #else
-    let safe = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_./:=@%+,"))
-    if !text.isEmpty, text.unicodeScalars.allSatisfy(safe.contains) { return text }
-    return "'" + text.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    posixShellQuote(text)
   #endif
+}
+
+/// POSIX shell quoting, whatever this computer runs: for everything sent to another machine's shell (SSH, a
+/// container), where cmd's double quotes would leave `$()` and backticks to run there (security audit L9).
+public func posixShellQuote(_ text: String) -> String {
+  if isPlainShellWord(text) { return text }
+  return "'" + text.replacingOccurrences(of: "'", with: "'\\''") + "'"
+}
+
+/// Whether the text means the same unquoted, in single quotes and in double quotes.
+func isPlainShellWord(_ text: String) -> Bool {
+  let safe = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_./:=@%+,"))
+  return !text.isEmpty && text.unicodeScalars.allSatisfy(safe.contains)
 }
 
 /// The first match of `pattern`'s capture groups in `text`, for each match.
