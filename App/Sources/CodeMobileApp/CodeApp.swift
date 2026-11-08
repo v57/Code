@@ -204,9 +204,10 @@ struct ProjectsSidebar: View {
         StatusDot(hue: deviceCount > 0 ? .green : .gray)
         Text(deviceCount == 0 ? "No devices" : deviceCount == 1 ? "1 device" : "\(deviceCount) devices")
         Spacer(minLength: 0)
+        // The kit's icon button: a kit button style sets its own label style, so `.labelStyle(.iconOnly)` around
+        // `.kitPlain` still showed the title ("Priva…").
         Button("Privacy", systemImage: "hand.raised") { showsPrivacy = true }
-          .labelStyle(.iconOnly)
-          .buttonStyle(.kitPlain)
+          .buttonStyle(.kitIcon)
       }
     }
     .kitSheet(isPresented: $showsPrivacy) {
