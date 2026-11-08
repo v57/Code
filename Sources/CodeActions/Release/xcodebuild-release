@@ -15,12 +15,22 @@
 # apps' release scripts all archive through this script, so this folder is the one copy of these tools.
 #
 #   Usage: xcodebuild-release <xcodebuild arguments>     e.g. xcodebuild-release -project App.xcodeproj -scheme App archive
-#   RELEASE_TOOLS_WORK   where the actool copy goes (default: $TMPDIR/xcodebuild-release-<uid>)
+#   RELEASE_TOOLS_WORK   where the actool copy goes (default: $TMPDIR/xcodebuild-release-<uid>; without TMPDIR a
+#                        new private folder from mktemp, removed afterwards)
 here=${0:A:h}
 
 # Xcode reads a tool's version under its file name (com.apple.actool.version), so the copy is named actool, and it
-# builds its helper beside itself, so it goes in a folder of ours (this one may be inside a signed app).
-work=${RELEASE_TOOLS_WORK:-${TMPDIR:-/tmp}/xcodebuild-release-$UID}
+# builds its helper beside itself, so it goes in a folder of ours (this one may be inside a signed app). Never a
+# fixed name in the shared /tmp: another user could make that folder first and put their own actool in it (security
+# audit L12). macOS's TMPDIR is the user's own folder.
+if [[ -n $RELEASE_TOOLS_WORK ]]; then
+  work=$RELEASE_TOOLS_WORK
+elif [[ -n $TMPDIR ]]; then
+  work=${TMPDIR%/}/xcodebuild-release-$UID
+else
+  work=$(mktemp -d -t xcodebuild-release) || exit
+  trap 'rm -rf $work' EXIT
+fi
 mkdir -p $work/icon-slim && install -C -m 755 $here/actool-icon-slim $work/icon-slim/actool || exit
 
 xcodebuild "$@" SWIFT_LTO=YES ALTERNATE_LINKER_PATH=$here/ld-archive-prelink \
