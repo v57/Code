@@ -139,7 +139,8 @@ struct ProjectsWelcome: View {
       ForEach(projects) { project in
         RecentItem(
           project.name, subtitle: project.targets.map(\.name).joined(separator: ", "),
-          imageData: project.icon
+          // Its own id: the devices are the same for most projects, and the list opens by id.
+          imageData: project.icon, id: project.id
         ) { selection = project.id }
       }
     }
