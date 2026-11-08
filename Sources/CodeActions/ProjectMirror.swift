@@ -11,19 +11,28 @@ public enum ProjectMirror {
   /// The most files copied, so a huge folder can't stall opening the project.
   static let countLimit = 2000
 
-  /// Copies `directory` on the server into a fresh folder for `projectID` in the caches, and returns it.
-  public static func fetch(_ directory: String, projectID: String, client: SFTPClient) async throws -> URL {
+  /// A copy: its folder here, and what in it the server wouldn't let this user read (paths there), copied empty.
+  public struct Copy: Sendable {
+    public var root: URL
+    public var unreadable: [String]
+  }
+
+  /// Copies `directory` on the server into a fresh folder for `projectID` in the caches.
+  public static func fetch(_ directory: String, projectID: String, client: SFTPClient) async throws -> Copy {
     let caches = try FileManager.default.url(for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
     let root = caches.appendingPathComponent("Projects", isDirectory: true)
       .appendingPathComponent(projectID, isDirectory: true)
       .appendingPathComponent((directory as NSString).lastPathComponent, isDirectory: true)
-    try await fetch(directory, into: root, client: client)
-    return root
+    let unreadable = try await fetch(directory, into: root, client: client)
+    return Copy(root: root, unreadable: unreadable)
   }
 
   /// Copies `directory` on the server into `root`, replacing what's there only once the copy has succeeded, so losing
-  /// the connection halfway keeps the last one.
-  public static func fetch(_ directory: String, into root: URL, client: SFTPClient) async throws {
+  /// the connection halfway keeps the last one. A folder or file inside that this user can't read is skipped (an empty
+  /// folder or file in the copy) and returned, so one locked folder doesn't keep the project from opening; the
+  /// project's own folder must be readable.
+  @discardableResult
+  public static func fetch(_ directory: String, into root: URL, client: SFTPClient) async throws -> [String] {
     let parent = root.deletingLastPathComponent()
     let fresh = parent.appendingPathComponent(".\(root.lastPathComponent)-\(UUID().uuidString)", isDirectory: true)
     try FileManager.default.createDirectory(at: fresh, withIntermediateDirectories: true)
@@ -32,33 +41,59 @@ public enum ProjectMirror {
     try await copier.folder(directory, into: fresh, level: 0)
     try? FileManager.default.removeItem(at: root)
     try FileManager.default.moveItem(at: fresh, to: root)
+    return copier.unreadable
   }
 
   private struct Copier {
     let client: SFTPClient
     var count = 0
+    /// What the server refused to list or read, below the project's folder.
+    var unreadable: [String] = []
 
     init(client: SFTPClient) { self.client = client }
 
     /// A folder as the scanner sees it: every entry, its files' contents, and the folders it searches next.
     mutating func folder(_ path: String, into local: URL, level: Int) async throws {
-      for entry in try await client.list(path) where !entry.name.hasPrefix(".") {
+      guard let entries = try await list(path, isRoot: level == 0) else { return }
+      for entry in entries where !entry.name.hasPrefix(".") {
         let target = local.appendingPathComponent(entry.name)
         if entry.isDirectory {
           try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
           if entry.name.hasSuffix(".xcodeproj") || entry.name.hasSuffix(".xcworkspace") {
-            try await xcodeContainer(entry.path, into: target)
+            do {
+              try await xcodeContainer(entry.path, into: target)
+            } catch let error as SFTPError where Self.isUnreadable(error) {
+              unreadable.append(entry.path)
+            }
           } else if level < 2, Self.searched(entry.name) {
             try await folder(entry.path, into: target, level: level + 1)
           } else if entry.name == "src" {
             // Cargo's detector looks for src/main.rs; the scanner goes no further.
-            for file in try await client.list(entry.path) where !file.isDirectory {
+            for file in try await list(entry.path) ?? [] where !file.isDirectory {
               try await self.file(file.path, size: file.size, into: target.appendingPathComponent(file.name))
             }
           }
         } else {
           try await file(entry.path, size: entry.size, into: target)
         }
+      }
+    }
+
+    /// A folder's entries, or nil when the server won't list it for this user (or it went away meanwhile); the
+    /// project's own folder throws instead. A broken connection throws too, so a copy is never half made.
+    mutating func list(_ path: String, isRoot: Bool = false) async throws -> [SFTPFileInfo]? {
+      do {
+        return try await client.list(path)
+      } catch let error as SFTPError where !isRoot && Self.isUnreadable(error) {
+        unreadable.append(path)
+        return nil
+      }
+    }
+
+    static func isUnreadable(_ error: SFTPError) -> Bool {
+      switch error {
+      case .permissionDenied, .noSuchFile: true
+      default: false
       }
     }
 
@@ -72,7 +107,7 @@ public enum ProjectMirror {
       }
       var schemeFolders = ["xcshareddata/xcschemes"]
       if try await client.stat(path + "/xcuserdata") != nil {
-        for user in try await client.list(path + "/xcuserdata") where user.isDirectory {
+        for user in try await list(path + "/xcuserdata") ?? [] where user.isDirectory {
           schemeFolders.append("xcuserdata/\(user.name)/xcschemes")
         }
       }
@@ -80,7 +115,7 @@ public enum ProjectMirror {
         guard try await client.stat(path + "/" + folder) != nil else { continue }
         let target = local.appendingPathComponent(folder, isDirectory: true)
         try FileManager.default.createDirectory(at: target, withIntermediateDirectories: true)
-        for scheme in try await client.list(path + "/" + folder) where scheme.name.hasSuffix(".xcscheme") {
+        for scheme in try await list(path + "/" + folder) ?? [] where scheme.name.hasSuffix(".xcscheme") {
           try await file(scheme.path, size: scheme.size, into: target.appendingPathComponent(scheme.name))
         }
       }
@@ -92,7 +127,12 @@ public enum ProjectMirror {
         FileManager.default.createFile(atPath: local.path, contents: nil)
         return
       }
-      try await client.read(path).write(to: local)
+      do {
+        try await client.read(path).write(to: local)
+      } catch let error as SFTPError where Self.isUnreadable(error) {
+        unreadable.append(path)
+        FileManager.default.createFile(atPath: local.path, contents: nil)
+      }
     }
 
     /// Whether the scanner looks inside a folder of this name (`ProjectScanner.scan`'s rule).

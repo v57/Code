@@ -17,6 +17,7 @@ struct ProjectScreen: View {
   @State private var showsFiles = false
   /// A file pushed straight from here (Debug: `CODE_DEBUG_SHOW=file:<path>`).
   @State private var shownFile: SFTPFileInfo?
+  @State private var hidesUnreadable = false
   @Environment(\.kitIdiom) private var idiom
 
   enum Pane: Hashable {
@@ -97,8 +98,22 @@ struct ProjectScreen: View {
     }
   #endif
 
+  /// The folders and files the device wouldn't let Code read: skipped, so the project opened without them.
+  private var unreadableBanner: some View {
+    let paths = session.unreadable.map { session.relativePath(of: $0) }
+    return Banner(
+      paths.count == 1
+        ? String(localized: "Couldn’t read \(paths[0])") : String(localized: "Couldn’t read \(paths.count) items"),
+      message: String(
+        localized: "\(paths.joined(separator: ", ")) on \(session.source?.name ?? project.name) can’t be read by this login, so Code skipped it. Schemes in it aren’t listed."
+      ),
+      systemImage: "lock", hue: .orange, onDismiss: { hidesUnreadable = true }
+    ) {}
+  }
+
   @ViewBuilder private func content(_ controller: ActionController) -> some View {
     VStack(alignment: .leading, spacing: 12) {
+      if !session.unreadable.isEmpty, !hidesUnreadable { unreadableBanner }
       if idiom == .phone { SchemeTools(controller: controller, session: session) }
       KitSegmented(
         selection: $pane,

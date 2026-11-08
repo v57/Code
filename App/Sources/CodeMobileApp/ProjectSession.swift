@@ -21,6 +21,8 @@ import VaultKit
   private(set) var controller: ActionController?
   /// The device the copy came from, and the folder there.
   private(set) var source: SSHExecutor.Target?
+  /// What the server wouldn't let this user read in the project (paths there): skipped, so its schemes may be missing.
+  private(set) var unreadable: [String] = []
   @ObservationIgnored private var files: SFTPClient?
 
   init(project: RemoteProject, vault: Vault) {
@@ -36,10 +38,11 @@ import VaultKit
       do {
         let client = try await SFTPClient.connect(server: try login(for: target), timeout: 15)
         phase = .loading(String(localized: "Reading the project on \(target.name)"))
-        let root = try await ProjectMirror.fetch(target.directory, projectID: project.id, client: client)
+        let copy = try await ProjectMirror.fetch(target.directory, projectID: project.id, client: client)
         files = client
         source = target
-        start(root: root, preferring: target)
+        unreadable = copy.unreadable
+        start(root: copy.root, preferring: target)
         return
       } catch {
         failures.append("\(target.name): \(Self.describe(error))")
