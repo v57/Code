@@ -1,3 +1,4 @@
+import CodeFolders
 import Foundation
 
 /// What an Upload to App Store asks before it starts: the build number it carries, which App Store Connect wants higher
@@ -420,7 +421,12 @@ public struct XcodeDetector: ProjectDetector {
   /// builds it) from its scheme files, then the targets Xcode makes schemes for.
   static func schemeNames(_ container: URL, in folder: ProjectFolder) -> [String]? {
     #if !os(iOS)
-      if !folder.isMirror, let listed = Self.list(container).flatMap(Self.parseSchemes), !listed.isEmpty { return listed }
+      // xcodebuild resolves the packages the project names (security audit L10): only in a folder the person trusts.
+      if !folder.isMirror, FolderTrust.isTrusted(container), let listed = Self.list(container).flatMap(Self.parseSchemes),
+        !listed.isEmpty
+      {
+        return listed
+      }
     #endif
     var names: [String] = []
     for entry in folder.entries

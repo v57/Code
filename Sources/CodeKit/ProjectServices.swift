@@ -7,6 +7,7 @@
   import Foundation
   import CodeActions
   import CodeEditor
+  import CodeFolders
   import CodeFormatting
   import CodeLSP
   import CodePretty
@@ -88,6 +89,13 @@
     @ObservationIgnored private var definitionRows: [DefinitionChoices.Row] = []
     public let installer = ToolInstaller()
     public private(set) var formatting = FormattingService()
+    /// Whether the folder's own code may run (`FolderTrust`): language servers other than `code-lsp`, the project's
+    /// formatters, `xcodebuild` reading the project (it resolves packages) and `Package.swift`. Security audit H1, H2,
+    /// L10.
+    public private(set) var isTrusted: Bool
+    /// Whether the window asks "Trust this folder?": trust applies here (Code), the folder isn't trusted, and the
+    /// person hasn't answered for this window yet.
+    public var asksForTrust: Bool
     public var settings: ServiceSettings {
       didSet { if settings != oldValue { applySettings(previous: oldValue) } }
     }
@@ -127,6 +135,8 @@
     public init(workspace: Workspace, settings: ServiceSettings = ServiceSettings()) {
       self.workspace = workspace
       self.settings = settings
+      isTrusted = FolderTrust.isTrusted(workspace.root)
+      asksForTrust = !FolderTrust.isTrusted(workspace.root)
       actions = ActionController(root: workspace.root)
       languageServers = LanguageServerManager(workspace: workspace.root)
       tiers = CodeTiers(root: workspace.root)
@@ -183,6 +193,7 @@
       formatting.disabledIDs = settings.disabledFormatters
       formatting.requiresConfig = settings.formatterRequiresConfig
       formatting.customCommands = settings.formatterCommands
+      formatting.usesProjectCode = isTrusted
       if !settings.usesSwiftModel { tiers.dropSwiftModel() }
       guard let previous, isReady else { return }
       if settings.actionsEnabled && !previous.actionsEnabled { actions.scan() }
@@ -234,6 +245,28 @@
     private func documentClosed(_ document: TextDocument) {
       shown[document.url.standardizedFileURL] = nil
       languageServers.didClose(document.url)
+    }
+
+    /// Trusts the folder ("Trust this folder?"): its language servers start, its formatters apply, and the project is
+    /// read again through xcodebuild and SwiftPM.
+    public func trustFolder() {
+      FolderTrust.trust(workspace.root)
+      asksForTrust = false
+      guard !isTrusted else { return }
+      isTrusted = true
+      languageServers.isTrusted = true
+      formatting.usesProjectCode = true
+      tiers.reloadSwiftModel()
+      if isReady {
+        if settings.actionsEnabled { actions.scan() }
+        reopenShownDocuments()
+        updateCompilationDatabase(force: true)
+      }
+    }
+
+    /// Keeps the folder untrusted for this window (the question's Not Now): `code-lsp` and PATH formatters only.
+    public func declineTrust() {
+      asksForTrust = false
     }
 
     /// Opens the shown files with their servers again (after an install or

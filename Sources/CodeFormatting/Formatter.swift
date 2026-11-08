@@ -150,6 +150,10 @@ public struct FormattingService: Sendable {
   public var requiresConfig: [String: Bool] = [:]
   /// Commands to use instead of looking a formatter up on the PATH.
   public var customCommands: [String: String] = [:]
+  /// Whether the project's own code may run (a trusted folder, CodeFolders' `FolderTrust`): its
+  /// `node_modules/.bin/prettier`, a config that is code (`prettier.config.js`, plugins, `.formatter.exs`). Off, the
+  /// PATH's formatter runs with data-only configs, and the others are left alone (security audit H2).
+  public var usesProjectCode = false
 
   public init(environment: [String: String] = ProcessInfo.processInfo.environment) {
     self.environment = environment
@@ -167,7 +171,7 @@ public struct FormattingService: Sendable {
     {
       return (custom as NSString).expandingTildeInPath
     }
-    if let file, formatter.id == "prettier",
+    if usesProjectCode, let file, formatter.id == "prettier",
       let local = Self.findUpward(["node_modules/.bin/prettier"], from: file)
     {
       return local.path
@@ -184,10 +188,42 @@ public struct FormattingService: Sendable {
     guard let formatter = FormatterCatalog.formatter(for: url, in: formatters),
       !disabledIDs.contains(formatter.id), let executable = executable(for: formatter, file: url)
     else { return nil }
-    if requiresConfigFile(formatter), Self.findUpward(formatter.configFiles, from: url) == nil {
+    let config = Self.findUpward(formatter.configFiles, from: url)
+    if requiresConfigFile(formatter), config == nil {
       return nil
     }
+    if !usesProjectCode, Self.runsProjectCode(formatter, config: config, file: url) { return nil }
     return (formatter, executable)
+  }
+
+  /// Whether the formatter would run code from the project: `mix format` evaluates `.formatter.exs` (and compiles
+  /// plugins), and prettier loads a JavaScript config, a `package.json` one (which may name a module) and plugins.
+  static func runsProjectCode(_ formatter: FormatterConfiguration, config: URL?, file: URL) -> Bool {
+    if formatter.id == "mix-format" { return true }
+    let codeExtensions: Set<String> = ["js", "cjs", "mjs", "ts", "cts", "mts", "exs"]
+    if let config, codeExtensions.contains(config.pathExtension.lowercased()) { return true }
+    guard formatter.id == "prettier" else { return false }
+    // Prettier takes the nearest of several names, package.json's "prettier" key among them: any of them that is
+    // code, on the way up, counts.
+    let home = URL(fileURLWithPath: NSHomeDirectory()).standardizedFileURL.path
+    var folder = file.standardizedFileURL.deletingLastPathComponent()
+    while folder.path.count > 1 {
+      for name in formatter.configFiles + ["package.json", ".prettierrc.ts", ".prettierrc.cts", ".prettierrc.mts"] {
+        let candidate = folder.appendingPathComponent(name)
+        guard FileManager.default.fileExists(atPath: candidate.path) else { continue }
+        if codeExtensions.contains(candidate.pathExtension.lowercased()) { return true }
+        if name == "package.json" {
+          // Its top-level "prettier" key: a config, or the name of a module that is one.
+          let json = (try? Data(contentsOf: candidate)).flatMap { try? JSONSerialization.jsonObject(with: $0) }
+          if (json as? [String: Any])?["prettier"] != nil { return true }
+          continue
+        }
+        if ((try? String(contentsOf: candidate, encoding: .utf8)) ?? "").contains("plugin") { return true }
+      }
+      if folder.path == home { break }
+      folder = folder.deletingLastPathComponent()
+    }
+    return false
   }
 
   /// The formatted text, or nil when no formatter applies.

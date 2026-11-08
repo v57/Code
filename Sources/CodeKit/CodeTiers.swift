@@ -43,6 +43,14 @@
       return swift != nil
     }
 
+    /// Reads the whole project again (the folder became trusted: its manifest may now be evaluated).
+    func reloadSwiftModel() {
+      lock.lock()
+      let swift = swift
+      lock.unlock()
+      swift?.filesChanged([], reload: true)
+    }
+
     /// Files changed on disk: the Swift model reads them again, or the whole project when files came or went or a
     /// manifest changed. The scanner checks its files itself when asked.
     func filesChanged(_ urls: [URL], structural: Bool) {
@@ -167,7 +175,8 @@
 
     private func load() {
       guard !isBroad else { return }
-      model = Model(project: Project(root: root))
+      // A manifest is code: evaluated only in a trusted folder (FolderTrust).
+      model = Model(project: Project(root: root, runsManifest: FolderTrust.isTrusted(URL(fileURLWithPath: root))))
       given = [:]
     }
 

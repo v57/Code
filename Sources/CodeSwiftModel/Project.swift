@@ -55,7 +55,9 @@ public final class Project {
   /// Called when any declaration changed: a table built from them is stale.
   var onShapeChange: () -> Void = {}
 
-  public init(root: String, useSDK: Bool = true, useClang: Bool = true) {
+  /// - Parameter runsManifest: whether `Package.swift` may be evaluated (`dump-package` runs it): only in a folder the
+  ///   person trusts (security audit H1). Without it the targets are the usual folders.
+  public init(root: String, useSDK: Bool = true, useClang: Bool = true, runsManifest: Bool = true) {
     self.root = URL(fileURLWithPath: root).standardizedFileURL.path
     if useSDK {
       let found = Project.findSDKInterfaces()
@@ -64,7 +66,7 @@ public final class Project {
     } else {
       sdkInterfaces = [:]
     }
-    readManifest()
+    if runsManifest { readManifest() }
     loadProject()
   }
 
