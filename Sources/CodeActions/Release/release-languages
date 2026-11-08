@@ -18,8 +18,17 @@ The sources are the list the app passes to KitLanguages.start(sources:). They an
 --sources / --bundled, else $V57_LANGUAGE_SOURCES / $V57_LANGUAGES_BUNDLED, else LANGUAGE_SOURCES / LANGUAGES_BUNDLED
 in the project's release.env. No sources: nothing to do. Bundled default: de fr es ja zh-Hans pt-BR ko it ru.
 
-v57/Localizations comes from $V57_LOCALIZATIONS_URL (a folder or an http(s) URL), else the checkout beside the
-project's repository or beside Code's (../Localizations), else GitHub (raw.githubusercontent.com/v57/Localizations/main).
+Pinned (Ideas/Security/supply-chain.md M5): the files come from one commit of v57/Localizations, LOCALIZATIONS_REF in
+the project's release.env (or $V57_LOCALIZATIONS_REF), a full 40-character commit hash; a release with sources and no
+commit is refused, and a branch name is never taken. The commit is read with `git show <commit>:<path>` from
+$V57_LOCALIZATIONS_URL when that is a checkout (an http(s) URL is a raw-file root, read at <url><commit>/<path>), else
+from the checkout beside the project's repository or beside Code's (../Localizations) when it has that commit, else
+from GitHub (raw.githubusercontent.com/v57/Localizations/<commit>/); never a checkout's working tree or main.
+Info.plist gets the commit (V57LocalizationsCommit) and manifest.json's SHA-256 (V57LocalizationsManifest), so the app
+downloads its other languages from the same commit and checks the manifest it reads there.
+
+Every language code and file name the manifest names for the app's sources must look like one
+(LANGUAGE_PATTERN, FILE_PATTERN): a name such as "../x.strings" fails the release instead of becoming a path.
 """
 import argparse
 import hashlib
@@ -34,7 +43,13 @@ import tempfile
 import urllib.request
 
 DEFAULT_BUNDLED = "de fr es ja zh-Hans pt-BR ko it ru"
-GITHUB = "https://raw.githubusercontent.com/v57/Localizations/main/"
+GITHUB = "https://raw.githubusercontent.com/v57/Localizations/"
+# What the manifest may name: they become paths inside the app's bundle (and, at run time, in Application Support).
+# PlatformLanguages' Manifest checks the same patterns.
+LANGUAGE_PATTERN = re.compile(r"[a-z]{2,3}(-[A-Za-z0-9]{2,8})*")
+FILE_PATTERN = re.compile(r"[A-Za-z0-9_+-]+\.(strings|stringsdict)")
+SOURCE_PATTERN = re.compile(r"[A-Za-z0-9_+-]+")
+COMMIT_PATTERN = re.compile(r"[0-9a-f]{40}")
 HERE = os.path.dirname(os.path.realpath(__file__))
 
 
@@ -83,39 +98,43 @@ def git_main_checkout(directory):
 
 
 class Localizations:
-    """Reads files from a folder or over HTTP."""
+    """Reads files of one commit: from a checkout with `git show`, or from a raw-file root over HTTP."""
 
-    def __init__(self, location):
+    def __init__(self, location, commit):
         self.location = location
+        self.commit = commit
         self.remote = location.startswith(("http://", "https://"))
         if self.remote and not location.endswith("/"):
             self.location += "/"
 
     def read(self, path):
         if self.remote:
-            with urllib.request.urlopen(self.location + path, timeout=60) as response:
+            with urllib.request.urlopen(f"{self.location}{self.commit}/{path}", timeout=60) as response:
                 return response.read()
-        with open(os.path.join(self.location, path), "rb") as handle:
-            return handle.read()
+        result = subprocess.run(["git", "-C", self.location, "show", f"{self.commit}:{path}"], capture_output=True)
+        if result.returncode != 0:
+            raise OSError(result.stderr.decode(errors="replace").strip() or f"no {path} at {self.commit}")
+        return result.stdout
 
     def describe(self):
-        if self.remote:
-            return self.location
-        head = subprocess.run(["git", "-C", self.location, "rev-parse", "--short", "HEAD"],
-                              capture_output=True, text=True).stdout.strip()
-        dirty = subprocess.run(["git", "-C", self.location, "status", "--porcelain", "--", "."],
-                               capture_output=True, text=True).stdout.strip()
-        if not head:
-            return self.location
-        return f"{self.location} at {head}{' with uncommitted changes' if dirty else ''}"
+        return f"{self.location} at {self.commit}"
 
 
-def find_localizations(project_dir):
+def has_commit(checkout, commit):
+    return subprocess.run(["git", "-C", checkout, "cat-file", "-e", f"{commit}^{{commit}}"],
+                          capture_output=True).returncode == 0
+
+
+def find_localizations(project_dir, commit):
     explicit = os.environ.get("V57_LOCALIZATIONS_URL")
     if explicit:
         if explicit.startswith("file://"):
             explicit = urllib.request.url2pathname(explicit[len("file://"):])
-        return Localizations(explicit)
+        if explicit.startswith(("http://", "https://")):
+            return Localizations(explicit, commit)
+        if not has_commit(explicit, commit):
+            fail(f"V57_LOCALIZATIONS_URL ({explicit}) is no checkout of v57/Localizations with commit {commit}")
+        return Localizations(os.path.realpath(explicit), commit)
     candidates = []
     main = git_main_checkout(project_dir)
     if main:
@@ -123,9 +142,26 @@ def find_localizations(project_dir):
     # This script in Code's checkout: Code/Sources/CodeActions/Release.
     candidates.append(os.path.join(HERE, "..", "..", "..", "..", "Localizations"))
     for candidate in candidates:
-        if os.path.isfile(os.path.join(candidate, "manifest.json")):
-            return Localizations(os.path.realpath(candidate))
-    return Localizations(GITHUB)
+        if os.path.isdir(candidate) and has_commit(candidate, commit):
+            return Localizations(os.path.realpath(candidate), commit)
+    return Localizations(GITHUB, commit)
+
+
+def check_names(catalog, sources):
+    """Fails the release on a language or file name of the app's sources that isn't one."""
+    for source in sources:
+        languages = catalog.get(source, {})
+        if not isinstance(languages, dict):
+            fail(f"manifest.json: {source} isn't a table of languages")
+        for language, files in languages.items():
+            if not LANGUAGE_PATTERN.fullmatch(language):
+                fail(f"manifest.json: {source} names a language {json.dumps(language)}, which isn't a language code")
+            if not isinstance(files, dict):
+                fail(f"manifest.json: {source}/{language} isn't a table of files")
+            for name in files:
+                if not FILE_PATTERN.fullmatch(name):
+                    fail(f"manifest.json: {source}/{language} names a file {json.dumps(name)}, "
+                         "which isn't a .strings or .stringsdict name")
 
 
 # MARK: - Format check (PlatformLanguages' FormatCheck: bundled lines aren't checked at run time)
@@ -416,18 +452,31 @@ def main():
     if not sources:
         log("no LANGUAGE_SOURCES (release.env or V57_LANGUAGE_SOURCES): the app keeps its own languages only")
         return
+    for source in sources:
+        if not SOURCE_PATTERN.fullmatch(source):
+            fail(f"LANGUAGE_SOURCES names {json.dumps(source)}, which isn't a source's name")
+    commit = (os.environ.get("V57_LOCALIZATIONS_REF") or env.get("LOCALIZATIONS_REF") or "").strip()
+    if not commit:
+        fail("LANGUAGE_SOURCES is set but LOCALIZATIONS_REF isn't: put the v57/Localizations commit this release "
+             "takes in release.env (LOCALIZATIONS_REF=<40-character commit>)")
+    if not COMMIT_PATTERN.fullmatch(commit):
+        fail(f"LOCALIZATIONS_REF must be a full 40-character commit hash, not {json.dumps(commit)}")
     bundled_wanted = (options.bundled or os.environ.get("V57_LANGUAGES_BUNDLED") or env.get("LANGUAGES_BUNDLED")
                       or DEFAULT_BUNDLED).split()
 
     app = App(resolve_app(options.app))
     signature = Signature(app.path)
-    localizations = find_localizations(options.project_dir)
+    localizations = find_localizations(options.project_dir, commit)
     log(f"v57/Localizations from {localizations.describe()}")
     try:
-        manifest = json.loads(localizations.read("manifest.json"))
+        manifest_data = localizations.read("manifest.json")
+        manifest = json.loads(manifest_data)
     except Exception as error:
         fail(f"can't read manifest.json: {error}")
     catalog = manifest.get("sources", {})
+    if not isinstance(catalog, dict):
+        fail("manifest.json has no table of sources")
+    check_names(catalog, sources)
     missing = [source for source in sources if source not in catalog]
     if missing:
         log(f"no translations yet for {', '.join(missing)}")
@@ -488,6 +537,9 @@ def main():
         app.info["V57Languages"] = sizes
     else:
         app.info.pop("V57Languages", None)
+    # The commit the app downloads its other languages from, and the manifest it expects to find there.
+    app.info["V57LocalizationsCommit"] = commit
+    app.info["V57LocalizationsManifest"] = hashlib.sha256(manifest_data).hexdigest()
     app.save_info()
     total = sum(sizes.values())
     size = f"{total / 1024:.0f} KB" if total >= 1024 else f"{total} bytes"
