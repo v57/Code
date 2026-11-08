@@ -25,7 +25,10 @@ struct RemoteFolderView: View {
       } else if let entries {
         ScrollView {
           KitSection(
-            "Files", meta: [entries.count == 1 ? "1 item" : "\(entries.count) items", "over SFTP"],
+            "Files", meta: [
+              entries.count == 1 ? String(localized: "1 item") : String(localized: "\(entries.count) items"),
+              String(localized: "over SFTP"),
+            ],
             systemImage: "folder", hue: .blue
           ) {
             ForEach(entries, id: \.path) { entry in
@@ -37,7 +40,7 @@ struct RemoteFolderView: View {
           .padding(.bottom, 24)
         }
       } else if let error {
-        EmptyState(systemImage: "exclamationmark.triangle", title: "Couldn’t List \(title)", message: error, status: .failed(nil))
+        EmptyState(systemImage: "exclamationmark.triangle", title: String(localized: "Couldn’t List \(title)"), message: error, status: .failed(nil))
       } else {
         EmptyState(systemImage: "folder", title: "Listing \(title)", status: .working)
       }
@@ -133,7 +136,7 @@ struct RemoteFileView: View {
       RichHeader(Text(entry.name), size: .title) {
         FileTitleIcon(name: entry.name)
       } meta: {
-        MetaLine((idiom == .phone ? [] : [folder]) + [session.source?.name ?? "", "read-only"])
+        MetaLine((idiom == .phone ? [] : [folder]) + [session.source?.name ?? "", String(localized: "read-only")])
       } accessory: {
         EmptyView()
       }
@@ -141,7 +144,8 @@ struct RemoteFileView: View {
     .navigationBarBackButtonHidden(true)
     .task(id: colorScheme) {
       guard entry.size <= Self.limit else {
-        error = "It’s \(ByteCountFormatter.string(fromByteCount: Int64(entry.size), countStyle: .file)): too big to show here."
+        error = String(
+          localized: "It’s \(ByteCountFormatter.string(fromByteCount: Int64(entry.size), countStyle: .file)): too big to show here.")
         return
       }
       do {

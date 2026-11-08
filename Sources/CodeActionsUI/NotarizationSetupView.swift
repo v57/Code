@@ -119,10 +119,10 @@ public struct NotarizationSetupView: View {
 
   /// The footer's line: what Export still waits for.
   private var footerStatus: (text: String, status: WorkStatus) {
-    if identities == nil || check == .checking { return ("Checking…", .working) }
-    if !hasDeveloperID { return ("No Developer ID certificate", .failed) }
-    if profileIsValid { return ("Ready to export", .done) }
-    return ("Choose a notary profile", .idle)
+    if identities == nil || check == .checking { return (String(localized: "Checking…"), .working) }
+    if !hasDeveloperID { return (String(localized: "No Developer ID certificate"), .failed) }
+    if profileIsValid { return (String(localized: "Ready to export"), .done) }
+    return (String(localized: "Choose a notary profile"), .idle)
   }
 
   // MARK: - Sections

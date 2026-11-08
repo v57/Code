@@ -64,8 +64,8 @@ private struct EditorSettingsView: View {
     FormCard("Appearance") {
       FormRow("Theme", help: "Matching the system follows light and dark", systemImage: "paintpalette", hue: .purple) {
         KitPicker(
-          "Theme", selection: $theme,
-          options: EditorTheme.families.map { ("\($0.name) (Match System)", $0.id) }
+          String(localized: "Theme"), selection: $theme,
+          options: EditorTheme.families.map { (String(localized: "\($0.name) (Match System)"), $0.id) }
             + EditorTheme.all.map { ($0.name, $0.id) })
       }
       .preview(height: height(lines: 4)) {
@@ -73,7 +73,7 @@ private struct EditorSettingsView: View {
       }
       FormRow("Font", help: "Installed fixed-pitch fonts", systemImage: "textformat", hue: .blue) {
         KitPicker(
-          "Font", selection: $fontName, options: [("Theme Font (SF Mono)", "")] + monospacedFamilies.map { ($0, $0) })
+          String(localized: "Font"), selection: $fontName, options: [(String(localized: "Theme Font (SF Mono)"), "")] + monospacedFamilies.map { ($0, $0) })
       }
       .preview(height: height(lines: 1)) { EditorPreview(text: PreviewSample.oneLine, configuration: configuration) }
       FormRow("Font size", help: "\(Keycaps.label("⌘+")) and \(Keycaps.label("⌘−")) change it too", systemImage: "textformat.size", hue: .blue) {
@@ -86,7 +86,9 @@ private struct EditorSettingsView: View {
     }
     FormCard("Editing") {
       FormRow("Tab width", systemImage: "arrow.right.to.line", hue: .gray) {
-        KitPicker("Tab width", selection: $tabWidth, options: [2, 3, 4, 8].map { ("\($0) spaces", $0) })
+        KitPicker(
+          String(localized: "Tab width"), selection: $tabWidth,
+          options: [2, 3, 4, 8].map { (String(localized: "\($0) spaces"), $0) })
       }
       .preview(height: height(lines: 3)) { EditorPreview(text: PreviewSample.indented, configuration: configuration) }
       FormRow("Insert spaces when pressing Tab", systemImage: "keyboard", hue: .gray) {

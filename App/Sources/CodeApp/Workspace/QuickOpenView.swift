@@ -80,7 +80,7 @@ struct QuickOpenView: View {
       name, id: path, subtitle: folder.isEmpty ? nil : folder,
       matches: positions.filter { $0 >= nameStart }.map { $0 - nameStart },
       subtitleMatches: positions.filter { $0 < folder.utf16.count },
-      note: result.isHidden ? "Hidden" : nil
+      note: result.isHidden ? String(localized: "Hidden") : nil
     ) {
       FileIconView(FileIcon(fileName: name), size: 16)
     } action: {
@@ -98,14 +98,17 @@ struct QuickOpenView: View {
   private func meta(_ results: [Result], hiddenMatches: Int) -> [String] {
     var parts: [String] = []
     if workspace.index.isIndexing {
-      parts.append("Indexing…")
+      parts.append(String(localized: "Indexing…"))
     } else if results.isEmpty {
-      if !isSearching { parts.append("No matching files") }
+      if !isSearching { parts.append(String(localized: "No matching files")) }
     } else if !model.quickOpenQuery.isEmpty {
-      parts.append(results.count == 1 ? "1 match" : "\(results.count) matches")
+      parts.append(results.count == 1 ? String(localized: "1 match") : String(localized: "\(results.count) matches"))
     }
     if hiddenMatches > 0 {
-      parts.append(hiddenMatches == 1 ? "1 hidden file also matches" : "\(hiddenMatches) hidden files also match")
+      parts.append(
+        hiddenMatches == 1
+          ? String(localized: "1 hidden file also matches")
+          : String(localized: "\(hiddenMatches) hidden files also match"))
     }
     return parts
   }

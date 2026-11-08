@@ -169,11 +169,16 @@ struct ProjectsSidebar: View {
     KitSidebar(
       selection: $selection, searchText: $search, searchPrompt: "Search Projects", columnVisibility: $columnVisibility
     ) {
-      VaultAccountPicker(meta: projects.count == 1 ? "1 project" : "\(projects.count) projects")
+      VaultAccountPicker(
+        meta: projects.count == 1 ? String(localized: "1 project") : String(localized: "\(projects.count) projects"))
       KitSection(
         "Projects",
         meta: projects.isEmpty
-          ? ["None yet"] : [projects.count == 1 ? "1 project" : "\(projects.count) projects", "on your devices"],
+          ? [String(localized: "None yet")]
+          : [
+            projects.count == 1 ? String(localized: "1 project") : String(localized: "\(projects.count) projects"),
+            String(localized: "on your devices"),
+          ],
         systemImage: "folder", hue: .orange
       ) {
         ForEach(shown) { project in

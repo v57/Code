@@ -37,11 +37,11 @@ public struct BuildSource: Identifiable, Hashable, Codable, Sendable {
   }
 
   #if os(Windows)
-    public static let localName = "This PC"
+    public static let localName = String(localized: "This PC")
   #elseif os(Linux)
-    public static let localName = "This Computer"
+    public static let localName = String(localized: "This Computer")
   #else
-    public static let localName = "This Mac"
+    public static let localName = String(localized: "This Mac")
   #endif
 
   /// "via Hub", "SSH", "Stopped": shown after the name.
@@ -49,7 +49,7 @@ public struct BuildSource: Identifiable, Hashable, Codable, Sendable {
     switch place {
     case .local: return nil
     case .machine(let target): return target.detail
-    case .container(let runtime): return runtime.isRunning ? nil : "Stopped"
+    case .container(let runtime): return runtime.isRunning ? nil : String(localized: "Stopped")
     }
   }
 

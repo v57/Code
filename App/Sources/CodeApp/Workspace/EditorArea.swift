@@ -57,17 +57,18 @@ struct EditorArea: View {
 
     case .binary:
       unavailable(
-        "Binary File", systemImage: "doc.questionmark",
-        description: "“\(document.name)” isn’t a text file.", document: document)
+        String(localized: "Binary File"), systemImage: "doc.questionmark",
+        description: String(localized: "“\(document.name)” isn’t a text file."), document: document)
     case .tooLarge(let size):
       unavailable(
-        "File Too Large", systemImage: "doc.badge.ellipsis",
-        description:
-          "“\(document.name)” is \(ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file)).",
+        String(localized: "File Too Large"), systemImage: "doc.badge.ellipsis",
+        description: String(
+          localized:
+            "“\(document.name)” is \(ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file))."),
         document: document)
     case .unreadable(let message):
       unavailable(
-        "Can’t Open “\(document.name)”", systemImage: "exclamationmark.triangle",
+        String(localized: "Can’t Open “\(document.name)”"), systemImage: "exclamationmark.triangle",
         description: message, document: document)
     }
   }

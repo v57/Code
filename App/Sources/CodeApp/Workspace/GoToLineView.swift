@@ -15,7 +15,8 @@ struct GoToLineView: View {
       dismiss: { model.isGoToLinePresented = false }
     ) {
       PaletteGroup(
-        workspace.selectedDocument?.name ?? "Go to Line", meta: ["\(lineCount) lines"],
+        workspace.selectedDocument?.name ?? String(localized: "Go to Line"),
+        meta: [String(localized: "\(lineCount) lines")],
         systemImage: "arrow.right.to.line"
       ) {
         if let target {

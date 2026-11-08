@@ -35,7 +35,7 @@ struct ProjectScreen: View {
         EmptyState(systemImage: "chevron.left.forwardslash.chevron.right", title: message, status: .working)
       case .failed(let message):
         EmptyState(
-          systemImage: "exclamationmark.triangle", title: "Couldn’t Open \(project.name)", message: message,
+          systemImage: "exclamationmark.triangle", title: String(localized: "Couldn’t Open \(project.name)"), message: message,
           status: .failed(nil)
         ) {
           Button("Try Again", systemImage: "arrow.clockwise") { Task { await session.open() } }
@@ -152,24 +152,24 @@ struct ProjectTitle: View {
   private var meta: [String] {
     switch session.phase {
     case .loading(let message): return [message]
-    case .failed: return ["Couldn’t open"]
+    case .failed: return [String(localized: "Couldn’t open")]
     case .ready: break
     }
     guard let controller = session.controller else { return [] }
-    let device = showsDevice ? controller.selectedDestination.map { "on \($0.name)" } : nil
+    let device = showsDevice ? controller.selectedDestination.map { String(localized: "on \($0.name)") } : nil
     switch controller.state {
     case .idle:
-      if controller.isScanning { return ["Reading the project…"] }
-      return [controller.schemes.isEmpty ? "No schemes" : "Ready"]
+      if controller.isScanning { return [String(localized: "Reading the project…")] }
+      return [controller.schemes.isEmpty ? String(localized: "No schemes") : String(localized: "Ready")]
     case .running(let kind):
       let detail = controller.progress?.message ?? controller.stepTitle
       return [detail.map { $0.isEmpty ? kind.progressTitle : "\(kind.progressTitle): \($0)" } ?? kind.progressTitle]
     case .succeeded(let kind, _):
-      return ["\(kind.title) succeeded"] + [device].compactMap { $0 }
+      return [String(localized: "\(kind.title) succeeded")] + [device].compactMap { $0 }
     case .failed(let kind, _, let summary):
-      return ["\(kind.title) failed: \(summary)"] + [device].compactMap { $0 }
+      return [String(localized: "\(kind.title) failed: \(summary)")] + [device].compactMap { $0 }
     case .stopped(let kind, _):
-      return ["\(kind.title) stopped"]
+      return [String(localized: "\(kind.title) stopped")]
     }
   }
 }
@@ -243,7 +243,7 @@ struct SchemeTools: View {
         showsSchemes = true
       } label: {
         Label(
-          controller.selectedScheme?.name ?? (controller.isScanning ? "Finding Schemes…" : "No Scheme"),
+          controller.selectedScheme?.name ?? (controller.isScanning ? String(localized: "Finding Schemes…") : String(localized: "No Scheme")),
           systemImage: controller.selectedScheme?.toolchain.symbolName ?? "square.dashed")
       }
       .disabled(controller.schemes.isEmpty)
@@ -263,7 +263,7 @@ struct SchemeTools: View {
         showsDevices = true
       } label: {
         Label(
-          controller.selectedDestination?.name ?? "No Device",
+          controller.selectedDestination?.name ?? String(localized: "No Device"),
           systemImage: controller.selectedDestination?.symbolName ?? "questionmark.app.dashed")
       }
       .disabled(controller.destinations.isEmpty)
@@ -301,14 +301,17 @@ struct SchemeTools: View {
     // Login Keychain's password: the Mac user's own, saved in the vault (iCloud Keychain) for the host, which Code
     // sends to unlock the login keychain before each signed build there.
     .kitPrompt(
-      "Login Keychain", isPresented: $asksPassword, text: $password, message: passwordTarget?.name,
+      String(localized: "Login Keychain"), isPresented: $asksPassword, text: $password, message: passwordTarget?.name,
       systemImage: RemoteSigning.loginKeychain.symbolName, hue: .indigo,
       field: .secure(
-        placeholder: "Mac password",
-        help: passwordTarget.flatMap { $0.user.isEmpty ? nil : "\($0.user) on \($0.name)" }),
+        placeholder: String(localized: "Mac password"),
+        help: passwordTarget.flatMap { $0.user.isEmpty ? nil : String(localized: "\($0.user) on \($0.name)") }),
       footnote:
-        "An SSH session can’t use the login keychain until it’s unlocked. Code unlocks it with this password before each build, and keeps it in iCloud Keychain.",
-      confirm: "Save"
+        String(
+          localized:
+            "An SSH session can’t use the login keychain until it’s unlocked. Code unlocks it with this password before each build, and keeps it in iCloud Keychain."
+        ),
+      confirm: String(localized: "Save")
     ) { password in
       guard let target = passwordTarget else { return }
       try RemoteProjects.setLoginPassword(password, for: target)
@@ -376,9 +379,10 @@ struct IssuesView: View {
         KitSection(
           "Issues",
           meta: [
-            errors == 0 ? "" : errors == 1 ? "1 error" : "\(errors) errors",
-            warnings == 0 ? "" : warnings == 1 ? "1 warning" : "\(warnings) warnings",
-            device.map { "from \($0)" } ?? "",
+            errors == 0 ? "" : errors == 1 ? String(localized: "1 error") : String(localized: "\(errors) errors"),
+            warnings == 0
+              ? "" : warnings == 1 ? String(localized: "1 warning") : String(localized: "\(warnings) warnings"),
+            device.map { String(localized: "from \($0)") } ?? "",
           ],
           systemImage: errors > 0 ? "xmark.octagon" : "exclamationmark.triangle", hue: errors > 0 ? .red : .orange
         ) {

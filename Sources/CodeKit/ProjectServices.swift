@@ -430,7 +430,7 @@
       let askServerFirst = serverMode == .always || (serverMode == .whenUnsure && !useModel)
       if askServerFirst { asked.insert(.server) }
       guard !asked.isEmpty || serverMode == .whenUnsure else {
-        showStatus(serverOpen ? "Definitions are off in Settings." : languageServerHint(for: url))
+        showStatus(serverOpen ? String(localized: "Definitions are off in Settings.") : languageServerHint(for: url))
         return
       }
       var choices = DefinitionChoices(asking: asked, decidingTier: serverMode == .always ? .server : nil)
@@ -515,7 +515,7 @@
         open(place)
       case .notFound:
         beep()
-        showStatus("No definition found")
+        showStatus(String(localized: "No definition found"))
       case .show(let shown, let selected), .update(let shown, let selected):
         #if os(macOS)
           guard let completion = document.completion else { return open(shown[0].place) }
@@ -547,9 +547,9 @@
       let place = row.place
       let source: String
       switch row.tier {
-      case .scanner: source = "Code’s scanner, a guess"
-      case .model: source = row.isSure ? "Swift model" : "Swift model, a guess"
-      case .server: source = "Language server"
+      case .scanner: source = String(localized: "Code’s scanner, a guess")
+      case .model: source = row.isSure ? String(localized: "Swift model") : String(localized: "Swift model, a guess")
+      case .server: source = String(localized: "Language server")
       }
       let rootPath = root.standardizedFileURL.path + "/"
       let path = place.url.path.hasPrefix(rootPath) ? String(place.url.path.dropFirst(rootPath.count)) : place.url.path
@@ -577,18 +577,18 @@
 
     /// Why there is no language server for a file, for the status bar.
     func languageServerHint(for url: URL) -> String {
-      guard settings.languageServersEnabled else { return "Language servers are off in Settings." }
+      guard settings.languageServersEnabled else { return String(localized: "Language servers are off in Settings.") }
       guard let configuration = LanguageServerCatalog.configuration(for: url) else {
-        return "No language server for this kind of file."
+        return String(localized: "No language server for this kind of file.")
       }
       if settings.disabledLanguageServers.contains(configuration.id) {
-        return "\(configuration.name) is off in Settings."
+        return String(localized: "\(configuration.name) is off in Settings.")
       }
       switch languageServers.states[configuration.id] {
       case .notInstalled?:
-        return "\(configuration.name) isn’t installed. Install it in Settings › Languages."
-      case .failed(let message)?: return "\(configuration.name) failed: \(message)"
-      default: return "\(configuration.name) is starting…"
+        return String(localized: "\(configuration.name) isn’t installed. Install it in Settings › Languages.")
+      case .failed(let message)?: return String(localized: "\(configuration.name) failed: \(message)")
+      default: return String(localized: "\(configuration.name) is starting…")
       }
     }
 
@@ -606,7 +606,7 @@
             url: document.url, position: LSPPosition(line: position.line, character: position.column)),
           !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         else {
-          showStatus("No Quick Help")
+          showStatus(String(localized: "No Quick Help"))
           return
         }
         textView.showQuickHelp(text, at: textView.identifierRange(at: location) ?? NSRange(location: location, length: 0))
@@ -671,7 +671,7 @@
       }
       if let hover = hover?.trimmingCharacters(in: .whitespacesAndNewlines), !hover.isEmpty {
         guard places.count == 1 else { return hover }
-        return hover + "\n\nDeclared in " + whereIs(places[0])
+        return String(localized: "\(hover)\n\nDeclared in \(whereIs(places[0]))")
       }
       guard !places.isEmpty else { return nil }
       let shown = places.prefix(3).map { place in
@@ -679,8 +679,12 @@
         return "```\n\(line)\n```\n" + whereIs(place)
       }
       var info = shown.joined(separator: "\n\n")
-      if places.count > 3 { info += "\n\n\(places.count - 3) more places: ⌘-click to see them all." }
-      if answer?.isSure != true { info += "\n\n" + (places.count == 1 ? "A guess from Code’s scanner." : "Guesses from Code’s scanner.") }
+      if places.count > 3 { info += "\n\n" + String(localized: "\(places.count - 3) more places: ⌘-click to see them all.") }
+      if answer?.isSure != true {
+        info +=
+          "\n\n"
+          + (places.count == 1 ? String(localized: "A guess from Code’s scanner.") : String(localized: "Guesses from Code’s scanner."))
+      }
       return info
     }
 
@@ -768,7 +772,7 @@
         languageServers.retry(configuration.id)
         reopenShownDocuments()
       } else {
-        showStatus("Installing \(configuration.name) failed. See Settings › Languages.")
+        showStatus(String(localized: "Installing \(configuration.name) failed. See Settings › Languages."))
       }
     }
 
@@ -776,7 +780,7 @@
       guard let command = formatter.installCommand else { return }
       let succeeded = await installer.install(
         id: formatter.id, command: command, environment: formatting.environment)
-      if !succeeded { showStatus("Installing \(formatter.name) failed.") }
+      if !succeeded { showStatus(String(localized: "Installing \(formatter.name) failed.")) }
     }
 
     /// Stops servers and running actions (the window is closing).

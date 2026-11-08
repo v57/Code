@@ -193,7 +193,7 @@ public enum Notarization {
     }
   #else
     // notarytool and the keychain are the Mac's: elsewhere there is nothing to sign or notarize with.
-    private static let unavailable = "Notarization needs a Mac with Xcode."
+    private static let unavailable = String(localized: "Notarization needs a Mac with Xcode.")
 
     public static func developerIDIdentities() async -> [DeveloperIDIdentity] { [] }
 

@@ -116,7 +116,7 @@ public enum AppInstall {
         if copies.contains(where: { $0 == ProcessInfo.processInfo.processIdentifier }) {
           throw ActionError.missing("\(name) can’t replace itself while it runs: install it from another app.")
         }
-        if let confirm = context.confirm, !(await confirm("Quit \(name) to install the new build?")) {
+        if let confirm = context.confirm, !(await confirm(String(localized: "Quit \(name) to install the new build?"))) {
           throw ActionError.cancelled
         }
         lock.withLock { running = true }

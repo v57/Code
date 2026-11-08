@@ -9,9 +9,9 @@ public struct ProjectContainer: Identifiable, Hashable, Codable, Sendable {
 
     public var title: String {
       switch self {
-      case .workspace: return "Workspace"
-      case .project: return "Project"
-      case .package: return "Package"
+      case .workspace: return String(localized: "Workspace")
+      case .project: return String(localized: "Project")
+      case .package: return String(localized: "Package")
       }
     }
 

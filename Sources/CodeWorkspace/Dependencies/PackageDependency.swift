@@ -9,10 +9,10 @@ public struct PackageDependency: Identifiable, Hashable, Sendable {
 
     public var displayName: String {
       switch self {
-      case .swift: return "Swift Package"
+      case .swift: return String(localized: "Swift Package")
       case .node: return "npm"
       case .rust: return "Cargo"
-      case .go: return "Go module"
+      case .go: return String(localized: "Go module")
       case .python: return "Python"
       case .ruby: return "RubyGems"
       case .php: return "Composer"
@@ -51,7 +51,7 @@ public struct PackageDependency: Identifiable, Hashable, Sendable {
   public var id: String { location?.standardizedFileURL.path ?? ecosystem.rawValue + ":" + name }
 
   /// What the navigator shows after the name: "local" or the version.
-  public var detail: String { isLocal ? "local" : version ?? "" }
+  public var detail: String { isLocal ? String(localized: "local") : version ?? "" }
 }
 
 /// Finds a project's package dependencies from its manifests and lockfiles,

@@ -35,14 +35,14 @@ public enum ActionKind: String, CaseIterable, Codable, Sendable {
   /// The activity view's verb while the action runs: "Building", "Running".
   public var progressTitle: String {
     switch self {
-    case .run: return "Running"
-    case .build: return "Building"
-    case .test: return "Testing"
-    case .clean: return "Cleaning"
-    case .lint: return "Linting"
-    case .install: return "Installing"
-    case .export: return "Exporting"
-    case .upload: return "Uploading"
+    case .run: return String(localized: "Running")
+    case .build: return String(localized: "Building")
+    case .test: return String(localized: "Testing")
+    case .clean: return String(localized: "Cleaning")
+    case .lint: return String(localized: "Linting")
+    case .install: return String(localized: "Installing")
+    case .export: return String(localized: "Exporting")
+    case .upload: return String(localized: "Uploading")
     }
   }
 
@@ -76,7 +76,7 @@ public enum Toolchain: String, Codable, Sendable, CaseIterable {
   public var displayName: String {
     switch self {
     case .xcode: return "Xcode"
-    case .swiftPM: return "Swift Package"
+    case .swiftPM: return String(localized: "Swift Package")
     case .cargo: return "Cargo"
     case .go: return "Go"
     case .gradle: return "Gradle"

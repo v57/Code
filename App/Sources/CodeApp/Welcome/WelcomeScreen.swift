@@ -46,7 +46,8 @@ struct WelcomeScreen: View {
         return true
       }
     ) {
-      VaultAccountPicker(meta: projectCount == 1 ? "1 project" : "\(projectCount) projects")
+      VaultAccountPicker(
+        meta: projectCount == 1 ? String(localized: "1 project") : String(localized: "\(projectCount) projects"))
       WelcomeAction("Open…", detail: "Choose a folder, or drop one on this window", systemImage: "folder") {
         AppState.shared.chooseFolder()
       }

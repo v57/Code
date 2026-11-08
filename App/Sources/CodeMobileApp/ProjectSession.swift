@@ -17,7 +17,7 @@ import VaultKit
   let project: RemoteProject
   /// The window's account's vault: the project's hosts, their signing and known keys.
   let vault: Vault
-  private(set) var phase: Phase = .loading("Connecting")
+  private(set) var phase: Phase = .loading(String(localized: "Connecting"))
   private(set) var controller: ActionController?
   /// The device the copy came from, and the folder there.
   private(set) var source: SSHExecutor.Target?
@@ -32,10 +32,10 @@ import VaultKit
   func open() async {
     var failures: [String] = []
     for target in project.targets {
-      phase = .loading("Connecting to \(target.name)")
+      phase = .loading(String(localized: "Connecting to \(target.name)"))
       do {
         let client = try await SFTPClient.connect(server: try login(for: target), timeout: 15)
-        phase = .loading("Reading the project on \(target.name)")
+        phase = .loading(String(localized: "Reading the project on \(target.name)"))
         let root = try await ProjectMirror.fetch(target.directory, projectID: project.id, client: client)
         files = client
         source = target

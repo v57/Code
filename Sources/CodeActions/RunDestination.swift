@@ -45,11 +45,11 @@ public struct RunDestination: Identifiable, Hashable, Codable, Sendable {
   public static let mac = RunDestination(id: "mac", name: localName, kind: .mac)
 
   #if os(Windows)
-    public static let localName = "This PC"
+    public static let localName = String(localized: "This PC")
   #elseif os(Linux)
-    public static let localName = "This Computer"
+    public static let localName = String(localized: "This Computer")
   #else
-    public static let localName = "My Mac"
+    public static let localName = String(localized: "My Mac")
   #endif
 
   public var platform: Platform {
@@ -81,12 +81,12 @@ public struct RunDestination: Identifiable, Hashable, Codable, Sendable {
   public var section: String {
     switch kind {
     case .mac: return Self.localName
-    case .iOSDevice: return "iOS Devices"
-    case .iOSSimulator: return "iOS Simulators"
-    case .androidDevice: return "Android Devices"
-    case .androidEmulator, .androidVirtualDevice: return "Android Emulators"
-    case .remote: return "Other Machines"
-    case .container: return "Containers"
+    case .iOSDevice: return String(localized: "iOS Devices")
+    case .iOSSimulator: return String(localized: "iOS Simulators")
+    case .androidDevice: return String(localized: "Android Devices")
+    case .androidEmulator, .androidVirtualDevice: return String(localized: "Android Emulators")
+    case .remote: return String(localized: "Other Machines")
+    case .container: return String(localized: "Containers")
     }
   }
 }
@@ -245,7 +245,7 @@ public enum DestinationProvider {
         destinations.append(
           RunDestination(
             id: "avd:" + name, name: name.replacingOccurrences(of: "_", with: " "),
-            kind: .androidVirtualDevice, detail: "Not running"))
+            kind: .androidVirtualDevice, detail: String(localized: "Not running")))
       }
     }
     return destinations

@@ -64,13 +64,11 @@ private struct CodeStatusBar: ViewModifier {
 
   private var position: String {
     let selection = model.selection
-    var text = "Line: \(selection.line)  Col: \(selection.column)"
-    if selection.length > 0 {
-      text +=
-        selection.lineCount > 1
-        ? "  (\(selection.length) characters, \(selection.lineCount) lines)"
-        : "  (\(selection.length) characters)"
-    }
-    return text
+    let line = selection.line
+    let column = selection.column
+    guard selection.length > 0 else { return String(localized: "Line: \(line)  Col: \(column)") }
+    return selection.lineCount > 1
+      ? String(localized: "Line: \(line)  Col: \(column)  (\(selection.length) characters, \(selection.lineCount) lines)")
+      : String(localized: "Line: \(line)  Col: \(column)  (\(selection.length) characters)")
   }
 }

@@ -71,7 +71,7 @@ extension Notification.Name {
         NotificationCenter.default.post(name: .codeToolInstalled, object: id)
       } else {
         let lines = installer.logs[id]?.split(whereSeparator: \.isNewline) ?? []
-        uninstallFailures[id] = lines.last.map(String.init) ?? "Uninstalling failed."
+        uninstallFailures[id] = lines.last.map(String.init) ?? String(localized: "Uninstalling failed.")
       }
       refresh()
     }
@@ -112,7 +112,7 @@ struct LanguagesSettingsView: View {
       FormRow("Swift model", help: "Swift’s types read from the source, answering in milliseconds. 150–200 MB for a large app", systemImage: "swift", hue: .orange) {
         Toggle("Use the Swift model", isOn: $usesSwiftModel).kitLabelsHidden()
       }
-      FormRow("Ask the language server", help: serverHelp, systemImage: "curlybraces", hue: .purple) {
+      FormRow(String(localized: "Ask the language server"), help: serverHelp, systemImage: "curlybraces", hue: .purple) {
         KitPicker(
           "Ask the language server", selection: $serverDefinitions,
           options: [
@@ -144,9 +144,10 @@ struct LanguagesSettingsView: View {
 
   private var serverHelp: String {
     switch ServerDefinitions(rawValue: serverDefinitions) ?? .whenUnsure {
-    case .whenUnsure: return "For definitions only when the Swift model isn’t sure, and always in other languages"
-    case .always: return "Its answer decides each jump; the faster ones show while it works"
-    case .off: return "Never for definitions; it still reports issues and completes"
+    case .whenUnsure:
+      return String(localized: "For definitions only when the Swift model isn’t sure, and always in other languages")
+    case .always: return String(localized: "Its answer decides each jump; the faster ones show while it works")
+    case .off: return String(localized: "Never for definitions; it still reports issues and completes")
     }
   }
 }
@@ -271,7 +272,8 @@ struct RunSettingsView: View {
     }
     FormCard {
       FormRow(
-        "Android Debug Bridge", help: tools.adb ?? "Not found — brew install android-platform-tools",
+        String(localized: "Android Debug Bridge"),
+        help: tools.adb ?? String(localized: "Not found — brew install android-platform-tools"),
         systemImage: "iphone", hue: tools.adb == nil ? .gray : .green)
     }
     .onAppear { tools.refresh() }
@@ -315,7 +317,7 @@ private struct ToolRow<Controls: View>: View {
     .help(path ?? source)
     .kitDialog(
       uninstallTitle, isPresented: $isConfirmingUninstall, message: uninstallMessage, systemImage: "trash",
-      hue: uninstallCommand == nil ? .gray : .red, confirm: uninstallCommand == nil ? "OK" : "Uninstall",
+      hue: uninstallCommand == nil ? .gray : .red, confirm: uninstallCommand == nil ? String(localized: "OK") : String(localized: "Uninstall"),
       role: uninstallCommand == nil ? nil : .destructive
     ) {
       if let uninstallCommand { KitCodeBlock(uninstallCommand) }
@@ -329,12 +331,12 @@ private struct ToolRow<Controls: View>: View {
   }
 
   private var uninstallTitle: String {
-    uninstallCommand == nil ? "Can’t Uninstall \(name)" : "Uninstall \(name)?"
+    uninstallCommand == nil ? String(localized: "Can’t Uninstall \(name)") : String(localized: "Uninstall \(name)?")
   }
 
   private var uninstallMessage: String? {
     switch uninstallPlan {
-    case .command(_, let note): note ?? "Code will run this command."
+    case .command(_, let note): note ?? String(localized: "Code will run this command.")
     case .unknown(let reason): reason
     case nil: nil
     }
@@ -375,7 +377,7 @@ private struct ToolRow<Controls: View>: View {
   /// "Swift, C · /usr/bin/sourcekit-lsp", or where it comes from while it isn't installed.
   private var help: String {
     if let path { return "\(detail) · \(path)" }
-    return installCommand == nil && !source.isEmpty ? "\(detail) · \(source)" : "\(detail) · Not installed"
+    return installCommand == nil && !source.isEmpty ? "\(detail) · \(source)" : String(localized: "\(detail) · Not installed")
   }
 }
 

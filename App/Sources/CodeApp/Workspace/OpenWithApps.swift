@@ -38,7 +38,7 @@ enum OpenWithApps {
       defaultApp
         ? .defaultApp(
           opening: url,
-          preview: "Opens \(name) in \(KitDesktop.defaultApp(for: url)?.name ?? "the app the system opens it with").")
+          preview: "Opens \(name) in \(KitDesktop.defaultApp(for: url)?.name ?? String(localized: "the app the system opens it with")).")
         : nil,
     ]
   }
