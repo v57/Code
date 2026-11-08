@@ -121,6 +121,9 @@ struct RemoteFileView: View {
             .padding(.horizontal, idiom == .phone ? 14 : 16)
             .padding(.vertical, 12)
         }
+        // The text stops at the bar, as in an editor: dense lines scrolling on under the bar's fade read through the
+        // file's name and meta there.
+        .clipped()
       } else if let data {
         KitFilePreview(name: entry.name, data: data)
       } else if let error {
