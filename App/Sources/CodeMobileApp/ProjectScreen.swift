@@ -12,12 +12,18 @@ import VaultKit
 /// scheme › device under the title.
 struct ProjectScreen: View {
   let project: RemoteProject
-  @State private var session: ProjectSession
+  /// The session lives with this screen's state, not its appearance (`ProjectSessionLifetime`).
+  @State private var lifetime: ProjectSessionLifetime
+  private var session: ProjectSession { lifetime.session }
   @State private var pane = Pane.log
   @State private var showsFiles = false
   /// A file pushed straight from here (Debug: `CODE_DEBUG_SHOW=file:<path>`).
   @State private var shownFile: SFTPFileInfo?
   @State private var hidesUnreadable = false
+  #if DEBUG
+    /// `CODE_DEBUG_SHOW` is shown once, not on every return.
+    @State private var debugShown = false
+  #endif
   @Environment(\.kitIdiom) private var idiom
 
   enum Pane: Hashable {
@@ -26,7 +32,7 @@ struct ProjectScreen: View {
 
   init(project: RemoteProject, vault: Vault) {
     self.project = project
-    _session = State(initialValue: ProjectSession(project: project, vault: vault))
+    _lifetime = State(initialValue: ProjectSessionLifetime(project: project, vault: vault))
   }
 
   var body: some View {
@@ -70,13 +76,16 @@ struct ProjectScreen: View {
       }
     }
     .navigationDestination(item: $shownFile) { entry in RemoteFileView(session: session, entry: entry) }
+    // Again on every return from Files: opens only the first time.
     .task {
-      await session.open()
+      await session.openOnce()
       #if DEBUG
-        await debugShow()
+        if !debugShown {
+          debugShown = true
+          await debugShow()
+        }
       #endif
     }
-    .onDisappear { session.close() }
   }
 
   #if DEBUG

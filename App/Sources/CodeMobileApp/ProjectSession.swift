@@ -24,10 +24,19 @@ import VaultKit
   /// What the server wouldn't let this user read in the project (paths there): skipped, so its schemes may be missing.
   private(set) var unreadable: [String] = []
   @ObservationIgnored private var files: SFTPClient?
+  /// The first `open()`, outside any view's task, so leaving the screen for Files doesn't cancel it.
+  @ObservationIgnored private var opening: Task<Void, Never>?
 
   init(project: RemoteProject, vault: Vault) {
     self.project = project
     self.vault = vault
+  }
+
+  /// Opens the project the first time it's shown; coming back from Files or a file finds it open (the same
+  /// connection, log and issues, and a build still running).
+  func openOnce() async {
+    if opening == nil { opening = Task { await open() } }
+    await opening?.value
   }
 
   /// Copies the project's manifests from the first device that answers, then finds its schemes.
@@ -60,7 +69,10 @@ import VaultKit
     return client
   }
 
+  /// Ends the project: stops what runs and closes the connection. Called once the project's screen is gone for good
+  /// (another project, back to the list), never when Files or a file is pushed over it.
   func close() {
+    opening?.cancel()
     controller?.stop()
     files?.close()
     files = nil
@@ -118,5 +130,21 @@ import VaultKit
 
   static func describe(_ error: Error) -> String {
     (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+  }
+}
+
+/// Holds a project's session for as long as its screen's state lives, and closes it after: on iPhone when the project is
+/// popped off the stack, on iPad when another project replaces it. Pushing Files or a file over the screen keeps the
+/// state (and the session) alive, where `onDisappear` fired and closed it, losing the log and stopping a build.
+nonisolated final class ProjectSessionLifetime: Sendable {
+  let session: ProjectSession
+
+  @MainActor init(project: RemoteProject, vault: Vault) {
+    session = ProjectSession(project: project, vault: vault)
+  }
+
+  deinit {
+    let session = session
+    Task { @MainActor in session.close() }
   }
 }
