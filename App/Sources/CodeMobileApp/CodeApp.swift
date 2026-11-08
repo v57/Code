@@ -56,7 +56,8 @@ struct ProjectsView: View {
     Group {
       // iPhone with nothing to list: the welcome is the first screen (unless there are accounts to pick from).
       if idiom == .phone, projects.isEmpty, vaults.accounts.isEmpty {
-        ProjectsWelcome(projects: [], selection: $selection)
+        // With no status bar under a sidebar, the welcome leads to Privacy: iCloud off is one reason for no projects.
+        ProjectsWelcome(projects: [], selection: $selection, showsPrivacy: true)
       } else if idiom == .phone {
         stack
       } else {
@@ -127,6 +128,9 @@ struct OpenProject: Hashable {
 struct ProjectsWelcome: View {
   let projects: [RemoteProject]
   @Binding var selection: RemoteProject.ID?
+  /// The Privacy action (iCloud), for iPhone's first screen, which has no sidebar status bar to hold it.
+  var showsPrivacy = false
+  @State private var privacyShown = false
 
   var body: some View {
     KitWelcome(
@@ -134,7 +138,11 @@ struct ProjectsWelcome: View {
       emptyMessage:
         "Code runs Build, Test and Clean on your Macs. In the Vault app on a Mac, turn on SSH from your devices and allow this device, or connect the Mac to a Hub; then open a project in Code there: it shows up here."
     ) {
-      EmptyView()
+      if showsPrivacy {
+        WelcomeAction("Privacy", detail: "iCloud on this device", systemImage: "hand.raised") {
+          privacyShown = true
+        }
+      }
     } recents: {
       ForEach(projects) { project in
         RecentItem(
@@ -146,6 +154,20 @@ struct ProjectsWelcome: View {
     }
     .listTitle("On Your Devices")
     .kitPane(.content)
+    .modifier(PrivacySheet(isPresented: $privacyShown))
+  }
+}
+
+/// Privacy: the vault's iCloud switch, in the kit's sheet.
+struct PrivacySheet: ViewModifier {
+  @Binding var isPresented: Bool
+
+  func body(content: Content) -> some View {
+    content.kitSheet(isPresented: $isPresented) {
+      KitSheet(title: "Privacy", systemImage: "hand.raised", hue: .blue, onClose: { isPresented = false }) {
+        VaultICloudCard()
+      }
+    }
   }
 }
 
@@ -210,11 +232,7 @@ struct ProjectsSidebar: View {
           .buttonStyle(.kitIcon)
       }
     }
-    .kitSheet(isPresented: $showsPrivacy) {
-      KitSheet(title: "Privacy", systemImage: "hand.raised", hue: .blue, onClose: { showsPrivacy = false }) {
-        VaultICloudCard()
-      }
-    }
+    .modifier(PrivacySheet(isPresented: $showsPrivacy))
     .navigationTitle("Code")
   }
 }
