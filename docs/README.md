@@ -48,3 +48,36 @@ has no editor: it runs Build, Test and Clean on your own Macs over SSH and shows
 Code contacts no server on its own. Opening a folder you haven't trusted contacts nothing. Trusting a folder lets its
 own tools run, and those may fetch packages. iCloud syncs your vault's projects and hosts when it's on. The details
 are in [Privacy and Security](Privacy-and-Security.md).
+
+## For developers
+
+Code is built from the libraries in this repository's Swift package, which other apps can use one at a time. Add
+the package with `.package(url: "https://github.com/v57/Code.git", branch: "main")` (Swift tools 6.4) and depend on the
+products you need. Each page below covers a library's purpose, a small example, its main API, platform notes and
+tests.
+
+| Library | Purpose | Platforms | Import |
+|---|---|---|---|
+| [CodeKit](CodeKit.md) | Most libraries below in one import, plus what connects them: `CodeEditorView`, `ProjectServices`, `DebugSession`, the definition tiers | macOS; Windows, Linux (early); iOS: re-exports only | `import CodeKit` |
+| [CodeHighlighting](CodeHighlighting.md) | Languages, file language detection, the incremental highlighter, bracket matching, color schemes and themes; no dependencies | macOS, iOS, Linux, Windows | `import CodeHighlighting` |
+| [CodeWorkspace](CodeWorkspace.md) | A project folder: file tree, hidden files, watching, Quick Open index, Find in Project, package dependencies, autosaving documents, tabs, the project's icon | macOS, iOS (no watching), Linux, Windows | `import CodeWorkspace` |
+| [CodeFolders](CodeFolders.md) | Folder trust, folder scope, a folder's Xcode workspaces, projects and package; no dependencies | macOS, iOS, Linux, Windows | `import CodeFolders` |
+| [CodeEditor](CodeEditor.md) | The AppKit code editor (`CodeTextView`, `CodeEditorScrollView`, SwiftUI `CodeTextEditor`) and neutral editor types | macOS; types everywhere | `import CodeEditor` |
+| [CodeMinimap](CodeMinimap.md) | Xcode's minimap with sections and marks | macOS | `import CodeMinimap` |
+| [CodeAutocompletion](CodeAutocompletion.md) | The completion list, the provider protocol, fuzzy matching, snippets as placeholders | macOS (list); model everywhere | `import CodeAutocompletion` |
+| [CodeActions](CodeActions.md) | Schemes found in a folder, run destinations, running actions with progress and issues, here, over SSH or in a container; the release tools | macOS; iOS (over SSH only); Windows, Linux (early) | `import CodeActions` |
+| [CodeActionsUI](CodeActionsUI.md) | CodeActions' sheets and run blocks on ComponentKit | macOS, iOS | `import CodeActionsUI` |
+| [CodeProgress](CodeProgress.md) | Progress of staged operations, estimated from their history; no dependencies | macOS, iOS, Linux, Windows | `import CodeProgress` |
+| [CodeLSP](CodeLSP.md) | Language server client, the server catalog and a manager per workspace | macOS, Windows, Linux | `import CodeLSP` |
+| [CodeFormatting](CodeFormatting.md) | External formatters run before an explicit save | macOS, Linux | `import CodeFormatting` |
+| [CodeIcons](CodeIcons.md) | File icons: an SF Symbol, else colored letters | macOS, iOS, Linux, Windows | `import CodeIcons` |
+| [CodeScan](CodeScan.md) | A scanner for every language, declarations and a workspace index without a compiler | macOS, iOS, Linux, Windows | `import CodeScan` |
+| [CodePretty](CodeScan.md#codepretty) | A formatter for every language that refuses any change to tokens | macOS, iOS, Linux, Windows | `import CodePretty` |
+| [CodeServer](CodeScan.md#codeserver) | A language server for every language (`code-lsp`) | macOS, Windows, Linux | `import CodeServer` |
+| [CodeSwiftModel](CodeSwiftModel.md) | A Swift code model from source: definitions, completions, references | macOS; Linux, Windows, iOS without the SDK | `import CodeSwiftModel` |
+
+The package also builds three tools: `code-lsp` (CodeServer's server on standard input and output), `code-pretty`
+(CodePretty over files and folders) and `swift-model` (measures CodeSwiftModel on a project). Android is not supported
+yet by any library.
+
+Run every test with `swift test` at the repository root.
