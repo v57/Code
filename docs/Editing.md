@@ -78,8 +78,11 @@ language's keywords. Turn off **Suggest completions** in Settings ▸ Editor to 
 
 ## Move around
 
-- **Go ▸ Open Quickly…** (⇧⌘O): type part of a file's name. Matches don't need to be next to each other. Press ⇧⌘.
-  while it's open to include hidden files, listed after the others.
+- **Go ▸ Open Quickly…** (⇧⌘O): type part of a file's or a symbol's name (a type, function, property or case, in
+  every language). Matches don't need to be next to each other, and names you typed in full rank first. Qualify a
+  symbol to jump straight to its declaration: `MessageView.body`, `Outer.Inner.value` or `Some::value`, and `Some.`
+  lists everything declared in `Some` and its extensions. Press ⇧⌘. while it's open to include hidden files, listed
+  after the others. Symbols come from Code's scanner, so they're off when it's turned off in Settings.
 - **Go ▸ Go to Line…** (⌘L): type a line number, or `line:column`.
 - **Go ▸ Reveal in Sidebar** (⇧⌘J): shows the current file in the sidebar.
 - **Go ▸ Go Back** (⌃⌘←) and **Go Forward** (⌃⌘→), or the arrows above the editor, go through the places you've

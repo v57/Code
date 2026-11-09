@@ -26,7 +26,8 @@ Code is also added to your vault's projects, so your other v57 apps and devices 
 - Code saves on its own about a second after you stop typing, and when you switch tabs, switch apps or quit.
   **File ▸ Save** (⌘S) also formats the file when a formatter applies. See
   [Languages and Formatting](Languages-and-Formatting.md).
-- Press ⇧⌘O (**Go ▸ Open Quickly…**) and type part of a file's name to open it without the sidebar.
+- Press ⇧⌘O (**Go ▸ Open Quickly…**) and type part of a file's name to open it without the sidebar, or a symbol's
+  (`MessageView.body`) to jump to its declaration.
 
 ### Run your project
 

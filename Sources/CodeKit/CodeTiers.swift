@@ -79,6 +79,10 @@
       await scanner.completions(path: url.standardizedFileURL.path, text: text, line: line, column: column)
     }
 
+    func scannerSymbols(matching query: String, limit: Int) async -> [ProjectSymbol] {
+      await scanner.symbols(matching: query, limit: limit)
+    }
+
     /// Whether a file is one the Swift model reads.
     static func isSwift(_ url: URL) -> Bool { url.pathExtension.lowercased() == "swift" }
   }
@@ -150,6 +154,29 @@
             return continuation.resume(returning: [])
           }
           continuation.resume(returning: index.completions(path: path, source: source, offset: offset))
+        }
+      }
+    }
+
+    /// Declarations for Open Quickly (`WorkspaceIndex.searchSymbols`), with their lines.
+    func symbols(matching query: String, limit: Int) async -> [ProjectSymbol] {
+      await withCheckedContinuation { continuation in
+        queue.async { [self] in
+          if !indexed {
+            index.refresh()
+            indexed = true
+          } else {
+            index.refreshIfStale()
+          }
+          let found = index.searchSymbols(query, limit: limit).compactMap { match -> ProjectSymbol? in
+            guard let source = index.source(path: match.path) else { return nil }
+            let range = index.range(in: source, start: match.offset, end: match.offset + match.name.utf8.count)
+            return ProjectSymbol(
+              name: match.name, kind: ProjectSymbol.Kind(match.kind), containers: match.containers,
+              url: URL(fileURLWithPath: match.path), line: range.start.line, column: range.start.character,
+              nameQuery: match.nameQuery)
+          }
+          continuation.resume(returning: found)
         }
       }
     }
