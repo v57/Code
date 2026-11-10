@@ -52,6 +52,17 @@ struct WorkspaceView: View {
       systemImage: promptSymbol, field: KitPromptField(help: "Use “/” to create folders along the way."),
       confirm: "Create"
     ) { model.commitPrompt($0) }
+    .kitPrompt(
+      "Where is \(workspace.name) on \(model.buildFolderSource?.name ?? "that machine")?",
+      isPresented: Binding(get: { model.buildFolderSource != nil }, set: { if !$0 { model.buildFolderSource = nil } }),
+      text: $model.buildFolderText, message: "The project’s folder there. Builds use the files in it.",
+      systemImage: "folder",
+      field: KitPromptField(
+        "Folder", help: "A full path, such as /home/me/\(workspace.name).", systemImage: "folder", mono: true),
+      confirm: "Use Folder"
+    ) { folder in
+      if let source = model.buildFolderSource { model.services.actions.setBuildFolder(folder, for: source) }
+    }
     .kitSheet(item: $model.notarizationSetup) { request in
       NotarizationSheet(request: request)
     }

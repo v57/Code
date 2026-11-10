@@ -2,6 +2,7 @@
   import AppKit
   import CodeKit
   import ComponentKit
+  import SSHKit
   import SwiftUI
   import VaultKit
 
@@ -26,7 +27,8 @@
   /// `dependency:<folder path>` (expands it under Package Dependencies),
   /// `select:<path>` (selects a navigator row, as a click does),
   /// `folder:<relative path>:on|off` (expands or collapses a tree folder),
-  /// `focus` (the editor takes the keyboard), `menu:project|scheme|destination|off` (opens a kit menu),
+  /// `focus` (the editor takes the keyboard), `menu:project|buildFrom|container|scheme|destination|off` (opens a kit menu),
+  /// `buildfrom:<source>`, `machine:<json>`, `machineoff:<id>`, `startruntime:<id>`, `refreshsources` (Build From),
   /// `navigator:on|off`, `size:<width>x<height>` (the window's content size), `newfile[:folder]` (New File or
   /// New Folder's prompt), `rename:<path>` (renames a navigator row in place), `drop:<path>` (Welcome takes the
   /// folder as if it was dropped on it), `savepreset[:off]` (Save Preset…'s popover), `presetsave:file|vault` (saves the
@@ -129,6 +131,44 @@
         if let container = services.actions.containers.first(where: { $0.fileName == argument }) {
           services.actions.selectContainer(container)
         }
+      case "buildfrom":
+        // buildfrom:<source name or id> picks it, as the toolbar's menu does.
+        if let source = services.actions.buildSources.first(where: { $0.name == argument || $0.id == argument }) {
+          services.actions.selectBuildSource(source)
+        }
+      case "startruntime":
+        // startruntime:<id> is the Build From menu's Start item.
+        if let runtime = services.actions.containerRuntimes.first(where: { $0.id == argument }) {
+          services.actions.startRuntime(runtime)
+        }
+      case "refreshsources": services.actions.refreshBuildSources()
+      case "machine":
+        // machine:{"id","name","host","port","user","directory","key"} lists a machine under Build From, signing in
+        // with a private key file, or with `ssh` without one. An empty directory has Build From look for the project.
+        struct Machine: Decodable {
+          var id: String
+          var name: String
+          var host: String
+          var port: Int?
+          var user: String?
+          var directory: String?
+          var key: String?
+        }
+        if let machine = try? JSONDecoder().decode(Machine.self, from: Data(argument.utf8)) {
+          let actions = services.actions
+          actions.machineTargets.removeAll { $0.id == machine.id }
+          actions.machineTargets.append(
+            SSHExecutor.Target(
+              id: machine.id, name: machine.name, host: machine.host, port: machine.port ?? 22, user: machine.user ?? "",
+              directory: machine.directory ?? "", detail: "SSH"))
+          if let path = machine.key, let text = try? String(contentsOfFile: path, encoding: .utf8) {
+            // A test machine this debug command named.
+            let login = try? SSHServer(
+              host: machine.host, user: machine.user ?? NSUserName(), key: SSHKey(importing: text), trust: .ask { _ in true })
+            actions.remoteLogin = { _ in login }
+          }
+        }
+      case "machineoff": services.actions.machineTargets.removeAll { $0.id == argument }
       case "scheme":
         if let scheme = services.actions.schemes.first(where: { $0.name == argument }) {
           services.actions.selectedSchemeID = scheme.id
@@ -328,6 +368,8 @@
         // Writes the window's state for checking from the shell.
         let actions = services.actions
         var lines = [
+          "buildfrom: \(actions.selectedBuildSource.id) \(actions.selectedBuildSourceStatus)",
+          "buildsources: " + actions.buildSources.map { "\($0.name)[\($0.id)]\($0.detail.map { " " + $0 } ?? "")" }.joined(separator: ", "),
           "schemes: " + actions.schemes.map { "\($0.name)[\($0.toolchain.rawValue)]" }.joined(separator: ", "),
           "scheme: \(actions.selectedScheme?.name ?? "-")",
           "containers: " + actions.containers.map(\.fileName).joined(separator: ", "),

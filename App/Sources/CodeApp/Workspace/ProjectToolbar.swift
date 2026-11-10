@@ -171,6 +171,12 @@ private struct ProjectTitle: View {
     case .stopped(_, let date):
       return "Stopped · \(Self.time(date))"
     case .idle:
+      // A source out of reach says so where the project says what it's doing.
+      switch actions.selectedBuildSourceStatus {
+      case .unavailable(let reason): return reason
+      case .checking: return "Checking \(actions.selectedBuildSource.name)…"
+      case .unknown, .ready: break
+      }
       if let activity = model.services.languageServers.activity { return activity }
       if actions.isScanning { return "Finding schemes…" }
       return actions.schemes.isEmpty ? "No schemes in this folder" : "Ready"
@@ -182,16 +188,11 @@ private struct ProjectTitle: View {
   }
 }
 
-/// The issue counts (they open the issue list), then "Container › Scheme › Destination": the kit's menus in one tool
-/// group, the container only when a folder has several to choose from (`ProjectContainer`).
+/// The issue counts (they open the issue list), then "Build From › Container › Scheme › Destination": the kit's menus
+/// in one tool group, Build From only when there are other places to build from (`BuildSource`), the container only
+/// when a folder has several to choose from (`ProjectContainer`).
 private struct SchemeTools: View {
   let model: WindowModel
-  /// The window's account's vault, whose projects on the user's other devices are the remote destinations.
-  @Environment(\.vault) private var vault
-
-  private var remoteTargets: [SSHExecutor.Target] {
-    vault.map { RemoteDestinations.targets(for: model.workspace.root, vault: $0) } ?? []
-  }
 
   var body: some View {
     @Bindable var model = model
@@ -223,6 +224,16 @@ private struct SchemeTools: View {
         }
       }
       ToolGroup {
+        if actions.hasOtherBuildSources {
+          Button {
+            model.openMenu = .buildFrom
+          } label: {
+            Label(actions.selectedBuildSource.name, systemImage: buildSourceSymbol)
+          }
+          .kitMenu(isPresented: model.isPresented(.buildFrom)) { buildSourceItems }
+          .kitHelp("Choose where to build from", meta: buildSourceProblem)
+          ToolSeparator()
+        }
         if !choosableFolders.isEmpty, let container = actions.selectedContainer {
           Button {
             model.openMenu = .container
@@ -254,16 +265,118 @@ private struct SchemeTools: View {
         .kitHelp("Choose where to run")
       }
     }
-    // Other machines that have this project: the user's devices via Hub or that let them in, kept current as the vault
-    // changes.
-    .onChange(of: remoteTargets, initial: true) { _, targets in
-      actions.remoteTargets = targets
-      actions.remoteLoginPassword = { [vault] target in
-        vault.flatMap { RemoteDestinations.loginPassword(for: target, vault: $0) }
+    // Container runtimes here, found without starting them, at open and whenever the menu opens.
+    .task { actions.refreshBuildSources() }
+    .onChange(of: model.openMenu) { _, menu in
+      if menu == .buildFrom { actions.refreshBuildSources() }
+    }
+    .background { MachineTargets(actions: actions, root: model.workspace.root) }
+  }
+
+  private var buildSourceSymbol: String {
+    let actions = model.services.actions
+    if case .unavailable = actions.selectedBuildSourceStatus { return "exclamationmark.triangle.fill" }
+    return actions.selectedBuildSource.symbolName
+  }
+
+  private var buildSourceProblem: String? {
+    if case .unavailable(let reason) = model.services.actions.selectedBuildSourceStatus { return reason }
+    return nil
+  }
+
+  /// This computer, the other machines and the containers, each saying its state; the machines the project may be on
+  /// folded, as listing them contacts nothing; below them what can be done with the one picked. A source that went
+  /// away stays listed while it's picked, and the panel says why.
+  @ViewBuilder private var buildSourceItems: some View {
+    let actions = model.services.actions
+    let selected = actions.selectedBuildSource
+    let listed =
+      actions.buildSources + (actions.buildSources.contains { $0.id == selected.id } ? [] : [selected])
+    let findSection = "Find on Another Machine"
+    let toFind = listed.filter { $0.section == findSection }
+    if case .unavailable(let reason) = actions.selectedBuildSourceStatus {
+      KitMenuPreview("\(reason) It stays picked until you pick another.")
+    }
+    ForEach([BuildSource.localName, "Other Machines", "Containers"], id: \.self) { section in
+      let sources = listed.filter { $0.section == section }
+      // This computer is its own row, which needs no heading.
+      if sources.isEmpty {
+        EmptyView()
+      } else if section == BuildSource.localName {
+        buildSourceRows(sources)
+      } else {
+        KitMenuSection(section) { buildSourceRows(sources) }
       }
-      actions.remoteLogin = { [vault] target in
-        try vault.flatMap { try RemoteDestinations.login(for: target, vault: $0) }
+    }
+    if !toFind.isEmpty {
+      Divider()
+      // The one picked stays out of the fold, so its check shows.
+      buildSourceRows(toFind.filter { $0.id == selected.id })
+      KitSubmenu(findSection, value: "\(toFind.count)") { buildSourceRows(toFind) }
+        .kitMenuPreview(
+          "Looks for \(model.workspace.name) on a machine of yours. Nothing is contacted until you pick one.")
+    }
+    Divider()
+    ForEach(actions.containerRuntimes.filter { !$0.isRunning && $0.startCommand != nil }) { runtime in
+      Button("Start \(runtime.displayName)") { actions.startRuntime(runtime) }
+        .kitMenuPreview("Runs “\(runtime.startCommand ?? "")” to start it, so its containers can build.")
+    }
+    if selected.machine != nil {
+      Button("Set Folder on \(selected.name)…") {
+        model.buildFolderText = selected.machine?.directory ?? ""
+        model.buildFolderSource = selected
       }
+      .kitMenuPreview("Asks where \(model.workspace.name) is on \(selected.name), then lists its schemes from there.")
+    }
+    Button("Refresh") {
+      actions.refreshBuildSources()
+      actions.checkSelectedBuildSource()
+    }
+    .kitMenuPreview(
+      selected.isLocal
+        ? "Looks for your machines and container runtimes again."
+        : "Looks for your machines and container runtimes again, and asks \(selected.name) what it can build.")
+  }
+
+  /// Sources by name, their state at the end ("via Hub", "Stopped", "Checking…", "Unavailable").
+  private func buildSourceRows(_ sources: [BuildSource]) -> some View {
+    let actions = model.services.actions
+    let selected = actions.selectedBuildSource
+    return ForEach(sources) { source in
+      MenuPick(source.name, isOn: source.id == selected.id) { actions.selectBuildSource(source) }
+        .kitMenuHint(buildSourceHint(source) ?? source.detail)
+        .kitMenuPreview(buildSourceSentence(source))
+    }
+  }
+
+  /// What building from a source means, for the menu's panel.
+  private func buildSourceSentence(_ source: BuildSource) -> String {
+    let actions = model.services.actions
+    let status = source.id == actions.selectedBuildSource.id ? actions.selectedBuildSourceStatus : actions.buildSourceStatuses[source.id]
+    if case .unavailable(let reason) = status { return reason }
+    let project = model.workspace.name
+    switch source.place {
+    case .local:
+      return "Builds \(project) here, from this folder."
+    case .machine(let target):
+      return target.directory.isEmpty
+        ? "Looks for \(project) on \(target.name), then builds it there from its own files."
+        : "Builds on \(target.name), from its own files in \(target.directory)."
+    case .container(let runtime):
+      return runtime.isRunning
+        ? "Builds in a new \(runtime.displayName) container with this folder in it. Products stay in a volume."
+        : "\(runtime.displayName) is stopped: start it to build in a container with this folder in it."
+    }
+  }
+
+  /// What a source is doing, after its name.
+  private func buildSourceHint(_ source: BuildSource) -> String? {
+    let actions = model.services.actions
+    let status = source.id == actions.selectedBuildSource.id ? actions.selectedBuildSourceStatus : actions.buildSourceStatuses[source.id]
+    switch status {
+    case .checking: return "Checking…"
+    case .unavailable: return source.container == nil ? "Unavailable" : nil
+    default: return nil
     }
   }
 
@@ -684,5 +797,32 @@ struct IssuesMenu: View {
     case .warning: return .yellow
     case .note: return .gray
     }
+  }
+}
+
+/// Keeps the actions' other machines current as the vault changes: the user's devices and saved hosts. Nothing is
+/// contacted until one is picked. A view of its own, so the toolbar's scheme tools don't read the vault (they updated
+/// with every vault change, and listing the machines took a millisecond each time).
+private struct MachineTargets: View {
+  let actions: ActionController
+  let root: URL
+  /// The window's account's vault, whose hosts and projects on the user's other devices are the other machines.
+  @Environment(\.vault) private var vault
+
+  private var machines: [SSHExecutor.Target] {
+    vault.map { RemoteDestinations.machines(for: root, vault: $0) } ?? []
+  }
+
+  var body: some View {
+    Color.clear
+      .onChange(of: machines, initial: true) { _, targets in
+        actions.machineTargets = targets
+        actions.remoteLoginPassword = { [vault] target in
+          vault.flatMap { RemoteDestinations.loginPassword(for: target, vault: $0) }
+        }
+        actions.remoteLogin = { [vault] target in
+          try vault.flatMap { try RemoteDestinations.login(for: target, vault: $0) }
+        }
+      }
   }
 }

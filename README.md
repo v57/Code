@@ -257,7 +257,9 @@ Features
   - Binary files, files over 20 MB and unreadable files show a placeholder;
     files over 2 MB open without highlighting.
   - Xcode's toolbar: Run (⌘R; hold for Test, Build, Clean), Stop (⌘.), the
-    scheme › destination picker, the activity view with a progress bar,
+    Build From › scheme › destination picker (Build From when there's another
+    machine or a container runtime to build from: `BuildSource`), the activity
+    view with a progress bar,
     status and issue counts (click for the issue list, ⌥⌘5). The Product and
     Debug menus, the console (⇧⌘Y, or a click on the title) with the log,
     filter and debug bar, under the title or in its own window; it opens

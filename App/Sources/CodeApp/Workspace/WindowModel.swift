@@ -40,6 +40,10 @@ import SwiftUI
   var isIssuesPresented = false
   /// The kit menu open in the window's chrome (the toolbar's scheme and destination, the project card's "…").
   var openMenu: ChromeMenu?
+  /// The machine Build From asks a folder for, while its prompt shows.
+  var buildFolderSource: BuildSource?
+  /// The text field of that prompt.
+  var buildFolderText = ""
   /// The Notarization sheet: Export opens it until a profile is set up.
   var notarizationSetup: NotarizationSetupRequest?
   /// The Upload to App Store sheet: the scheme waiting for its build number.
@@ -326,6 +330,7 @@ extension FocusedValues {
 /// The menus of a project window's chrome that open from a button.
 enum ChromeMenu: String {
   case project
+  case buildFrom
   case container
   case scheme
   case destination
