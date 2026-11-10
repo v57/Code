@@ -193,9 +193,13 @@ public struct SourceFingerprint: Hashable, Codable, Sendable {
     git(["rev-list", "--count", "HEAD"], in: folder).flatMap { Int($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
   }
 
+  /// Runs on its own (Dev's sidebar, Install's check) in any folder, a downloaded one too: the repository's
+  /// `core.fsmonitor` (a command git runs for status) and hooks stay off (security audit L14).
   static func git(_ arguments: [String], in folder: URL) -> String? {
-    SubprocessCapture.run("/usr/bin/git", ["-C", folder.path] + arguments, timeout: 30)
+    SubprocessCapture.run("/usr/bin/git", gitSafety + ["-C", folder.path] + arguments, timeout: 30)
   }
+
+  static let gitSafety = ["-c", "core.fsmonitor=false", "-c", "core.hooksPath=/dev/null"]
 
   static func sha256(_ data: Data) -> String {
     SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()

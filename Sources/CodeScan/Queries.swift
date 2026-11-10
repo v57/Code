@@ -423,6 +423,79 @@ extension WorkspaceIndex {
     }
   }
 
+  /// A declaration Open Quickly found: its name, kind, where it is and the declarations it's inside.
+  public struct SymbolMatch: Sendable {
+    public var name: String
+    public var kind: SymbolKind
+    public var path: String
+    /// Where the name is in the file, in bytes.
+    public var offset: Int
+    /// The declarations it's inside, outermost first (`Outer`, `Inner` for `Outer.Inner.value`).
+    public var containers: [String]
+    /// The part of the query matched against the name (after the last `.` or `::`), for highlighting.
+    public var nameQuery: String
+  }
+
+  /// Declarations for Open Quickly, best first. The query is fuzzy like `workspaceSymbols`, and may be qualified:
+  /// `Some.value` (or `Some::value`) finds members fuzzily named `value` whose container's name fuzzily matches `Some`
+  /// (a type, or an extension of it), `A.B.c` the chain of containers outward, and `Some.` every member of `Some`.
+  public func searchSymbols(_ query: String, limit: Int = 100) -> [SymbolMatch] {
+    let parts = query.filter { !$0.isWhitespace }.replacingOccurrences(of: "::", with: ".")
+      .split(separator: ".", omittingEmptySubsequences: false).map(String.init)
+    guard let last = parts.last else { return [] }
+    let outer = parts.dropLast().filter { !$0.isEmpty }
+    // Nothing to match ("" or "."), or a name with no container ("value", ".value").
+    guard !last.isEmpty || !outer.isEmpty else { return [] }
+    let needle = Array(last.lowercased().utf8)
+    let containerNeedles = outer.reversed().map { Array($0.lowercased().utf8) }
+
+    var scored: [(score: Int, file: Int, symbol: Int)] = []
+    for (fileIndex, file) in files.enumerated() {
+      guard let file else { continue }
+      let symbols = file.symbols.symbols
+      file.symbols.names.withUnsafeBufferPointer { names in
+        func name(_ symbol: Symbol) -> UnsafeBufferPointer<UInt8> {
+          UnsafeBufferPointer(rebasing: names[Int(symbol.nameOffset)..<Int(symbol.nameOffset) + Int(symbol.nameLength)])
+        }
+        for (symbolIndex, symbol) in symbols.enumerated() where !symbol.isLocal {
+          var score = needle.isEmpty ? 1 : fuzzyScore(needle, name(symbol))
+          guard score > 0 else { continue }
+          // Each container from the innermost must match, one parent at a time.
+          var parent = symbol.parent
+          var matched = true
+          for containerNeedle in containerNeedles {
+            guard parent >= 0 else { matched = false; break }
+            let container = symbols[Int(parent)]
+            let containerScore = fuzzyScore(containerNeedle, name(container))
+            guard containerScore > 0 else { matched = false; break }
+            score += containerScore
+            parent = container.parent
+          }
+          guard matched else { continue }
+          let boost = containerNeedles.isEmpty
+            ? (symbol.kind.isType ? 3 : symbol.kind.isCallable ? 2 : symbol.parent < 0 ? 1 : 0)
+            : (symbol.kind == .extension ? 0 : 1)
+          scored.append((score * 4 + boost, fileIndex, symbolIndex))
+        }
+      }
+    }
+    scored.sort { $0.score != $1.score ? $0.score > $1.score : ($0.file, $0.symbol) < ($1.file, $1.symbol) }
+    return scored.prefix(limit).compactMap { item in
+      guard let file = files[item.file] else { return nil }
+      let symbols = file.symbols.symbols
+      let symbol = symbols[item.symbol]
+      var containers: [String] = []
+      var parent = symbol.parent
+      while parent >= 0 {
+        containers.insert(file.symbols.name(symbols[Int(parent)]), at: 0)
+        parent = symbols[Int(parent)].parent
+      }
+      return SymbolMatch(
+        name: file.symbols.name(symbol), kind: symbol.kind, path: file.path, offset: Int(symbol.offset),
+        containers: containers, nameQuery: last)
+    }
+  }
+
   /// A completion's candidates at an offset.
   public struct Completion: Sendable {
     public var label: String

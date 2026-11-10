@@ -51,6 +51,7 @@ struct WorkspaceWindow: View {
           WorkspaceView()
             .environment(model)
             .environment(model.workspace)
+            .folderTrustPrompt(model.services)
             // Another project is a new view: the old one's disappearing saves its project and, unless it still runs
             // something (`AppState.keepInBackground`), closes it.
             .id(model.workspace.root)

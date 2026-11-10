@@ -163,15 +163,59 @@ public struct SSHExecutor: ActionExecutor {
   /// `cd <folder there> && <command>` in the remote user's login shell, with paths into the project here
   /// rewritten to the folder there, and the secrets set first as plain (unexported) shell variables.
   func remoteCommand(_ command: String, directory: URL) -> String {
-    "exec \"$SHELL\" -lc \(shellQuote(remoteScript(command, directory: directory)))"
+    "exec \"$SHELL\" -lc \(posixShellQuote(remoteScript(command, directory: directory)))"
   }
 
-  /// What the login shell there runs.
+  /// What the login shell there runs. Always POSIX quoting, from a Windows client too (security audit L9).
   func remoteScript(_ command: String, directory: URL) -> String {
     let remoteDirectory = remotePath(directory.path)
-    let command = command.replacingOccurrences(of: localRoot.path, with: target.directory)
-    let variables = secrets.keys.sorted().map { "\($0)=\(shellQuote(secrets[$0]!)); " }.joined()
-    return "\(variables)cd \(shellQuote(remoteDirectory)) && \(command)"
+    let variables = secrets.keys.sorted().map { "\($0)=\(posixShellQuote(secrets[$0]!)); " }.joined()
+    // The folder there takes the place of the project's here in the command. A plain one goes in as it is; any other
+    // (a space, a quote, a `$`) as a variable, written to suit the quotes it lands in.
+    if isPlainShellWord(target.directory) {
+      let command = command.replacingOccurrences(of: localRoot.path, with: target.directory)
+      return "\(variables)cd \(posixShellQuote(remoteDirectory)) && \(command)"
+    }
+    let command = Self.replacing(localRoot.path, withVariable: "CODE_ROOT", in: command)
+    return "CODE_ROOT=\(posixShellQuote(target.directory)); \(variables)cd \(posixShellQuote(remoteDirectory)) && \(command)"
+  }
+
+  /// `text` with each `path` outside an escape replaced by `$variable`, quoted for where it is: `"${v}"` bare,
+  /// `'"${v}"'` inside single quotes, `${v}` inside double quotes.
+  static func replacing(_ path: String, withVariable variable: String, in text: String) -> String {
+    guard !path.isEmpty else { return text }
+    enum Quote { case none, single, double }
+    var quote = Quote.none
+    var result = ""
+    var index = text.startIndex
+    while index < text.endIndex {
+      if text[index...].hasPrefix(path) {
+        switch quote {
+        case .none: result += "\"${\(variable)}\""
+        case .single: result += "'\"${\(variable)}\"'"
+        case .double: result += "${\(variable)}"
+        }
+        index = text.index(index, offsetBy: path.count)
+        continue
+      }
+      let character = text[index]
+      result.append(character)
+      index = text.index(after: index)
+      switch (quote, character) {
+      case (.none, "\\"), (.double, "\\"):
+        // The next character is taken as it is.
+        if index < text.endIndex {
+          result.append(text[index])
+          index = text.index(after: index)
+        }
+      case (.none, "'"): quote = .single
+      case (.none, "\""): quote = .double
+      case (.single, "'"): quote = .none
+      case (.double, "\""): quote = .none
+      default: break
+      }
+    }
+    return result
   }
 
   /// The path there for a path in the project here.

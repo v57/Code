@@ -68,4 +68,37 @@ import Testing
       _ = try await service.format("package main\nfunc {", url: url.appendingPathComponent("main.go"))
     }
   }
+
+  /// Security audit H2: in a folder that isn't trusted, the repository's own `node_modules/.bin/prettier` never runs,
+  /// nor a formatter whose config is code.
+  @Test func untrustedFolderIgnoresLocalPrettier() throws {
+    let url = try folder([".prettierrc": #"{"semi": false}"#, "src/a.js": "let a = 1\n"])
+    defer { try? FileManager.default.removeItem(at: url) }
+    let local = url.appendingPathComponent("node_modules/.bin/prettier")
+    try FileManager.default.createDirectory(at: local.deletingLastPathComponent(), withIntermediateDirectories: true)
+    try Data("#!/bin/sh\ntouch \"$(dirname \"$0\")/ran\"\ncat\n".utf8).write(to: local)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: local.path)
+    let file = url.appendingPathComponent("src/a.js")
+    let prettier = FormatterCatalog.all.first { $0.id == "prettier" }!
+
+    var service = FormattingService(environment: environment)
+    #expect(service.executable(for: prettier, file: file) != local.path)
+    #expect(service.formatter(for: file)?.executable != local.path)
+    service.usesProjectCode = true
+    #expect(service.executable(for: prettier, file: file) == local.path)
+
+    // Configs that are code: a JavaScript one, one naming plugins, package.json's "prettier" key, `.formatter.exs`.
+    #expect(!FormattingService.runsProjectCode(prettier, config: url.appendingPathComponent(".prettierrc"), file: file))
+    try #"{"plugins": ["./evil.js"]}"#.write(to: url.appendingPathComponent(".prettierrc"), atomically: true, encoding: .utf8)
+    #expect(FormattingService.runsProjectCode(prettier, config: url.appendingPathComponent(".prettierrc"), file: file))
+    try #"{"semi": false}"#.write(to: url.appendingPathComponent(".prettierrc"), atomically: true, encoding: .utf8)
+    try #"{"devDependencies": {"prettier": "^3"}}"#.write(to: url.appendingPathComponent("package.json"), atomically: true, encoding: .utf8)
+    #expect(!FormattingService.runsProjectCode(prettier, config: nil, file: file))
+    try #"{"prettier": "@company/prettier-config"}"#.write(to: url.appendingPathComponent("package.json"), atomically: true, encoding: .utf8)
+    #expect(FormattingService.runsProjectCode(prettier, config: nil, file: file))
+    #expect(FormattingService.runsProjectCode(prettier, config: url.appendingPathComponent("prettier.config.js"), file: file))
+    let mix = FormatterCatalog.all.first { $0.id == "mix-format" }!
+    #expect(FormattingService.runsProjectCode(mix, config: nil, file: url.appendingPathComponent("a.ex")))
+    #expect(!FileManager.default.fileExists(atPath: local.deletingLastPathComponent().appendingPathComponent("ran").path))
+  }
 }

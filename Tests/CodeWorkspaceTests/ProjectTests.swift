@@ -211,6 +211,11 @@ private final class TempFolder {
     #expect(best("projtest") == "Tests/CodeKitTests/ProjectTests.swift")
     #expect(FuzzyMatch.match("zzz", in: paths[0]) == nil)
     #expect(FuzzyMatch.match("ws", in: "Workspace")?.positions == [0, 4])
+    // The name the query covers wins over one with more words between (they tied, then sorted by path).
+    let named = ["Sources/Chat/Message content view.swift", "Sources/Chat/Views/Message view.swift"]
+    #expect(
+      named.max { FuzzyMatch.match("Message view", in: $0)!.score < FuzzyMatch.match("Message view", in: $1)!.score }
+        == "Sources/Chat/Views/Message view.swift")
   }
 
   @Test func workspaceTabsAndPreview() async throws {

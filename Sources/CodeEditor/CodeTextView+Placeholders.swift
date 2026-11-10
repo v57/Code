@@ -143,7 +143,7 @@
       }
       isAssisting = false
       undoManager?.endUndoGrouping()
-      undoManager?.setActionName("Completion")
+      undoManager?.setActionName(String(localized: "Completion"))
 
       let start = range.location + shiftBefore
       let inserted = NSRange(location: start, length: (insertion as NSString).length)

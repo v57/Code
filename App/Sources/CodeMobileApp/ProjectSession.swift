@@ -17,29 +17,41 @@ import VaultKit
   let project: RemoteProject
   /// The window's account's vault: the project's hosts, their signing and known keys.
   let vault: Vault
-  private(set) var phase: Phase = .loading("Connecting")
+  private(set) var phase: Phase = .loading(String(localized: "Connecting"))
   private(set) var controller: ActionController?
   /// The device the copy came from, and the folder there.
   private(set) var source: SSHExecutor.Target?
+  /// What the server wouldn't let this user read in the project (paths there): skipped, so its schemes may be missing.
+  private(set) var unreadable: [String] = []
   @ObservationIgnored private var files: SFTPClient?
+  /// The first `open()`, outside any view's task, so leaving the screen for Files doesn't cancel it.
+  @ObservationIgnored private var opening: Task<Void, Never>?
 
   init(project: RemoteProject, vault: Vault) {
     self.project = project
     self.vault = vault
   }
 
+  /// Opens the project the first time it's shown; coming back from Files or a file finds it open (the same
+  /// connection, log and issues, and a build still running).
+  func openOnce() async {
+    if opening == nil { opening = Task { await open() } }
+    await opening?.value
+  }
+
   /// Copies the project's manifests from the first device that answers, then finds its schemes.
   func open() async {
     var failures: [String] = []
     for target in project.targets {
-      phase = .loading("Connecting to \(target.name)")
+      phase = .loading(String(localized: "Connecting to \(target.name)"))
       do {
         let client = try await SFTPClient.connect(server: try login(for: target), timeout: 15)
-        phase = .loading("Reading the project on \(target.name)")
-        let root = try await ProjectMirror.fetch(target.directory, projectID: project.id, client: client)
+        phase = .loading(String(localized: "Reading the project on \(target.name)"))
+        let copy = try await ProjectMirror.fetch(target.directory, projectID: project.id, client: client)
         files = client
         source = target
-        start(root: root, preferring: target)
+        unreadable = copy.unreadable
+        start(root: copy.root, preferring: target)
         return
       } catch {
         failures.append("\(target.name): \(Self.describe(error))")
@@ -57,7 +69,10 @@ import VaultKit
     return client
   }
 
+  /// Ends the project: stops what runs and closes the connection. Called once the project's screen is gone for good
+  /// (another project, back to the list), never when Files or a file is pushed over it.
   func close() {
+    opening?.cancel()
     controller?.stop()
     files?.close()
     files = nil
@@ -115,5 +130,21 @@ import VaultKit
 
   static func describe(_ error: Error) -> String {
     (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+  }
+}
+
+/// Holds a project's session for as long as its screen's state lives, and closes it after: on iPhone when the project is
+/// popped off the stack, on iPad when another project replaces it. Pushing Files or a file over the screen keeps the
+/// state (and the session) alive, where `onDisappear` fired and closed it, losing the log and stopping a build.
+nonisolated final class ProjectSessionLifetime: Sendable {
+  let session: ProjectSession
+
+  @MainActor init(project: RemoteProject, vault: Vault) {
+    session = ProjectSession(project: project, vault: vault)
+  }
+
+  deinit {
+    let session = session
+    Task { @MainActor in session.close() }
   }
 }

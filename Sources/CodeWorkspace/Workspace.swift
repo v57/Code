@@ -146,7 +146,7 @@ import Observation
     do {
       try text.write(to: file, atomically: true, encoding: .utf8)
     } catch {
-      statusMessage = "Couldn’t write .gitignore: \(error.localizedDescription)"
+      statusMessage = String(localized: "Couldn’t write .gitignore: \(error.localizedDescription)")
       return false
     }
     if visibility.shownPaths.contains(path) {

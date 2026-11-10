@@ -123,21 +123,24 @@ struct FindNavigatorView: View {
   @ViewBuilder private func findOptions(_ find: ProjectFind) -> some View {
     @Bindable var find = find
     KitPicker(
-      "Find", selection: $find.mode,
+      String(localized: "Find"), selection: $find.mode,
       options: [SearchQuery.Mode.containing, .matchingWord, .regularExpression].map { ($0.title, $0) })
     KitPicker("Case", selection: $find.isCaseSensitive, options: [("Ignoring Case", false), ("Matching Case", true)])
   }
 
   /// "13 matches · 3 files", or why there are none.
   private func summary(_ find: ProjectFind) -> [String] {
-    if find.text.isEmpty { return ["Type in the search line below"] }
-    if find.isInvalidPattern { return ["Not a valid regular expression"] }
-    if find.results.isEmpty { return [find.isSearching ? "Searching…" : "No results"] }
+    if find.text.isEmpty { return [String(localized: "Type in the search line below")] }
+    if find.isInvalidPattern { return [String(localized: "Not a valid regular expression")] }
+    if find.results.isEmpty {
+      return [find.isSearching ? String(localized: "Searching…") : String(localized: "No results")]
+    }
     let matches = find.matchCount
     let files = find.results.count
+    let matchText = matches == 1 ? String(localized: "1 match") : String(localized: "\(matches) matches")
     return [
-      "\(matches) match\(matches == 1 ? "" : "es")" + (find.isTruncated ? " (stopped)" : ""),
-      "\(files) file\(files == 1 ? "" : "s")",
+      find.isTruncated ? String(localized: "\(matchText) (stopped)") : matchText,
+      files == 1 ? String(localized: "1 file") : String(localized: "\(files) files"),
     ]
   }
 
@@ -177,9 +180,9 @@ struct FindNavigatorView: View {
 extension SearchQuery.Mode {
   var title: String {
     switch self {
-    case .containing: "Containing"
-    case .matchingWord: "Matching Word"
-    case .regularExpression: "Regular Expression"
+    case .containing: String(localized: "Containing")
+    case .matchingWord: String(localized: "Matching Word")
+    case .regularExpression: String(localized: "Regular Expression")
     }
   }
 }

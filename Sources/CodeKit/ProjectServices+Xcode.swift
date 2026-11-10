@@ -46,7 +46,8 @@
     /// was written for the same scheme and destination, or `force`) and
     /// hands it to SourceKit-LSP.
     func updateCompilationDatabase(force: Bool = false) {
-      guard isReady, settings.languageServersEnabled,
+      // `-showBuildSettingsForIndex` resolves the project's packages: only in a trusted folder (security audit L10).
+      guard isReady, isTrusted, settings.languageServersEnabled,
         !settings.disabledLanguageServers.contains(Self.sourceKitID),
         let scheme = actions.selectedScheme, scheme.toolchain == .xcode
       else { return }

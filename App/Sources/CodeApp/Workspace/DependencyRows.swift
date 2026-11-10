@@ -16,7 +16,7 @@ struct PackageDependenciesSection: View {
     if !workspace.dependencies.isEmpty {
       let count = workspace.dependencies.count
       KitSection(
-        "Package Dependencies", meta: count == 1 ? "1 package" : "\(count) packages", systemImage: "shippingbox",
+        "Package Dependencies", meta: count == 1 ? String(localized: "1 package") : String(localized: "\(count) packages"), systemImage: "shippingbox",
         hue: .brown
       ) {
         KitOutline(items, children: \.children, expanded: $model.expandedDependencyFolders) { item in
@@ -108,7 +108,7 @@ private struct PackageDependencyRow: View {
   private var help: String {
     var parts = [dependency.ecosystem.displayName]
     if let source = dependency.source, source != dependency.name { parts.append(source) }
-    parts.append(dependency.location?.abbreviatedPath ?? "Not downloaded yet")
+    parts.append(dependency.location?.abbreviatedPath ?? String(localized: "Not downloaded yet"))
     return parts.joined(separator: " · ")
   }
 }

@@ -37,11 +37,11 @@ public struct BuildSource: Identifiable, Hashable, Codable, Sendable {
   }
 
   #if os(Windows)
-    public static let localName = "This PC"
+    public static let localName = String(localized: "This PC")
   #elseif os(Linux)
-    public static let localName = "This Computer"
+    public static let localName = String(localized: "This Computer")
   #else
-    public static let localName = "This Mac"
+    public static let localName = String(localized: "This Mac")
   #endif
 
   /// "via Hub", "SSH", "Stopped": shown after the name.
@@ -49,7 +49,7 @@ public struct BuildSource: Identifiable, Hashable, Codable, Sendable {
     switch place {
     case .local: return nil
     case .machine(let target): return target.detail
-    case .container(let runtime): return runtime.isRunning ? nil : "Stopped"
+    case .container(let runtime): return runtime.isRunning ? nil : String(localized: "Stopped")
     }
   }
 
@@ -183,13 +183,13 @@ enum MachineProbe {
       "for t in \(tools.map(\.tool).joined(separator: " ")); do command -v \"$t\" >/dev/null 2>&1 && echo \"\(marker)tool $t\"; done",
     ]
     if let find {
-      let name = shellQuote(find.name)
+      let name = posixShellQuote(find.name)
       var places = ["\"$HOME\"/\(name)"]
       for parent in ["Developer", "Projects", "src", "code", "workspace"] {
         places += ["\"$HOME\"/\(parent)/\(name)", "\"$HOME\"/\(parent)/*/\(name)"]
       }
-      if let relative = find.relativePath { places.insert("\"$HOME\"/\(shellQuote(relative))", at: 0) }
-      lines.append("origin=\(shellQuote(find.origin ?? ""))")
+      if let relative = find.relativePath { places.insert("\"$HOME\"/\(posixShellQuote(relative))", at: 0) }
+      lines.append("origin=\(posixShellQuote(find.origin ?? ""))")
       lines.append(
         """
         for d in \(places.joined(separator: " ")); do
@@ -203,7 +203,7 @@ enum MachineProbe {
         """)
     }
     lines.append("exit 0")
-    return "sh -c " + shellQuote(lines.joined(separator: "\n"))
+    return "sh -c " + posixShellQuote(lines.joined(separator: "\n"))
   }
 
   static func parse(_ lines: [String]) -> Answer {
