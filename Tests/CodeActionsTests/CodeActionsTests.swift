@@ -272,7 +272,7 @@ import Testing
     #expect(mac[.install]?.hasPrefix("installed=\"$HOME\"/Applications/App.app; if [ ! -e \"$installed\" ]; then installed=/Applications/App.app; fi; ") == true)
     #expect(mac[.install]?.contains("ditto .build/App/DeveloperID/App.app \"$installed\"") == true)
     #expect(mac[.export]?.contains("--keychain-profile \"${NOTARY_PROFILE:-notary}\"") == true)
-    #expect(mac[.upload]?.contains(#"{"method":"app-store-connect"}"#) == true)
+    #expect(mac[.upload]?.contains(#"{"method":"app-store-connect","destination":"upload"}"#) == true)
     #expect(Set(XcodeDetector.distributionCommands(base, scheme: "App", mac: false).keys) == [.upload])
     #expect(ActionKind.allCases.filter(\.isDistribution) == [.install, .export, .upload])
     #expect(ActionKind.allCases.filter(\.needsNotarization) == [.export])

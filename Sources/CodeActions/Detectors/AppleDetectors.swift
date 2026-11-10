@@ -197,7 +197,7 @@ public struct XcodeDetector: ProjectDetector {
     let archive = shellQuote("\(folder)/\(scheme).xcarchive")
     var commands: [ActionKind: String] = [
       .upload:
-        "\(base) -archivePath \(archive) archive -allowProvisioningUpdates \(AppStoreUpload.buildNumberSetting) && echo '{\"method\":\"app-store-connect\"}' | plutil -convert xml1 -o \(shellQuote("\(folder)/AppStore.plist")) - && xcodebuild -exportArchive -archivePath \(archive) -exportOptionsPlist \(shellQuote("\(folder)/AppStore.plist")) -exportPath \(shellQuote("\(folder)/Upload")) -allowProvisioningUpdates"
+        "\(base) -archivePath \(archive) archive -allowProvisioningUpdates \(AppStoreUpload.buildNumberSetting) && echo '{\"method\":\"app-store-connect\",\"destination\":\"upload\"}' | plutil -convert xml1 -o \(shellQuote("\(folder)/AppStore.plist")) - && xcodebuild -exportArchive -archivePath \(archive) -exportOptionsPlist \(shellQuote("\(folder)/AppStore.plist")) -exportPath \(shellQuote("\(folder)/Upload")) -allowProvisioningUpdates"
     ]
     guard mac else { return commands }
     let archiveMac = "\(base) -destination 'generic/platform=macOS' -archivePath \(archive) archive"
