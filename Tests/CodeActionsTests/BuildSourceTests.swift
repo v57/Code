@@ -177,6 +177,10 @@ import Testing
       name: "cli", toolchain: .cargo, directory: URL(fileURLWithPath: "/p"), commands: [.build: "cargo build -p cli"]
     ).inContainer()
     #expect(cargo.commands[.build] == "cargo build --target-dir /build/cargo -p cli")
+    let go = ActionScheme(
+      name: "m", toolchain: .go, directory: URL(fileURLWithPath: "/p"), commands: [.build: "go build ./..."]
+    ).inContainer()
+    #expect(go.commands[.build] == "go build -o /build/go/bin/ ./...")
     let cmake = ActionScheme(
       name: "c", toolchain: .cmake, directory: URL(fileURLWithPath: "/p"),
       commands: [.test: "cmake -S . -B build && cmake --build build && ctest --test-dir build"]
@@ -198,6 +202,13 @@ import Testing
     #expect(arguments.last?.hasSuffix("go build") == true)
     #expect(executor.script("/Users/me/My App/bin/x").hasSuffix("/workspace/bin/x"))
     #expect(executor.volume == ContainerExecutor(runtime: colima, image: "x", toolchain: .node, localRoot: root).volume)
+  }
+
+  @Test func theImageIsFetchedThroughAPipe() {
+    let executor = ContainerExecutor(
+      runtime: colima, image: "swift:latest", toolchain: .swiftPM, localRoot: URL(fileURLWithPath: "/p"))
+    #expect(executor.pullCommand.contains("image inspect swift:latest"))
+    #expect(executor.pullCommand.hasSuffix("pull swift:latest | cat"))
   }
 
   /// A stopped runtime fails at once with what to do, instead of `docker` waiting and failing obscurely.

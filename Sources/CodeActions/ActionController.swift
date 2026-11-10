@@ -115,7 +115,7 @@
     /// What each source was last seen doing, by id; unknown until something asked.
     public private(set) var buildSourceStatuses: [String: BuildSourceStatus] = [:]
     public private(set) var selectedBuildSourceID = BuildSource.local.id
-    /// The folders found or given per machine, by target id, remembered per project.
+    /// The folders found or given per machine, by target id, remembered per project. One given wins over the vault's.
     @ObservationIgnored private var foundFolders: [String: String] = [:]
     /// The source picked, as last seen, so a choice that went away still shows.
     @ObservationIgnored private var savedBuildSource: BuildSource?
@@ -411,7 +411,7 @@
       [.local]
         + machineTargets.map { target in
           var target = target
-          if target.directory.isEmpty, let folder = foundFolders[target.id] { target.directory = folder }
+          if let folder = foundFolders[target.id] { target.directory = folder }
           return BuildSource(place: .machine(target))
         }
         + containerRuntimes.map { BuildSource(place: .container($0)) }
@@ -690,7 +690,10 @@
     private func noteOutcome(of failure: Error?, cancelled: Bool, source: BuildSource) -> String? {
       guard !source.isLocal, !cancelled else { return nil }
       if source.container != nil {
-        if failure != nil { refreshBuildSources() }
+        guard failure != nil else { return nil }
+        refreshBuildSources()
+        // What `docker run` exits with when it can't start the container (a full disk, an image it can't fetch).
+        if case .failed(125, _)? = failure as? ActionError { return "\(source.name) couldn’t start the container: see the log" }
         return nil
       }
       if case .failed(255, _)? = failure as? ActionError {

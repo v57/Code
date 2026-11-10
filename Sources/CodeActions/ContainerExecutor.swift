@@ -4,7 +4,7 @@ import Foundation
 /// Commands in a container on a local runtime (`ContainerRuntime`), through the `docker` command: a new container per
 /// command, removed when it ends, with the project's folder here at `/workspace`, so it builds what the editor has,
 /// and a volume of the project's at `/build` for what it produces (`ActionScheme.inContainer()`), so Linux products
-/// neither reach the folder nor mix with this computer's. Stop kills the container. Compose schemes run here instead,
+/// don't mix with this computer's. Stop kills the container. Compose schemes run here instead,
 /// against the runtime.
 public struct ContainerExecutor: ActionExecutor {
   /// Where the project's folder is in the container.
@@ -44,10 +44,23 @@ public struct ContainerExecutor: ActionExecutor {
       let name = "code-\(Self.digest(localRoot.path))-\(UUID().uuidString.lowercased().prefix(8))"
       let arguments = runArguments(command, directory: directory, name: name)
       let process = try PTYProcess(
-        command: arguments.map(shellQuote).joined(separator: " "), directory: URL(fileURLWithPath: NSHomeDirectory()),
-        environment: environment)
+        command: pullCommand + Self.then + arguments.map(shellQuote).joined(separator: " "),
+        directory: URL(fileURLWithPath: NSHomeDirectory()), environment: environment)
       return ContainerCommand(process: process, name: name, endpoint: runtime.endpoint, environment: environment)
     #endif
+  }
+
+  #if os(Windows)
+    private static let then = " & "
+  #else
+    private static let then = " ; "
+  #endif
+
+  /// Fetches the image first when it isn't here. `docker run` would too, but on a terminal it draws its progress by
+  /// moving the cursor, which leaves the log blank for what can be minutes; through a pipe it prints lines.
+  var pullCommand: String {
+    let docker = "docker --host \(shellQuote(runtime.endpoint))"
+    return "\(docker) image inspect \(shellQuote(image)) >/dev/null 2>&1 || \(docker) pull \(shellQuote(image)) | cat"
   }
 
   /// `docker run`'s arguments for a command. A terminal, so tools draw as they do here. On Colima the container
@@ -135,13 +148,19 @@ public struct ContainerExecutor: ActionExecutor {
 
 extension ActionScheme {
   /// The scheme with its builds in the container's build volume (`ContainerExecutor.buildRoot`) rather than the
-  /// project's folder: SwiftPM's scratch path, Cargo's target folder, CMake's build folder.
+  /// project's folder: SwiftPM's scratch path, Cargo's target folder, Go's binaries, CMake's build folder. Tools with
+  /// no such option (Make, .NET, a project's own scripts) still write where they do.
   public func inContainer() -> ActionScheme {
     let root = ContainerExecutor.buildRoot
     var scheme = self
     switch toolchain {
     case .swiftPM: scheme.commands = commands.mapValues { Self.swiftCommand($0, scratchPath: root + "/swift") }
     case .cargo: scheme.commands = commands.mapValues { Self.cargoCommand($0, targetDirectory: root + "/cargo") }
+    case .go:
+      // With one main package `go build ./...` writes its binary to the folder.
+      scheme.commands = commands.mapValues {
+        $0.replacingOccurrences(of: "go build ./...", with: "go build -o \(root)/go/bin/ ./...")
+      }
     case .cmake:
       let folder = root + "/cmake"
       scheme.commands = commands.mapValues {
