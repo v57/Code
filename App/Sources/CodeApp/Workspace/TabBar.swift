@@ -4,7 +4,7 @@ import SwiftUI
 
 /// The open files as the kit's tab strip, floating over the editor (Go Back and Go Forward are in the toolbar):
 /// each with its file icon, the selected tab raised, a close button on the selected and hovered tab, a dot on one
-/// whose edits are still being saved, the preview tab's name in italics. A double click keeps the preview tab open;
+/// whose edits are still being saved, the preview tab's name in italics. ⌥-clicking a close button closes the other tabs. A double click keeps the preview tab open;
 /// tabs reorder by dragging; a tab's context menu has the tab actions (also in the File menu).
 struct TabBar: View {
   @Environment(Workspace.self) private var workspace
@@ -17,7 +17,13 @@ struct TabBar: View {
     KitTabStrip(
       tabs: workspace.tabs.map { tab($0, names: names) }, selection: selectedTab,
       onClose: { id in
-        if let document = document(id) { workspace.close(document) }
+        guard let document = document(id) else { return }
+        // ⌥-click closes every other tab, as in Safari and Xcode.
+        if KitDesktop.modifierKeys.contains(.option) {
+          workspace.closeOthers(document)
+        } else {
+          workspace.close(document)
+        }
       },
       onMove: move
     )
