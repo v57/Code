@@ -91,12 +91,14 @@ import SwiftUI
     Task {
       #if os(macOS)
         let urls = await KitDesktop.chooseFiles(
-          prompt: "Open", message: "Choose a folder to open as a project.", canChooseFolders: true,
+          prompt: String(localized: "Open"), message: String(localized: "Choose a folder to open as a project."),
+          canChooseFolders: true,
           allowsMultipleSelection: true)
       #else
         // Off the Mac it asks for folders only.
         let urls = await KitDesktop.chooseFolders(
-          prompt: "Open", message: "Choose a folder to open as a project.", allowsMultipleSelection: true)
+          prompt: String(localized: "Open"), message: String(localized: "Choose a folder to open as a project."),
+          allowsMultipleSelection: true)
       #endif
       for url in urls { open(url) }
     }

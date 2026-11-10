@@ -65,6 +65,20 @@ public enum FuzzyMatch {
     // Prefer shorter paths and matches that start the file name.
     score -= original.count / 8
     if positions.first == nameStart { score += 6 }
+    // Prefer names the query covers: "message view" is "Message view.swift" more than "Message content view.swift",
+    // which ties on everything above. Separators don't count, and a name typed in full wins outright.
+    let separators: Set<UInt16> = [0x20, 0x5F, 0x2D, 0x2E]
+    var unmatched = 0
+    var next = positions.firstIndex { $0 >= nameStart } ?? positions.count
+    for i in nameStart..<extensionStart {
+      if next < positions.count, positions[next] == i {
+        next += 1
+      } else if !separators.contains(original[i]) {
+        unmatched += 1
+      }
+    }
+    score -= unmatched / 2
+    if unmatched == 0 { score += 10 }
     return score
   }
 

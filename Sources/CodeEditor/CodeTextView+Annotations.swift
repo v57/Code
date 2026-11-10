@@ -33,7 +33,7 @@
       storage.replaceCharacters(
         in: oldRange, with: NSAttributedString(string: replacement, attributes: typingAttributes))
       didChangeText()
-      undoManager?.setActionName("Format")
+      undoManager?.setActionName(String(localized: "Format"))
       // The caret: shifted when after the change, else kept on its line.
       let delta = (replacement as NSString).length - oldRange.length
       var caret: Int
@@ -296,7 +296,9 @@
       annotationPopover?.close()
       let text = banner.items.map { item -> String in
         let kind =
-          item.severity == .error ? "Error" : item.severity == .warning ? "Warning" : "Note"
+          item.severity == .error
+          ? String(localized: "Error")
+          : item.severity == .warning ? String(localized: "Warning") : String(localized: "Note")
         return "\(kind): \(item.message)"
       }.joined(separator: "\n\n")
       let field = NSTextField(wrappingLabelWithString: text)

@@ -276,6 +276,30 @@ private func names(_ text: String, _ language: String) -> [String] {
     }
   }
 
+  @Test func searchSymbolsTakesQualifiedNames() throws {
+    try withFolder([
+      "A.swift": "struct Some {\n  var value = 1\n  struct Inner { var value = 2 }\n}\nstruct Other { var value = 3 }\n",
+      "B.swift": "extension Some {\n  func valueTwice() -> Int { value * 2 }\n}\nlet value = 0\n",
+    ]) { root in
+      let index = WorkspaceIndex(roots: [root])
+      index.refresh()
+      // Unqualified: every `value`.
+      #expect(index.searchSymbols("value").filter { $0.name == "value" }.count == 4)
+      // Qualified: only Some's, the extension's included.
+      let some = index.searchSymbols("Some.value")
+      #expect(some.map(\.name) == ["value", "valueTwice"])
+      #expect(some.first?.containers == ["Some"])
+      #expect(some.first?.path == root + "/A.swift")
+      #expect(index.searchSymbols("Some::value").map(\.name) == ["value", "valueTwice"])
+      #expect(index.searchSymbols("Some.Inner.value").map(\.containers) == [["Some", "Inner"]])
+      #expect(index.searchSymbols("oth.val").map(\.containers) == [["Other"]])
+      // `Some.` lists its members.
+      #expect(Set(index.searchSymbols("Some.").map(\.name)) == ["value", "Inner", "valueTwice"])
+      #expect(index.searchSymbols("").isEmpty)
+      #expect(index.searchSymbols("Nope.value").isEmpty)
+    }
+  }
+
   @Test func refreshSeesChangesAndOpenDocumentsWin() throws {
     try withFolder(["A.swift": "struct Old {}\n"]) { root in
       let index = WorkspaceIndex(roots: [root])

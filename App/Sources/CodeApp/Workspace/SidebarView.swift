@@ -349,7 +349,7 @@ struct FileTreeRow: View {
   private var help: String {
     let path = workspace.tree.relativePath(of: node.url)
     if let reason = node.hiddenReason { return path + " — " + reason.description }
-    if node.isInHiddenFolder { return path + " — In a hidden folder" }
+    if node.isInHiddenFolder { return String(localized: "\(path) — In a hidden folder") }
     return path
   }
 

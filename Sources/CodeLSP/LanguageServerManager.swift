@@ -33,6 +33,20 @@
       }
     }
     @ObservationIgnored public var configurations = LanguageServerCatalog.all
+    /// Whether the folder's own code may run (`FolderTrust`): until then only the built-in server (`code-lsp`) starts,
+    /// as the others run what the repository names (sourcekit-lsp a `buildServer.json`, typescript-language-server
+    /// the repo's `node_modules/typescript`, rust-analyzer build scripts and proc macros). Security audit H1.
+    public var isTrusted: Bool {
+      didSet {
+        guard !isTrusted else { return }
+        // Trust taken back: the external servers stop, and the built-in one takes their files with the next open.
+        for (key, server) in servers where server.configuration.install != .builtIn {
+          servers[key] = nil
+          for (url, document) in documents where document.server == key { documents[url] = nil }
+          Task { await server.stop() }
+        }
+      }
+    }
 
     /// Diagnostics by file.
     public private(set) var diagnostics: [URL: [LSPDiagnostic]] = [:]
@@ -49,6 +63,7 @@
     public init(workspace: URL, environment: [String: String] = ProcessInfo.processInfo.environment) {
       self.workspace = workspace.standardizedFileURL
       self.environment = environment
+      isTrusted = FolderTrust.isTrusted(workspace)
     }
 
     /// What runs the built-in server (CodeServer): the app's own binary, set by the app. Without one, as in a host
@@ -73,7 +88,9 @@
     /// scanner is last), else the first enabled, to say what's missing.
     public func configuration(for url: URL) -> LanguageServerConfiguration? {
       guard isEnabled else { return nil }
-      let matching = configurations.filter { $0.languageID(for: url) != nil && !disabledServerIDs.contains($0.id) }
+      let matching = configurations.filter {
+        $0.languageID(for: url) != nil && !disabledServerIDs.contains($0.id) && (isTrusted || $0.install == .builtIn)
+      }
       return matching.first { executable(for: $0) != nil } ?? matching.first
     }
 

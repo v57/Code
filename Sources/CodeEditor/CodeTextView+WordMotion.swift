@@ -104,7 +104,7 @@
       textStorage?.replaceCharacters(in: range, with: "")
       didChangeText()
       setSelectedRange(NSRange(location: range.location, length: 0))
-      undoManager?.setActionName("Delete Word")
+      undoManager?.setActionName(String(localized: "Delete Word"))
     }
 
     // MARK: - Boundaries

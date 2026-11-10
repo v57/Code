@@ -384,10 +384,15 @@
       scrollView.reflectScrolledClipView(clipView)
     }
 
-    /// The text view's visible rect less what the scroll view's top and bottom insets cover.
+    /// What the clip view shows of the text view, less what the scroll view's top and bottom insets cover. From the
+    /// clip view's bounds, not `visibleRect`: that one stops at the text view's edges, so at the top (the clip view
+    /// at -insets.top) taking the inset off again skipped the lines under the bar, and the minimap's frame and drawing
+    /// never reached line 0 (nor the last line at the bottom).
     private func unobscuredRect(of textView: CodeTextView) -> NSRect {
-      var rect = textView.visibleRect
-      guard let insets = textView.enclosingScrollView?.contentInsets else { return rect }
+      guard let scrollView = textView.enclosingScrollView else { return textView.visibleRect }
+      let clipView = scrollView.contentView
+      var rect = textView.convert(clipView.bounds, from: clipView)
+      let insets = scrollView.contentInsets
       rect.origin.y += insets.top
       rect.size.height = max(0, rect.height - insets.top - insets.bottom)
       return rect

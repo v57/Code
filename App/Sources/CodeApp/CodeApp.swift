@@ -19,6 +19,8 @@ public struct CodeApp: App {
   public init() {
     updater.start()
     if ScreenshotDemo.isOn { ScreenshotDemo.prepare() }
+    // A folder's own code runs only once it's trusted (before any window opens one).
+    CodeFolderTrust.install()
     // The shared projects get their app icons, for this app's lists and the other v57 apps': every account's
     // (a window looks again at the account it shows, so one made later gets them too).
     if !ScreenshotDemo.isOn {

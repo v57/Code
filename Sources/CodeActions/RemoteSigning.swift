@@ -17,9 +17,9 @@ public enum RemoteSigning: String, Sendable, Hashable, Codable, CaseIterable {
 
   public var title: String {
     switch self {
-    case .unsigned: "Don’t Sign"
-    case .loginKeychain: "Login Keychain"
-    case .desktopSession: "Desktop Session"
+    case .unsigned: String(localized: "Don’t Sign")
+    case .loginKeychain: String(localized: "Login Keychain")
+    case .desktopSession: String(localized: "Desktop Session")
     }
   }
 
@@ -33,9 +33,9 @@ public enum RemoteSigning: String, Sendable, Hashable, Codable, CaseIterable {
 
   public var detail: String {
     switch self {
-    case .unsigned: "Builds and tests without signing; makes no app to run elsewhere"
-    case .loginKeychain: "Unlocks the login keychain with your Mac password"
-    case .desktopSession: "Builds as your logged-in user on the Mac; goes on while Code is in the background"
+    case .unsigned: String(localized: "Builds and tests without signing; makes no app to run elsewhere")
+    case .loginKeychain: String(localized: "Unlocks the login keychain with your Mac password")
+    case .desktopSession: String(localized: "Builds as your logged-in user on the Mac; goes on while Code is in the background")
     }
   }
 

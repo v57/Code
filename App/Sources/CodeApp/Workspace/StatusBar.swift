@@ -22,6 +22,15 @@ private struct CodeStatusBar: ViewModifier {
       if let document = workspace.selectedDocument, document.isSaving {
         Text("Formatting…")
       }
+      if !model.services.isTrusted {
+        // Restricted mode (security audit H1): the folder's own tools don't run until it's trusted.
+        Button("Restricted Mode", systemImage: "lock.shield") { model.services.asksForTrust = true }
+          .buttonStyle(.kitPlain)
+          .foregroundStyle(Hue.orange.text)
+          .kitHelp("This folder isn’t trusted: only Code’s language server and formatters from your PATH run, and no packages are resolved. Click to trust it.")
+          // The bar is one accessibility element: its action reaches the question too.
+          .accessibilityAction(named: Text("Trust Folder…")) { model.services.asksForTrust = true }
+      }
       if let document = workspace.selectedDocument, document.content == .text {
         Button(position) { model.isGoToLinePresented = true }
           .buttonStyle(.kitPlain)
@@ -32,7 +41,7 @@ private struct CodeStatusBar: ViewModifier {
 
   /// A message, work going on, or a text document's caret.
   private var hasContent: Bool {
-    icon.systemImage != nil || workspace.selectedDocument?.content == .text
+    icon.systemImage != nil || workspace.selectedDocument?.content == .text || !model.services.isTrusted
   }
 
   /// What the status bar's message is about; no icon while there is none.
@@ -64,13 +73,11 @@ private struct CodeStatusBar: ViewModifier {
 
   private var position: String {
     let selection = model.selection
-    var text = "Line: \(selection.line)  Col: \(selection.column)"
-    if selection.length > 0 {
-      text +=
-        selection.lineCount > 1
-        ? "  (\(selection.length) characters, \(selection.lineCount) lines)"
-        : "  (\(selection.length) characters)"
-    }
-    return text
+    let line = selection.line
+    let column = selection.column
+    guard selection.length > 0 else { return String(localized: "Line: \(line)  Col: \(column)") }
+    return selection.lineCount > 1
+      ? String(localized: "Line: \(line)  Col: \(column)  (\(selection.length) characters, \(selection.lineCount) lines)")
+      : String(localized: "Line: \(line)  Col: \(column)  (\(selection.length) characters)")
   }
 }

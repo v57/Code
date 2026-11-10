@@ -43,6 +43,14 @@
       return swift != nil
     }
 
+    /// Reads the whole project again (the folder became trusted: its manifest may now be evaluated).
+    func reloadSwiftModel() {
+      lock.lock()
+      let swift = swift
+      lock.unlock()
+      swift?.filesChanged([], reload: true)
+    }
+
     /// Files changed on disk: the Swift model reads them again, or the whole project when files came or went or a
     /// manifest changed. The scanner checks its files itself when asked.
     func filesChanged(_ urls: [URL], structural: Bool) {
@@ -90,6 +98,10 @@
 
     func scannerCompletions(url: URL, text: String, line: Int, column: Int) async -> [WorkspaceIndex.Completion] {
       await scanner.completions(path: url.standardizedFileURL.path, text: text, line: line, column: column)
+    }
+
+    func scannerSymbols(matching query: String, limit: Int) async -> [ProjectSymbol] {
+      await scanner.symbols(matching: query, limit: limit)
     }
 
     /// Whether a file is one the Swift model reads.
@@ -191,6 +203,29 @@
       }
     }
 
+    /// Declarations for Open Quickly (`WorkspaceIndex.searchSymbols`), with their lines.
+    func symbols(matching query: String, limit: Int) async -> [ProjectSymbol] {
+      await withCheckedContinuation { continuation in
+        queue.async { [self] in
+          if !indexed {
+            index.refresh()
+            indexed = true
+          } else {
+            index.refreshIfStale()
+          }
+          let found = index.searchSymbols(query, limit: limit).compactMap { match -> ProjectSymbol? in
+            guard let source = index.source(path: match.path) else { return nil }
+            let range = index.range(in: source, start: match.offset, end: match.offset + match.name.utf8.count)
+            return ProjectSymbol(
+              name: match.name, kind: ProjectSymbol.Kind(match.kind), containers: match.containers,
+              url: URL(fileURLWithPath: match.path), line: range.start.line, column: range.start.character,
+              nameQuery: match.nameQuery)
+          }
+          continuation.resume(returning: found)
+        }
+      }
+    }
+
     /// A resolved name as the menu describes it: the scanner knows kinds, signatures and parents, not modules or types.
     private func describe(_ resolved: WorkspaceIndex.Resolved, from path: String, source: SourceFile) -> SymbolDescription? {
       guard let target = resolved.path == path ? source : index.source(path: resolved.path) else { return nil }
@@ -277,7 +312,8 @@
 
     private func load() {
       guard !isBroad else { return }
-      model = Model(project: Project(root: root))
+      // A manifest is code: evaluated only in a trusted folder (FolderTrust).
+      model = Model(project: Project(root: root, runsManifest: FolderTrust.isTrusted(URL(fileURLWithPath: root))))
       given = [:]
     }
 

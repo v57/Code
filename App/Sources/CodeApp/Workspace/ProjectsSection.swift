@@ -46,7 +46,7 @@ struct ProjectsSection<FileTree: View, Accessory: View, Fallback: View>: View {
     } menu: {
       EmptyView()
     }
-    .title("Projects", meta: [account].compactMap { $0 })
+    .title(String(localized: "Projects"), meta: [account].compactMap { $0 })
     .projectHeader(meta: { _ in meta }, accessory: { _ in accessory() })
     .trailing { project in
       if let folder = project.localURL, AppState.shared.isRunningInBackground(folder) {

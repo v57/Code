@@ -138,7 +138,7 @@ import Observation
       content = .tooLarge(size)
     case .missing:
       isMissing = true
-      if content == .loading { content = .unreadable("The file doesn’t exist.") }
+      if content == .loading { content = .unreadable(String(localized: "The file doesn’t exist.")) }
     case .failed(let message):
       content = .unreadable(message)
     }
@@ -159,7 +159,7 @@ import Observation
     let size: Int
     do {
       let values = try url.resourceValues(forKeys: [.fileSizeKey, .isDirectoryKey])
-      if values.isDirectory == true { return .failed("This is a folder.") }
+      if values.isDirectory == true { return .failed(String(localized: "This is a folder.")) }
       size = values.fileSize ?? 0
     } catch {
       return FileManager.default.fileExists(atPath: url.path) ? .failed(error.localizedDescription) : .missing

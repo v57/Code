@@ -171,7 +171,7 @@ public struct ActionStep: Sendable {
               guard status == 0, let product = XcodeProduct.parse(settings.json, scheme: scheme.name) else {
                 throw ActionError.missing("Couldn’t read the build settings of “\(scheme.name)” there.")
               }
-              try await DesktopJob(command: shellQuote(product.executablePath)).step("Run").work(context)
+              try await DesktopJob(command: posixShellQuote(product.executablePath)).step("Run").work(context)
             },
           ]
         default:

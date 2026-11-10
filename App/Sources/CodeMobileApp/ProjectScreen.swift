@@ -12,11 +12,18 @@ import VaultKit
 /// scheme › device under the title.
 struct ProjectScreen: View {
   let project: RemoteProject
-  @State private var session: ProjectSession
+  /// The session lives with this screen's state, not its appearance (`ProjectSessionLifetime`).
+  @State private var lifetime: ProjectSessionLifetime
+  private var session: ProjectSession { lifetime.session }
   @State private var pane = Pane.log
   @State private var showsFiles = false
   /// A file pushed straight from here (Debug: `CODE_DEBUG_SHOW=file:<path>`).
   @State private var shownFile: SFTPFileInfo?
+  @State private var hidesUnreadable = false
+  #if DEBUG
+    /// `CODE_DEBUG_SHOW` is shown once, not on every return.
+    @State private var debugShown = false
+  #endif
   @Environment(\.kitIdiom) private var idiom
 
   enum Pane: Hashable {
@@ -25,7 +32,7 @@ struct ProjectScreen: View {
 
   init(project: RemoteProject, vault: Vault) {
     self.project = project
-    _session = State(initialValue: ProjectSession(project: project, vault: vault))
+    _lifetime = State(initialValue: ProjectSessionLifetime(project: project, vault: vault))
   }
 
   var body: some View {
@@ -35,7 +42,7 @@ struct ProjectScreen: View {
         EmptyState(systemImage: "chevron.left.forwardslash.chevron.right", title: message, status: .working)
       case .failed(let message):
         EmptyState(
-          systemImage: "exclamationmark.triangle", title: "Couldn’t Open \(project.name)", message: message,
+          systemImage: "exclamationmark.triangle", title: String(localized: "Couldn’t Open \(project.name)"), message: message,
           status: .failed(nil)
         ) {
           Button("Try Again", systemImage: "arrow.clockwise") { Task { await session.open() } }
@@ -69,13 +76,16 @@ struct ProjectScreen: View {
       }
     }
     .navigationDestination(item: $shownFile) { entry in RemoteFileView(session: session, entry: entry) }
+    // Again on every return from Files: opens only the first time.
     .task {
-      await session.open()
+      await session.openOnce()
       #if DEBUG
-        await debugShow()
+        if !debugShown {
+          debugShown = true
+          await debugShow()
+        }
       #endif
     }
-    .onDisappear { session.close() }
   }
 
   #if DEBUG
@@ -97,8 +107,22 @@ struct ProjectScreen: View {
     }
   #endif
 
+  /// The folders and files the device wouldn't let Code read: skipped, so the project opened without them.
+  private var unreadableBanner: some View {
+    let paths = session.unreadable.map { session.relativePath(of: $0) }
+    return Banner(
+      paths.count == 1
+        ? String(localized: "Couldn’t read \(paths[0])") : String(localized: "Couldn’t read \(paths.count) items"),
+      message: String(
+        localized: "\(paths.joined(separator: ", ")) on \(session.source?.name ?? project.name) can’t be read by this login, so Code skipped it. Schemes in it aren’t listed."
+      ),
+      systemImage: "lock", hue: .orange, onDismiss: { hidesUnreadable = true }
+    ) {}
+  }
+
   @ViewBuilder private func content(_ controller: ActionController) -> some View {
     VStack(alignment: .leading, spacing: 12) {
+      if !session.unreadable.isEmpty, !hidesUnreadable { unreadableBanner }
       if idiom == .phone { SchemeTools(controller: controller, session: session) }
       // The project's presets kept in the vault, as on the Mac, wrapping.
       PresetBar(projectID: project.id, controller: controller, vault: session.vault)
@@ -154,24 +178,24 @@ struct ProjectTitle: View {
   private var meta: [String] {
     switch session.phase {
     case .loading(let message): return [message]
-    case .failed: return ["Couldn’t open"]
+    case .failed: return [String(localized: "Couldn’t open")]
     case .ready: break
     }
     guard let controller = session.controller else { return [] }
-    let device = showsDevice ? controller.selectedDestination.map { "on \($0.name)" } : nil
+    let device = showsDevice ? controller.selectedDestination.map { String(localized: "on \($0.name)") } : nil
     switch controller.state {
     case .idle:
-      if controller.isScanning { return ["Reading the project…"] }
-      return [controller.schemes.isEmpty ? "No schemes" : "Ready"]
+      if controller.isScanning { return [String(localized: "Reading the project…")] }
+      return [controller.schemes.isEmpty ? String(localized: "No schemes") : String(localized: "Ready")]
     case .running(let kind):
       let detail = controller.progress?.message ?? controller.stepTitle
       return [detail.map { $0.isEmpty ? kind.progressTitle : "\(kind.progressTitle): \($0)" } ?? kind.progressTitle]
     case .succeeded(let kind, _):
-      return ["\(kind.title) succeeded"] + [device].compactMap { $0 }
+      return [String(localized: "\(kind.title) succeeded")] + [device].compactMap { $0 }
     case .failed(let kind, _, let summary):
-      return ["\(kind.title) failed: \(summary)"] + [device].compactMap { $0 }
+      return [String(localized: "\(kind.title) failed: \(summary)")] + [device].compactMap { $0 }
     case .stopped(let kind, _):
-      return ["\(kind.title) stopped"]
+      return [String(localized: "\(kind.title) stopped")]
     }
   }
 }
@@ -245,7 +269,7 @@ struct SchemeTools: View {
         showsSchemes = true
       } label: {
         Label(
-          controller.selectedScheme?.name ?? (controller.isScanning ? "Finding Schemes…" : "No Scheme"),
+          controller.selectedScheme?.name ?? (controller.isScanning ? String(localized: "Finding Schemes…") : String(localized: "No Scheme")),
           systemImage: controller.selectedScheme?.toolchain.symbolName ?? "square.dashed")
       }
       .disabled(controller.schemes.isEmpty)
@@ -265,7 +289,7 @@ struct SchemeTools: View {
         showsDevices = true
       } label: {
         Label(
-          controller.selectedDestination?.name ?? "No Device",
+          controller.selectedDestination?.name ?? String(localized: "No Device"),
           systemImage: controller.selectedDestination?.symbolName ?? "questionmark.app.dashed")
       }
       .disabled(controller.destinations.isEmpty)
@@ -303,14 +327,17 @@ struct SchemeTools: View {
     // Login Keychain's password: the Mac user's own, saved in the vault (iCloud Keychain) for the host, which Code
     // sends to unlock the login keychain before each signed build there.
     .kitPrompt(
-      "Login Keychain", isPresented: $asksPassword, text: $password, message: passwordTarget?.name,
+      String(localized: "Login Keychain"), isPresented: $asksPassword, text: $password, message: passwordTarget?.name,
       systemImage: RemoteSigning.loginKeychain.symbolName, hue: .indigo,
       field: .secure(
-        placeholder: "Mac password",
-        help: passwordTarget.flatMap { $0.user.isEmpty ? nil : "\($0.user) on \($0.name)" }),
+        placeholder: String(localized: "Mac password"),
+        help: passwordTarget.flatMap { $0.user.isEmpty ? nil : String(localized: "\($0.user) on \($0.name)") }),
       footnote:
-        "An SSH session can’t use the login keychain until it’s unlocked. Code unlocks it with this password before each build, and keeps it in iCloud Keychain.",
-      confirm: "Save"
+        String(
+          localized:
+            "An SSH session can’t use the login keychain until it’s unlocked. Code unlocks it with this password before each build, and keeps it in iCloud Keychain."
+        ),
+      confirm: String(localized: "Save")
     ) { password in
       guard let target = passwordTarget else { return }
       try RemoteProjects.setLoginPassword(password, for: target)
@@ -379,9 +406,10 @@ struct IssuesView: View {
         KitSection(
           "Issues",
           meta: [
-            errors == 0 ? "" : errors == 1 ? "1 error" : "\(errors) errors",
-            warnings == 0 ? "" : warnings == 1 ? "1 warning" : "\(warnings) warnings",
-            device.map { "from \($0)" } ?? "",
+            errors == 0 ? "" : errors == 1 ? String(localized: "1 error") : String(localized: "\(errors) errors"),
+            warnings == 0
+              ? "" : warnings == 1 ? String(localized: "1 warning") : String(localized: "\(warnings) warnings"),
+            device.map { String(localized: "from \($0)") } ?? "",
           ],
           systemImage: errors > 0 ? "xmark.octagon" : "exclamationmark.triangle", hue: errors > 0 ? .red : .orange
         ) {

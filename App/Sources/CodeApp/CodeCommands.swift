@@ -293,11 +293,13 @@ struct CodeCommands: Commands {
 
   /// ⇧⌘. acts on Open Quickly while it is open, else on the navigator.
   private var hiddenFilesTitle: String {
-    guard let model else { return "Show Hidden Files" }
+    guard let model else { return String(localized: "Show Hidden Files") }
     if model.isQuickOpenPresented {
-      return model.quickOpenIncludesHiddenFiles ? "Leave Out Hidden Files" : "Include Hidden Files"
+      return model.quickOpenIncludesHiddenFiles
+        ? String(localized: "Leave Out Hidden Files") : String(localized: "Include Hidden Files")
     }
-    return model.workspace.visibility.showsHiddenFiles ? "Hide Hidden Files" : "Show Hidden Files"
+    return model.workspace.visibility.showsHiddenFiles
+      ? String(localized: "Hide Hidden Files") : String(localized: "Show Hidden Files")
   }
 
   /// The project's choice of whether .gitignore hides files.

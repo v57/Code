@@ -80,14 +80,15 @@ public enum ActionRuns {
       let dropped = max(0, lines.count - shownLines)
       if dropped > 0 {
         lines.removeFirst(dropped)
-        lines.insert("… \(dropped) earlier lines", at: 0)
+        lines.insert(String(localized: "… \(dropped) earlier lines"), at: 0)
       }
       let warnings = block.lines.filter { $0.contains("warning:") }.count
       return Run(
-        id: "\(id)-\(index)", name: name, command: block.command ?? name ?? "Output",
+        id: "\(id)-\(index)", name: name, command: block.command ?? name ?? String(localized: "Output"),
         systemImage: systemImage, status: status,
         progress: isLast && status.isWorking ? progress : nil,
-        warnings: warnings == 0 ? nil : warnings == 1 ? "1 warning" : "\(warnings) warnings",
+        warnings: warnings == 0
+          ? nil : warnings == 1 ? String(localized: "1 warning") : String(localized: "\(warnings) warnings"),
         output: lines.joined(separator: "\n"))
     }
   }

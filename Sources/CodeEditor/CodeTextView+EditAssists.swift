@@ -330,7 +330,7 @@
       didChangeText()
       isApplyingExternalText = false
       isAssisting = false
-      undoManager?.setActionName("Trim Trailing Whitespace")
+      undoManager?.setActionName(String(localized: "Trim Trailing Whitespace"))
       setSelectedRange(NSRange(location: selection.location - removedBefore, length: selection.length))
       return true
     }

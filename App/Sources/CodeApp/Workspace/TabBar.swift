@@ -86,6 +86,6 @@ struct TabBar: View {
   private func title(for document: TextDocument, names: [String: Int]) -> String {
     let name = FileName.display(document.url, showExtensions: showExtensions)
     let title = names[name, default: 0] > 1 ? name + " — " + document.url.deletingLastPathComponent().lastPathComponent : name
-    return document.isMissing ? title + " (deleted)" : title
+    return document.isMissing ? String(localized: "\(title) (deleted)") : title
   }
 }
