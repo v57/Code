@@ -130,6 +130,25 @@
       #expect(drag == NSRange(location: 0, length: 18))
     }
 
+    @Test func tabOnAnEmptyLineIndentsToItsBlock() {
+      let text = "struct S {\n    var body: some View {\n\n    }\n}"
+      let empty = (text as NSString).range(of: "\n\n").location + 1
+      let view = editor(text, caret: empty)
+      view.insertTab(nil)
+      #expect(view.string == "struct S {\n    var body: some View {\n        \n    }\n}")
+      #expect(view.selectedRange().location == empty + 8)
+      // Indented that far already: one more level, as before.
+      view.insertTab(nil)
+      #expect(view.selectedRange().location == empty + 12)
+      // Short of a closing brace's level, the opener's.
+      let closer = editor("f {\n  x\n}", caret: 8)
+      closer.insertTab(nil)
+      #expect(closer.string == "f {\n  x\n    }")
+      let under = editor("a {\n}", caret: 4)
+      under.insertTab(nil)
+      #expect(under.string == "a {\n    }")
+    }
+
     @Test func optionArrowsMoveByNames() {
       let view = editor("x = Some.value + 1", caret: 4)
       view.moveWordRight(nil)

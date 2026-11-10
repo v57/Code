@@ -1275,11 +1275,52 @@
         shiftRight(sender)
         return
       }
+      if selection.length == 0, indentToExpectedLevel(at: selection.location) { return }
       guard configuration.insertSpaces else { return super.insertTab(sender) }
       let line = lineIndex.line(containing: selection.location)
       let column = selection.location - lineIndex.starts[line]
       let width = max(1, configuration.tabWidth)
       insertText(String(repeating: " ", count: width - column % width), replacementRange: selection)
+    }
+
+    /// Tab in a line's indentation that is short of where the line belongs (an empty line in a block just opened)
+    /// indents it there at once, as Xcode does: the line above's indentation, one level more after an opening
+    /// bracket (or a ":" in Python and YAML); a closing bracket only right under its opener. False when the caret is past the
+    /// indentation or the line is indented that far already.
+    func indentToExpectedLevel(at location: Int) -> Bool {
+      guard let text = textStorage?.mutableString else { return false }
+      let line = lineIndex.line(containing: location)
+      let current = indentation(ofLine: line, in: text)
+      let start = lineIndex.starts[line]
+      guard location <= start + (current as NSString).length else { return false }
+      var above = line - 1
+      while above >= 0, lineIndex.contentRange(ofLine: above, in: text).length
+        == (indentation(ofLine: above, in: text) as NSString).length
+      { above -= 1 }
+      guard above >= 0 else { return false }
+      var expected = indentation(ofLine: above, in: text)
+      let content = text.substring(with: lineIndex.contentRange(ofLine: above, in: text))
+        .trimmingCharacters(in: .whitespaces)
+      let colonIndents = ["Python", "YAML"].contains(spec?.name ?? "")
+      let opens = content.utf16.last.map { Delimiters.pairs[$0] != nil || (colonIndents && $0 == 0x3A) } ?? false
+      let rest = text.substring(with: lineIndex.contentRange(ofLine: line, in: text))
+        .trimmingCharacters(in: .whitespaces)
+      if rest.utf16.first.map({ first in Delimiters.pairs.values.contains(first) }) ?? false {
+        // A closer lines up with its opener, which is only known here when it ends the line above.
+        guard opens else { return false }
+      } else if opens {
+        expected += indentUnit
+      }
+      guard columns(of: expected) > columns(of: current) else { return false }
+      let range = NSRange(location: start, length: (current as NSString).length)
+      insertAssisted(expected, replacing: range)
+      return true
+    }
+
+    /// How wide `indent` is, a tab counting to the next tab stop.
+    private func columns(of indent: String) -> Int {
+      let width = max(1, configuration.tabWidth)
+      return indent.reduce(0) { column, c in c == "\t" ? (column / width + 1) * width : column + 1 }
     }
 
     public override func insertBacktab(_ sender: Any?) {
