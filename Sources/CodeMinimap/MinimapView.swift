@@ -260,7 +260,7 @@
       drawingTiles.insert(index)
       let tile = MinimapTile(
         bars: bars, width: bounds.width, height: CGFloat(Self.tileLines) * rowHeight, scale: scale,
-        alpha: theme.isDark ? 0.75 : 0.6)
+        alpha: theme.isDark ? 0.52 : 0.42)
       let generation = tileGeneration
       Self.tileQueue.async {
         let image = MinimapTileImage(tile.draw())
@@ -309,7 +309,7 @@
     private func drawSections(offset: CGFloat, in dirtyRect: NSRect) {
       guard !sections.isEmpty else { return }
       let font = NSFont.systemFont(ofSize: 10.5, weight: .bold)
-      let color = NSColor(hex: theme.syntax.plainText).withAlphaComponent(0.85)
+      let color = NSColor(hex: theme.syntax.plainText).withAlphaComponent(0.6)
       let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
       let background = NSColor(hex: theme.background)
       let height = ceil(font.ascender - font.descender) + 2

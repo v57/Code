@@ -38,6 +38,9 @@
       container.minimap.dataSource = source
       let textView = scrollView.textView
       textView.onLayoutChange = { [weak self] in self?.layoutChanged() }
+      // A new appearance changes the editor's theme without SwiftUI updating the view.
+      container.minimap.theme = textView.theme
+      textView.onThemeChange = { [weak self] theme in self?.container.minimap.theme = theme }
       scrollView.contentView.postsBoundsChangedNotifications = true
       NotificationCenter.default.addObserver(
         forName: NSView.boundsDidChangeNotification, object: scrollView.contentView, queue: .main

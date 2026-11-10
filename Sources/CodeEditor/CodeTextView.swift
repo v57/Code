@@ -28,7 +28,11 @@
 
     public private(set) var lineIndex: LineIndex
     public private(set) var spec: LanguageSpec?
-    public private(set) var theme: EditorTheme = .githubLight
+    public private(set) var theme: EditorTheme = .githubLight {
+      didSet { if theme != oldValue { onThemeChange?(theme) } }
+    }
+    /// Called when the theme changes, with the appearance too (the minimap beside the editor follows it).
+    public var onThemeChange: ((EditorTheme) -> Void)?
     public var configuration: EditorConfiguration {
       didSet { if configuration != oldValue { applyConfiguration(previous: oldValue) } }
     }

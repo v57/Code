@@ -130,6 +130,25 @@
       #expect(drag == NSRange(location: 0, length: 18))
     }
 
+    @Test func aNewAppearanceReportsTheNewTheme() {
+      let view = editor("x")
+      let window = NSWindow(
+        contentRect: NSRect(x: 0, y: 0, width: 300, height: 200), styleMask: [.titled], backing: .buffered,
+        defer: true)
+      window.isReleasedWhenClosed = false
+      window.contentView?.addSubview(view)
+      var reported: [String] = []
+      view.onThemeChange = { reported.append($0.id) }
+      // Light, then dark: whichever the test starts in, the second one is a change.
+      window.appearance = NSAppearance(named: .aqua)
+      view.viewDidChangeEffectiveAppearance()
+      window.appearance = NSAppearance(named: .darkAqua)
+      view.viewDidChangeEffectiveAppearance()
+      #expect(reported.last == "xcode-dark")
+      #expect(view.theme.id == "xcode-dark")
+      window.close()
+    }
+
     @Test func tabOnAnEmptyLineIndentsToItsBlock() {
       let text = "struct S {\n    var body: some View {\n\n    }\n}"
       let empty = (text as NSString).range(of: "\n\n").location + 1
