@@ -175,6 +175,8 @@ private struct NavigatorSidebar<Content: View, BottomBar: View>: View {
         }
       },
       set: { item in
+        // The click that brings the window forward only focuses it: the file it lands on stays closed.
+        guard !KitDesktop.isActivatingClick else { return }
         switch item {
         case .file(let url)?: model.sidebarSelection = url
         case .match(let match)?: findSelection = match
