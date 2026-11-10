@@ -137,7 +137,7 @@
       view.moveWordRight(nil)
       #expect(view.selectedRange().location == 14)
       view.moveWordLeft(nil)
-      #expect(view.selectedRange().location == 9)
+      #expect(view.selectedRange().location == 8)  // ".value", the dot with its name
       view.moveWordLeft(nil)
       #expect(view.selectedRange().location == 4)
     }
@@ -149,21 +149,27 @@
       view.moveWordLeft(nil)
       #expect(view.selectedRange().location == 6)
       view.moveWordLeft(nil)
+      #expect(view.selectedRange().location == 5)  // the bracket
+      view.moveWordLeft(nil)
       #expect(view.selectedRange().location == 0)
       // Inside the string, word by word.
       view.setSelectedRange(NSRange(location: 7, length: 0))
       view.moveWordRight(nil)
       #expect(view.selectedRange().location == 12)
-      // From before "print": the name first, then the string.
+      // From before "print": the name first, the bracket, then the string.
       view.setSelectedRange(NSRange(location: 0, length: 0))
       view.moveWordRight(nil)
       #expect(view.selectedRange().location == 5)
+      view.moveWordRight(nil)
+      #expect(view.selectedRange().location == 6)
       view.moveWordRight(nil)
       #expect(view.selectedRange().location == 19)
       // Interpolations and raw strings stay in the one word; an unclosed string doesn't count.
       let interpolated = editor("f(\"a \\(b + 1) c\", #\"r\"#)", caret: 2)
       interpolated.moveWordRight(nil)
       #expect(interpolated.selectedRange().location == 16)
+      interpolated.moveWordRight(nil)
+      #expect(interpolated.selectedRange().location == 17)
       interpolated.moveWordRight(nil)
       #expect(interpolated.selectedRange().location == 23)
       let unclosed = editor("f(\"ab cd", caret: 2)
@@ -174,7 +180,7 @@
     @Test func shiftOptionArrowsExtendFromTheSameEnd() {
       let view = editor("a.bc.d", caret: 4)
       view.moveWordLeftAndModifySelection(nil)
-      #expect(view.selectedRange() == NSRange(location: 2, length: 2))
+      #expect(view.selectedRange() == NSRange(location: 1, length: 3))
       view.moveWordLeftAndModifySelection(nil)
       #expect(view.selectedRange() == NSRange(location: 0, length: 4))
       view.moveWordRightAndModifySelection(nil)
@@ -187,7 +193,7 @@
     @Test func optionDeleteDeletesOneName() {
       let view = editor("Some.value")
       view.deleteWordBackward(nil)
-      #expect(view.string == "Some.")
+      #expect(view.string == "Some")
       view.deleteWordBackward(nil)
       #expect(view.string == "")
       view.undoManager?.undo()
@@ -223,13 +229,21 @@
     }
 
     @Test func optionArrowsTakeNumbersPrefixedStringsAndContractionsWhole() {
-      #expect(stops("x = 3.14 + 0x1F + 1e-5") == "x| = 3.14| + 0x1F| + 1e-5|")
+      #expect(stops("x = 3.14 + 0x1F + 1e-5") == "x| =| 3.14| +| 0x1F| +| 1e-5|")
       #expect(stops("// don't use it") == "// don't| use| it|")
-      #expect(stops("s = \"it's ok\"") == "s| = \"it's ok\"|")
-      #expect(stops("f(r\"x y\", b'z')", "python") == "f|(r\"x y\"|, b'z'|)|")
-      #expect(stops("s = @\"Hello World\";", "objective-c") == "s| = @\"Hello World\"|;|")
-      // A multi-line string's quotes aren't a word of their own: the caret goes into it.
-      #expect(stops("s = \"\"\"\n  hi\n  \"\"\"") == "s| = \"\"\"\n  hi|\n  \"\"\"|")
+      #expect(stops("s = \"it's ok\"") == "s| =| \"it's ok\"|")
+      #expect(stops("f(r\"x y\", b'z')", "python") == "f|(|r\"x y\"|,| b'z'|)|")
+      #expect(stops("s = @\"Hello World\";", "objective-c") == "s| =| @\"Hello World\"|;|")
+      // A multi-line string's opening quotes are a stop, then the caret goes into it.
+      #expect(stops("s = \"\"\"\n  hi\n  \"\"\"") == "s| =| \"\"\"|\n  hi|\n  \"\"\"|")
+    }
+
+    @Test func optionArrowsStopAtPunctuationAndLineEnds() {
+      #expect(
+        stops("    Text(\"Hello World\").font(.system(size: 24))\n  }\n}\n\nstruct S {")
+          == "    Text|(|\"Hello World\"|)|.font|(|.system|(|size|:| 24|))|\n  }|\n}|\n\nstruct| S| {|")
+      #expect(stops("a -> [Int]? // e.g. this") == "a| ->| [|Int|]?| // e|.g|. this|")
+      #expect(stops("// a, b.\n\nx") == "// a|, b|.|\n\nx|")
     }
 
     @Test func doubleClickSelectsWholeNumbersContractionsAndMultilineStrings() {

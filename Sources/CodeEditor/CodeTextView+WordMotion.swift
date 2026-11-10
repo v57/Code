@@ -2,11 +2,12 @@
   import AppKit
   import CodeHighlighting
 
-  /// ⌥← and ⌥→ (and ⌥⌫, ⌥⌦, with ⇧ to select) move by the same words a double-click selects: names, so
-  /// `Some.value` is two words where AppKit joins them across the dot (as in "e.g."), and `don't` in a comment or a
-  /// string is one. A string literal on one line (its prefix included: `r"…"`, `@"…"`), a number (`3.14`) and a
-  /// placeholder count as one word when the caret meets them from outside, so ⌥→ after `print(` lands after
-  /// `"Hello World"`; inside a string the caret moves word by word.
+  /// ⌥← and ⌥→ (and ⌥⌫, ⌥⌦, with ⇧ to select) move by names, so `Some.value` is `Some` and `.value` where AppKit
+  /// joins them across the dot (as in "e.g."), and `don't` in a comment or a string is one word. In code a run of
+  /// punctuation is a stop of its own (`Text` `(` `"Hello World"` `)` `.font`); blank lines and indentation are
+  /// skipped. A string literal on one line (its prefix included: `r"…"`, `@"…"`), a number (`3.14`) and a
+  /// placeholder count as one word when the caret meets them from outside; inside a string the caret moves word by
+  /// word.
   ///
   /// ⌃← and ⌃→ (Xcode's) or ⌃⌥← and ⌃⌥→ (when Mission Control has ⌃←), with ⇧ to select, move by subwords:
   /// `URLSession` is `URL` and `Session`, `snake_case` is `snake` and `case`.
@@ -109,8 +110,10 @@
 
     // MARK: - Boundaries
 
-    /// Where a word motion from `location` ends: past the non-word characters, then to the far end of the next name
-    /// (or of a string literal, number or placeholder met from outside).
+    /// Where a word motion from `location` ends. In code a stop is a name (with the `.` before it: `.font`), a
+    /// string literal, number or placeholder met from outside, or a run of punctuation (`(`, `))`, `->`). In
+    /// comments, strings and plain text punctuation is skipped, as AppKit does, and a line's end stops a motion that
+    /// skipped some on that line (`// e.g.|`). Blank lines and indentation are always skipped.
     func wordBoundary(from location: Int, forward: Bool) -> Int {
       guard let text = textStorage?.mutableString else { return location }
       var atoms: [Int: [NSRange]] = [:]
@@ -119,23 +122,69 @@
         if atoms[line] == nil { atoms[line] = wordAtoms(onLine: line, in: text) }
         return atoms[line]!.first { forward ? $0.location == i : NSMaxRange($0) == i }
       }
+      var prose: [Int: [NSRange]] = [:]
+      /// Punctuation in code: not a name's, not space, not in a comment, string or prose.
+      func isPunctuation(_ i: Int) -> Bool {
+        guard i >= 0, i < text.length, !isWordCharacter(at: i, in: text) else { return false }
+        let unit = text.character(at: i)
+        guard unit > 0x20, unit != 0x7F, let highlighter, highlighter.lines.length == text.length else {
+          return false
+        }
+        let line = highlighter.lines.line(containing: i)
+        if prose[line] == nil {
+          prose[line] = highlighter.tokens(ofLine: line)
+            .filter { [.comment, .string, .prose].contains($0.kind) }.map(\.range)
+        }
+        return !prose[line]!.contains { NSLocationInRange(i, $0) }
+      }
+      func isNewline(_ i: Int) -> Bool { text.character(at: i) == 0x0A || text.character(at: i) == 0x0D }
+      func isDot(_ i: Int) -> Bool { i >= 0 && i < text.length && text.character(at: i) == 0x2E }
       var i = max(0, min(location, text.length))
+      /// Whether the motion passed something other than space, so a line's end stops it.
+      var passed = false
+      func isSpace(_ i: Int) -> Bool { text.character(at: i) == 0x20 || text.character(at: i) == 0x09 }
       if forward {
         while i < text.length {
           if let atom = atom(at: i) { return NSMaxRange(atom) }
-          if isWordCharacter(at: i, in: text) {
+          if isNewline(i) {
+            if passed { return i }
+            i += 1
+            continue
+          }
+          if isWordCharacter(at: i, in: text) || (isDot(i) && isPunctuation(i) && isWordCharacter(at: i + 1, in: text)) {
+            i += 1
             while isWordCharacter(at: i, in: text) { i += 1 }
             return i
           }
+          if isPunctuation(i) {
+            i += 1
+            while isPunctuation(i), atom(at: i) == nil, !(isDot(i) && isWordCharacter(at: i + 1, in: text)) {
+              i += 1
+            }
+            return i
+          }
+          if !isSpace(i) { passed = true }
           i += 1
         }
       } else {
         while i > 0 {
           if let atom = atom(at: i) { return atom.location }
+          if isNewline(i - 1) {
+            if passed { return i }
+            i -= 1
+            continue
+          }
           if isWordCharacter(at: i - 1, in: text) {
             while isWordCharacter(at: i - 1, in: text) { i -= 1 }
+            if isDot(i - 1), isPunctuation(i - 1) { i -= 1 }
             return i
           }
+          if isPunctuation(i - 1) {
+            i -= 1
+            while isPunctuation(i - 1), atom(at: i) == nil { i -= 1 }
+            return i
+          }
+          if !isSpace(i - 1) { passed = true }
           i -= 1
         }
       }
