@@ -31,8 +31,9 @@ struct CodeCommands: Commands {
       Button("New Window") { openWindow(id: WorkspaceWindow.id) }
         .keyboardShortcut("n", modifiers: [.command, .shift])
       Divider()
+      // ⌘O is Open Quickly in a project's window (its Projects group opens folders too), Open Folder… without one.
       Button("Open Folder…") { AppState.shared.chooseFolder() }
-        .keyboardShortcut("o")
+        .keyboardShortcut("o", modifiers: model == nil ? .command : [.command, .shift])
       RecentMenu()
     }
 
@@ -70,7 +71,7 @@ struct CodeCommands: Commands {
         model?.quickOpenQuery = ""
         model?.isQuickOpenPresented = true
       }
-        .keyboardShortcut("o", modifiers: [.command, .shift])
+        .keyboardShortcut("o")
         .disabled(model == nil)
       Button("Go to Line…") { model?.isGoToLinePresented = true }
         .keyboardShortcut("l")

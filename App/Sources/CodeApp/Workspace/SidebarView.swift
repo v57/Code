@@ -32,7 +32,7 @@ struct SidebarView: View {
       }
     } bottomBar: {
       Button("Open Folder…", systemImage: "folder") { AppState.shared.chooseFolder() }
-        .kitHelp("Open Folder…", shortcut: "⌘O")
+        .kitHelp("Open Folder…", shortcut: "⇧⌘O")
       Button(
         workspace.visibility.showsHiddenFiles ? "Hide Hidden Files" : "Show Hidden Files",
         systemImage: workspace.visibility.showsHiddenFiles ? "eye.slash" : "eye"

@@ -8,12 +8,12 @@ These are the Mac app's shortcuts. The iPhone and iPad app has none of its own.
 |---|---|
 | New File… | ⌘N |
 | New Window | ⇧⌘N |
-| Open Folder… | ⌘O |
+| Open Folder… (⌘O in a window without a project) | ⇧⌘O |
 | Save | ⌘S |
 | Save All | ⌥⌘S |
 | Open in New Window | ⇧⌘D |
 | Close Tab (the window, when no tab is open) | ⌘W |
-| Close Other Tabs | ⌥⌘W |
+| Close Other Tabs | ⌥⌘W, or ⌥-click a tab's close button |
 | Close Window | ⇧⌘W |
 
 ## Edit and Editor
@@ -51,7 +51,8 @@ While the completion list is open: ↑ and ↓ choose, Return or Tab inserts, Es
 
 | Command | Shortcut |
 |---|---|
-| Open Quickly… | ⇧⌘O |
+| Open Quickly… | ⌘O |
+| Open the first result of Open Quickly's second group | ⌘↩ |
 | Go to Line… | ⌘L |
 | Next Tab | ⇧⌘] |
 | Previous Tab | ⇧⌘[ |

@@ -84,7 +84,7 @@ read them again. A package's menu only opens, reveals and copies: nothing in it 
 - A single click in the sidebar opens a preview tab (in italics). Double-click, or edit the file, to keep it.
 - A dot on a tab means it has unsaved changes.
 - Drag tabs to reorder them.
-- Right-click a tab for **Close**, **Close Others**, **Close All**, **Keep Open**, **Open in New Window**,
+- ⌥-click a tab's close button to close every other tab. Right-click a tab for **Close**, **Close Others**, **Close All**, **Keep Open**, **Open in New Window**,
   **Reveal in Sidebar** and **Copy Path**.
 - **Go ▸ Next Tab** (⇧⌘]) and **Go ▸ Previous Tab** (⇧⌘[) move between tabs.
 - **File ▸ Close Tab** (⌘W) closes the tab, or the window when no tab is open.
