@@ -58,6 +58,10 @@ Choose the theme (Xcode Light and Dark, or GitHub Light and Dark), the font and 
 
 The completion list opens while you type a name, or after a "." in languages that use one.
 
+In Swift, the "(" of a call lists every initializer or function it could mean (`Text(` lists `Text(verbatim:)`,
+`Text(_:)` and the others); pick one to fill in its arguments as placeholders. A lone "." where a value goes
+(`.font(.`) lists only what can stand there: the type's cases, initializers and static values.
+
 - Type more letters to narrow it. The letters you typed show in bold.
 - Use ↑ and ↓ to choose, and Return or Tab to insert. Esc closes the list.
 - **Editor ▸ Show Completions** (⌃Space) opens or closes it at any time.

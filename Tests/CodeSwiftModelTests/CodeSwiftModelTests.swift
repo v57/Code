@@ -1038,6 +1038,45 @@ private let bench = URL(fileURLWithPath: #filePath).deletingLastPathComponent().
     #expect(!binding.contains("uppercased"))
   }
 
+  @Test func implicitMembersAreValuesOfTheType() throws {
+    let source = """
+      struct Size: Equatable {
+        static let small = Size(); static func custom(_ v: Int) -> Size { Size() }
+        static let count = Count(); struct Unit {}
+        static func == (a: Size, b: Size) -> Bool { true }
+      }
+      struct Count {}
+      func use(_ s: Size?) {}
+      func t() {
+        use(.@@)
+      }
+      """
+    let found = try names(source)
+    #expect(found.list.context == .implicitMember)
+    #expect(found.names.contains("small") && found.names.contains("custom") && found.names.contains("init"))
+    #expect(!found.names.contains("==") && !found.names.contains("Unit") && !found.names.contains("count"))
+    let font = try names("import SwiftUI\nfunc t() -> some View {\n  Text(\"Hi\").font(.@@)\n}", useSDK: true).names
+    #expect(font.contains("system") && font.contains("body"))
+    let operators = font.filter { $0.first?.isLetter == false }
+    #expect(operators.isEmpty)
+    #expect(!font.contains("Weight") && !font.contains("nilLiteral"))
+  }
+
+  @Test func aCallsOpeningListsItsOverloads() throws {
+    let found = try names("struct P { init(x: Int) {}; init(_ s: String, scale: Double = 1) {} }\nfunc t() {\n  _ = P(@@)\n}")
+    let overloads = found.list.items.filter(\.isArguments)
+    #expect(overloads.map(\.label).sorted() == ["P(String, scale: Double)", "P(x: Int)"])
+    #expect(overloads.map(\.insertText).sorted() == ["${1:String}", "x: ${1:Int}"])
+    #expect(found.list.items.first?.isArguments == true)
+    // Once something is typed, the labels alone.
+    let typed = try names("struct P { init(x: Int) {} }\nfunc t() {\n  _ = P(x@@)\n}")
+    let typedOverloads = typed.list.items.filter(\.isArguments)
+    #expect(typedOverloads.isEmpty)
+    let text = try names("import SwiftUI\nfunc t() -> some View {\n  Text(@@)\n}", useSDK: true).list.items.filter(\.isArguments)
+    let verbatim = text.filter { $0.label == "Text(verbatim: String)" }
+    #expect(verbatim.count == 1 && text.count > 5)
+  }
+
   @Test func aBindableLocalsProjection() throws {
     let found = try names("import SwiftUI\nfinal class M { var on = false }\nfunc t(m: M) {\n  @Bindable var m = m\n  $m.@@\n}", useSDK: true).names
     #expect(found.contains("on") && found.contains("wrappedValue"))

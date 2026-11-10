@@ -29,9 +29,27 @@
     static let serverWait: Duration = .milliseconds(50)
 
     var triggerCharacters: Set<String> {
-      guard let (servers, url) = server else { return words.triggerCharacters }
+      // A call's "(" lists what it could mean (the Swift model's overloads).
+      let calls: Set<String> = listsOverloads ? ["("] : []
+      guard let (servers, url) = server else {
+        // Without a server (Restricted Mode, none installed), "." still asks the model or the scanner.
+        let members: Set<String> = hasFastList ? ["."] : []
+        return words.triggerCharacters.union(calls).union(members)
+      }
       let characters = servers.completionTriggerCharacters(url)
-      return characters.isEmpty ? ["."] : characters
+      return (characters.isEmpty ? ["."] : characters).union(calls)
+    }
+
+    /// Whether the Swift model (a Swift file) or Code's scanner (another) answers.
+    private var hasFastList: Bool {
+      guard let services, let url = document?.url else { return false }
+      return CodeTiers.isSwift(url) ? services.settings.usesSwiftModel : services.settings.usesScanner
+    }
+
+    /// Whether "(" lists a call's overloads: the Swift model's, in a Swift file.
+    private var listsOverloads: Bool {
+      guard let services, let url = document?.url else { return false }
+      return services.settings.usesSwiftModel && CodeTiers.isSwift(url)
     }
 
     func completions(for context: CompletionContext) async -> CompletionList? {
@@ -43,6 +61,12 @@
     ) async -> CompletionList? {
       // The text as it is now: typing goes on while the tiers answer.
       let text = context.text as String
+      if case .character("(") = context.trigger {
+        // Only the call's overloads, or nothing: "(" opens no list elsewhere.
+        guard let list = await fastCompletions(for: context, text: text) else { return nil }
+        let overloads = list.items.filter { $0.payload is Overload }
+        return overloads.isEmpty ? nil : CompletionList(items: overloads, isIncomplete: false)
+      }
       let fast = Task { await self.fastCompletions(for: context, text: text) }
       guard server != nil else {
         if let list = await fast.value, !list.items.isEmpty { return list }
@@ -122,8 +146,11 @@
         documentation: entry.module.isEmpty ? nil : entry.module,
         kind: CompletionKind(rawValue: entry.kind.rawValue) ?? .text, filterText: entry.name,
         insertText: entry.insertText, isSnippet: entry.isSnippet, additionalEdits: edits,
-        isDeprecated: entry.isDeprecated)
+        isDeprecated: entry.isDeprecated, payload: entry.isArguments ? Overload() : nil)
     }
+
+    /// Marks an overload of the call after its "(": its insert text is the arguments alone.
+    struct Overload: Sendable {}
 
     static func kind(_ kind: SymbolKind?) -> CompletionKind {
       guard let kind else { return .keyword }

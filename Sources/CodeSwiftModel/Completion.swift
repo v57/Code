@@ -41,6 +41,8 @@ public struct SwiftCompletionEntry {
   public var isDeprecated: Bool
   /// On an optional receiver: accepting this has to write `?.`.
   public var needsUnwrap: Bool
+  /// One of the overloads a call could mean, right after its `(`: `insertText` is its arguments alone.
+  public var isArguments = false
 }
 
 public struct SwiftCompletionList {
@@ -126,6 +128,8 @@ private struct Hit {
   var detail: String? = nil
   var receiver: Ty? = nil
   var needsUnwrap = false
+  /// An overload of the call the cursor opens: rendered as its arguments, the `(` already written.
+  var isArguments = false
 }
 
 extension Model {
@@ -215,7 +219,10 @@ extension Model {
     }
     prepareScans(unitIndex: unitIndex, token: Int32(at))
     var hits: [Hit] = []
-    if before >= 0 { hits.append(contentsOf: labelHits(unitIndex: unitIndex, before: before, typed: typed)) }
+    if before >= 0 {
+      hits.append(contentsOf: overloadHits(unitIndex: unitIndex, before: before, typed: typed))
+      hits.append(contentsOf: labelHits(unitIndex: unitIndex, before: before, typed: typed))
+    }
     let expected = wanted(unitIndex: unitIndex, at: at)
     hits.append(contentsOf: scopeHits(unitIndex: unitIndex, token: at, typed: typed, onlyTypes: false, expected: expected))
     return (finish(hits, context: .scope, state: .exact, prefix: prefix, replaceStart: replaceStart, limit: limit, unitIndex: unitIndex), true)
@@ -336,10 +343,15 @@ extension Model {
       for wanted in expected.map({ [$0] }) ?? expectedAlternatives {
         var base = wanted
         while case .optional(let wrapped) = base { base = wrapped }
+        var found: [Hit] = []
         if case .optional = wanted, let ref = standardRef(Word.optional) {
-          collectMembers(of: .meta(.nominal(ref, [base])), typed: typed, tier: 2, unwrap: false, from: unitIndex, expected: nil, into: &hits, sdkAsked: &sdkAsked)
+          // Optional's own: `.none` and `.some(…)`, not its literal and wrapping initializers.
+          var optional: [Hit] = []
+          collectMembers(of: .meta(.nominal(ref, [base])), typed: typed, tier: 2, unwrap: false, from: unitIndex, expected: nil, into: &optional, sdkAsked: &sdkAsked)
+          found += optional.filter { hit in hit.ref.map { decl($0).kind == .enumCase } ?? false }
         }
-        collectMembers(of: .meta(base), typed: typed, tier: 0, unwrap: false, from: unitIndex, expected: base, into: &hits, sdkAsked: &sdkAsked)
+        collectMembers(of: .meta(base), typed: typed, tier: 0, unwrap: false, from: unitIndex, expected: base, into: &found, sdkAsked: &sdkAsked)
+        hits.append(contentsOf: found.filter { canBeImplicit($0, wanted: wanted, base: base) })
       }
       known = !hits.isEmpty
     } else {
@@ -368,6 +380,22 @@ extension Model {
       return (finish(hits, context: context, state: .unknown, prefix: prefix, replaceStart: replaceStart, limit: limit, unitIndex: unitIndex), true)
     }
     return (finish(hits, context: context, state: .exact, prefix: prefix, replaceStart: replaceStart, limit: limit, unitIndex: unitIndex), sdkAsked)
+  }
+
+  /// What `.name` can stand for where `wanted` goes: a case, an initializer, or a static member giving a value of the
+  /// type (or one that may); not an operator (`.!=`) or a nested type (`.Weight`).
+  private func canBeImplicit(_ hit: Hit, wanted: Ty, base: Ty) -> Bool {
+    guard let first = hit.name.utf8.first else { return false }
+    let isName = first == 0x5F || first == 0x60 || first >= 0x80 || (first | 0x20 >= 0x61 && first | 0x20 <= 0x7A)
+    guard isName else { return false }
+    guard let ref = hit.ref else { return true }
+    let entry = decl(ref)
+    if entry.kind.isType { return false }
+    if entry.kind == .initializer || entry.kind == .enumCase { return true }
+    var ty = valueType(of: ref, receiver: hit.receiver)
+    if case .function(_, let result) = ty { ty = result }
+    if ty == .unknown { return true }
+    return isCompatible(ty, with: wanted) != false || isCompatible(ty, with: base) != false
   }
 
   private func collectMembers(of ty: Ty, typed: [UInt8], tier: Int32, unwrap: Bool, from unitIndex: Int32, expected: Ty?, into hits: inout [Hit], sdkAsked: inout Bool) {
@@ -720,6 +748,38 @@ extension Model {
     return hits
   }
 
+  /// Right after a call's `(`, before anything is typed: each initializer or function it could mean, to fill in
+  /// whole (`Text(` lists `verbatim: String`, `_ content: S`, `_ key: LocalizedStringKey, …`).
+  private func overloadHits(unitIndex: Int32, before: Int, typed: [UInt8]) -> [Hit] {
+    let unit = project.units[Int(unitIndex)]
+    guard typed.isEmpty, unit.isByte(before, 0x28), before > 0, isCallOpen(unit, before) else { return [] }
+    // The callee's name as written (`Text`, `foo`), past generic arguments.
+    var end = before - 1
+    if unit.isByte(end, 0x3E) {
+      var level = 0
+      while end >= 0 {
+        if unit.isByte(end, 0x3E) { level += 1 }
+        if unit.isToken(end, "<") {
+          level -= 1
+          if level == 0 { break }
+        }
+        end -= 1
+      }
+      end -= 1
+    }
+    guard end >= 0, unit.tokens[end].kind == .identifier || unit.tokens[end].kind == .keyword else { return [] }
+    let name = unit.string(end)
+    var hits: [Hit] = []
+    for (ref, receiver) in allCallees(unitIndex: unitIndex, open: before) {
+      let entry = decl(ref)
+      guard entry.kind.isCallable || entry.kind == .enumCase, entry.paramCount > 0, !isUnavailable(ref),
+        accessible(ref, from: unitIndex)
+      else { continue }
+      hits.append(Hit(name: name, match: 0, score: -100, ref: ref, receiver: receiver, isArguments: true))
+    }
+    return hits
+  }
+
   /// Argument labels of the call the cursor is in, those not written yet.
   private func labelHits(unitIndex: Int32, before: Int, typed: [UInt8]) -> [Hit] {
     let unit = project.units[Int(unitIndex)]
@@ -916,7 +976,8 @@ extension Model {
     }
     let callable = item.kind.isCallable || (item.kind == .enumCase && item.paramCount > 0)
     let label = callable ? hit.name + "(" + parameters.joined(separator: ", ") + ")" : hit.name
-    let insert = callable ? hit.name + "(" + snippet.joined(separator: ", ") + ")" : hit.name
+    var insert = callable ? hit.name + "(" + snippet.joined(separator: ", ") + ")" : hit.name
+    if hit.isArguments { insert = snippet.joined(separator: ", ") }
     var detail = ""
     if item.kind.isType {
       detail = ""
@@ -928,7 +989,7 @@ extension Model {
     }
     var moduleText = ""
     if let module = project.modules[owner.moduleName] { moduleText = module.publishedName }
-    return SwiftCompletionEntry(name: hit.name, label: label, detail: detail, module: moduleText, kind: itemKind(of: ref), insertText: insert, isSnippet: slot > 1, isDeprecated: isDeprecated(ref), needsUnwrap: hit.needsUnwrap)
+    return SwiftCompletionEntry(name: hit.name, label: label, detail: detail, module: moduleText, kind: itemKind(of: ref), insertText: insert, isSnippet: slot > 1, isDeprecated: isDeprecated(ref), needsUnwrap: hit.needsUnwrap, isArguments: hit.isArguments)
   }
 
   private func localDetail(unitIndex: Int32, token: Int32) -> String {
