@@ -20,12 +20,17 @@ import Observation
       // Leaving a tab saves it, as switching documents does in Markdown.
       tabs.first { $0.id == oldValue }?.flush()
       saveSession()
+      if let document = selectedDocument { noteRecent(document.url) }
       // The document shown before, also when its tab just closed.
       let previous = shownDocument
       shownDocument = selectedDocument
       onSelectionChange?(previous)
     }
   }
+  /// The files shown in this project, newest first (paths relative to the root, at most `recentFileLimit`): Open
+  /// Quickly lists them before anything is typed. Kept per project in the defaults.
+  public private(set) var recentFiles: [String] = []
+  public static let recentFileLimit = 20
   /// The tab a single click replaces; nil when every tab is kept.
   public private(set) var previewTabID: TextDocument.ID?
   /// A transient message for the status bar (a failed file operation).
@@ -78,6 +83,7 @@ import Observation
     index = FileIndex(root: root, rules: tree.rules)
     index.rebuild()
     watcher = FileWatcher(root: root) { [weak self] changes in self?.filesChanged(changes) }
+    recentFiles = defaults.stringArray(forKey: recentFilesKey) ?? []
     restoreSession()
     reloadDependencies()
   }
@@ -492,6 +498,20 @@ import Observation
       guard !Task.isCancelled else { return }
       self?.index.rebuild()
     }
+  }
+
+  // MARK: - Recent files
+
+  private var recentFilesKey: String { "CodeKit.recentFiles:" + root.path }
+
+  private func noteRecent(_ url: URL) {
+    guard !isRestoring else { return }
+    let path = tree.relativePath(of: url)
+    guard recentFiles.first != path else { return }
+    recentFiles.removeAll { $0 == path }
+    recentFiles.insert(path, at: 0)
+    recentFiles = Array(recentFiles.prefix(Self.recentFileLimit))
+    defaults.set(recentFiles, forKey: recentFilesKey)
   }
 
   // MARK: - Session
