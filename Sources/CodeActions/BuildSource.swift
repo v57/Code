@@ -110,8 +110,9 @@ public enum BuildSourceStatus: Hashable, Sendable {
 
 /// What a build source can build, which filters the toolbar's schemes.
 public struct BuildCapabilities: Hashable, Codable, Sendable {
-  /// `uname -s` there ("Darwin", "Linux"), when known.
+  /// `uname -s` there ("Darwin", "Linux"), or "Windows" (`windows`), when known.
   public var system: String?
+  public static let windows = "Windows"
   /// The toolchains it has; nil until it was asked, when only what never runs there is left out.
   public var toolchains: Set<Toolchain>?
   /// This computer, whose destinations are its simulators and devices as well.
@@ -140,10 +141,19 @@ public struct BuildCapabilities: Hashable, Codable, Sendable {
   /// Whether a scheme builds there. Away from this computer iOS and Android products have no destination yet, and
   /// Android actions run on this computer only (`ActionPlanner.remoteSteps`).
   public func canBuild(_ scheme: ActionScheme) -> Bool {
-    if isLocal { return true }
+    if isLocal { return scheme.system.map { $0 == Self.localSystem } ?? true }
     guard scheme.toolchain != .android, scheme.platforms.contains(.mac) else { return false }
+    if let only = scheme.system, only != system { return false }
     return toolchains?.contains(scheme.toolchain) ?? true
   }
+
+  #if os(Windows)
+    static let localSystem = windows
+  #elseif os(Linux)
+    static let localSystem = "Linux"
+  #else
+    static let localSystem = "Darwin"
+  #endif
 
   /// Workspaces and projects are Xcode's, so only a source that has it lists them.
   public func canUse(_ container: ProjectContainer) -> Bool {
@@ -204,6 +214,51 @@ enum MachineProbe {
     }
     lines.append("exit 0")
     return "sh -c " + posixShellQuote(lines.joined(separator: "\n"))
+  }
+
+  /// The same for a Windows machine, in PowerShell (`WindowsShell.script`): the folder is looked for under the home
+  /// folder as above, also in Visual Studio's `source\repos` and at the system drive's root (`C:\dev\<name>`).
+  static func windowsScript(find: (name: String, relativePath: String?, origin: String?)?) -> String {
+    let q = WindowsShell.quote
+    var lines = [
+      "$m = \(q(marker))",
+      "\"${m}system \(BuildCapabilities.windows)\"",
+      // One lookup for all of them: PowerShell is slow to start on a cold machine, and the probe has a time limit.
+      "Get-Command -Name @(\(tools.map { q($0.tool) }.joined(separator: ", "))) -CommandType Application -ErrorAction SilentlyContinue | ForEach-Object { $_.Name -replace '\\.exe$', '' } | Sort-Object -Unique | ForEach-Object { \"${m}tool $_\" }",
+    ]
+    if let find {
+      let name = find.name
+      var places: [String] = []
+      if let relative = find.relativePath { places.append("$HOME\\" + relative.replacingOccurrences(of: "/", with: "\\")) }
+      places.append("$HOME\\\(name)")
+      for parent in ["Developer", "Projects", "src", "code", "workspace", "source\\repos"] {
+        places += ["$HOME\\\(parent)\\\(name)", "$HOME\\\(parent)\\*\\\(name)"]
+      }
+      for parent in ["dev", "src", "code", "projects"] {
+        places += ["$env:SystemDrive\\\(parent)\\\(name)", "$env:SystemDrive\\\(parent)\\*\\\(name)"]
+      }
+      // Each place is a PowerShell string with $HOME expanded and the rest literal: names go in as single-quoted parts.
+      let literal = places.map { place -> String in
+        let parts = place.components(separatedBy: "\\")
+        let head = parts[0]
+        return "(\"\(head)\" + \(q("\\" + parts.dropFirst().joined(separator: "\\"))))"
+      }
+      lines.append("$origin = \(q(find.origin ?? ""))")
+      lines.append(
+        """
+        :places foreach ($p in @(\(literal.joined(separator: ", ")))) {
+          foreach ($d in @(Get-Item -Path $p -ErrorAction SilentlyContinue | Where-Object { $_.PSIsContainer })) {
+            if ($origin) {
+              $o = try { git -C $d.FullName remote get-url origin 2>$null } catch { $null }
+              if ($o -and -not ($o.EndsWith($origin) -or $o.EndsWith("$origin.git"))) { continue }
+            }
+            "${m}folder $($d.FullName)"; break places
+          }
+        }
+        """)
+    }
+    lines.append("exit 0")
+    return WindowsShell.script(lines.joined(separator: "\n"))
   }
 
   static func parse(_ lines: [String]) -> Answer {

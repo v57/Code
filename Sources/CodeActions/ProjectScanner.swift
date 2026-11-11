@@ -134,7 +134,7 @@ public enum ProjectScanner {
         // Only containers that aren't allowed: none of them lists schemes.
         if folder.pickedContainer == nil, !folder.containers.isEmpty { folder.pickedContainer = "" }
       }
-      let found = Self.schemes(in: folder)
+      let found = Self.schemes(in: folder, anySystem: true)
       scan.schemes += found
       // Modules of a multi-module build are part of its schemes already.
       let isMultiModule = found.contains {
@@ -153,12 +153,19 @@ public enum ProjectScanner {
     return scan
   }
 
-  /// The schemes of the projects in `folder` itself, without its subfolders.
+  /// The schemes of the projects in `folder` itself, without its subfolders, that build on this computer.
   public static func schemes(in folder: ProjectFolder) -> [ActionScheme] {
+    schemes(in: folder, anySystem: false)
+  }
+
+  /// With `anySystem`, also those that build only on another system (a WinUI app, from a Mac), for building from a
+  /// machine (`BuildCapabilities.canBuild` picks).
+  static func schemes(in folder: ProjectFolder, anySystem: Bool) -> [ActionScheme] {
     var found: [ActionScheme] = []
     for detector in detectors { found += detector.schemes(in: folder) }
     // A Makefile is a project of its own only when nothing else is.
     if found.isEmpty { found = MakeDetector().schemes(in: folder) }
+    if !anySystem { found.removeAll { $0.system.map { $0 != BuildCapabilities.localSystem } ?? false } }
     return found
   }
 

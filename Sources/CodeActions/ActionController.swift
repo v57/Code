@@ -401,7 +401,8 @@
       if target.signing == .loginKeychain, let password = remoteLoginPassword?(target) {
         secrets[RemoteSigning.passwordVariable] = password
       }
-      return SSHExecutor(target: target, localRoot: root, login: login, secrets: secrets)
+      let system = capabilities(of: BuildSource(place: .machine(target))).system
+      return SSHExecutor(target: target, localRoot: root, login: login, secrets: secrets, system: system)
     }
 
     // MARK: - Build From
@@ -559,9 +560,27 @@
           let login = try remoteLogin?(target)
           var probing = target
           if probing.directory.isEmpty { probing.directory = "/" }
-          let executor = SSHExecutor(target: probing, localRoot: root, login: login)
+          var executor = SSHExecutor(target: probing, localRoot: root, login: login)
           let find = target.directory.isEmpty ? await Self.search(for: root) : nil
-          let answer = try await Self.ask(executor, script: MachineProbe.script(find: find), name: target.name, root: root)
+          // POSIX first, then PowerShell for a machine that signed in but has no `sh` (Windows: cmd or PowerShell as
+          // sshd's shell); a machine known to be Windows the other way round.
+          var systems: [String?] = [nil, BuildCapabilities.windows]
+          if capabilities(of: source).system == BuildCapabilities.windows { systems.reverse() }
+          var answer: MachineProbe.Answer?
+          var failure: (reason: String, connected: Bool)?
+          for system in systems where failure?.connected ?? true {
+            executor.system = system
+            let script = system == nil ? MachineProbe.script(find: find) : MachineProbe.windowsScript(find: find)
+            do {
+              answer = try await Self.ask(executor, script: script, name: target.name, root: root)
+              break
+            } catch ProbeError.unanswered(let reason, let connected) {
+              if failure == nil || !connected { failure = (reason, connected) }
+            }
+          }
+          guard let answer else {
+            throw ActionError.missing("Couldn’t reach \(target.name): \(failure?.reason ?? "no answer")")
+          }
           defaults.set(
             try? JSONEncoder().encode(answer.capabilities), forKey: key("buildCapabilities|\(id)"))
           var folder = target.directory
@@ -610,14 +629,15 @@
       )
     }
 
-    /// Runs the probe; a machine that doesn't answer in 25 seconds is hung up on.
+    /// Runs the probe; a machine that doesn't answer in 25 seconds is hung up on (60 for Windows, whose PowerShell
+    /// can take a while to start).
     private nonisolated static func ask(
       _ executor: SSHExecutor, script: String, name: String, root: URL
     ) async throws -> MachineProbe.Answer {
       let lines = ActionPlanner.LineCollector()
       let command = try executor.start(script, directory: root, environment: ShellEnvironment.shared.variables)
       let watchdog = Task {
-        try await Task.sleep(for: .seconds(25))
+        try await Task.sleep(for: .seconds(executor.isWindows ? 60 : 25))
         command.stop()
       }
       let status = await command.run { line in
@@ -627,9 +647,15 @@
       let answer = MachineProbe.parse(lines.all)
       guard answer.didAnswer else {
         let reason = lines.all.last { !$0.trimmingCharacters(in: .whitespaces).isEmpty } ?? "exit code \(status)"
-        throw ActionError.missing("Couldn’t reach \(name): \(reason)")
+        // 255: `ssh` (or the in-process client) couldn't connect or sign in; anything else came from a shell there.
+        throw ProbeError.unanswered(reason, connected: status != 255 && status != 129)
       }
       return answer
+    }
+
+    /// A probe that got no answer: why, and whether a shell there ran it (one that isn't POSIX's).
+    private enum ProbeError: Error {
+      case unanswered(String, connected: Bool)
     }
 
     /// Where the copy of the project on a machine is kept.

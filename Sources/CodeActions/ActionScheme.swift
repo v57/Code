@@ -140,12 +140,15 @@ public struct ActionScheme: Identifiable, Hashable, Codable, Sendable {
   public var executable: String?
   /// Xcode's derived data folder (`-derivedDataPath`), set by `inBuildFolders()`; nil builds into DerivedData.
   public var derivedDataPath: String?
+  /// The one system it builds on ("Windows" for a v57/SwiftUI WinUI app), as `BuildCapabilities.system` names it;
+  /// nil builds anywhere its toolchain is.
+  public var system: String?
 
   public init(
     name: String, toolchain: Toolchain, directory: URL, commands: [ActionKind: String],
     platforms: [Platform] = [.mac], xcodeContainer: String? = nil,
     androidApplicationID: String? = nil, androidModule: String? = nil, executable: String? = nil,
-    derivedDataPath: String? = nil
+    derivedDataPath: String? = nil, system: String? = nil
   ) {
     self.name = name
     self.toolchain = toolchain
@@ -157,6 +160,7 @@ public struct ActionScheme: Identifiable, Hashable, Codable, Sendable {
     self.androidModule = androidModule
     self.executable = executable
     self.derivedDataPath = derivedDataPath
+    self.system = system
   }
 
   /// `executable`'s full path.

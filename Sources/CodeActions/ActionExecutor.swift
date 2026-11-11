@@ -114,19 +114,25 @@ public struct SSHExecutor: ActionExecutor {
   /// Shell variables set there before each command (the login password `RemoteSigning` unlocks the keychain with),
   /// kept out of the command line the log shows.
   public var secrets: [String: String]
+  /// The machine's system as its probe answered (`BuildCapabilities.system`: "Darwin", "Linux", "Windows"); nil when
+  /// not known, which speaks POSIX. Windows gets PowerShell and cmd (`WindowsShell`).
+  public var system: String?
 
   public init(
-    target: Target, localRoot: URL, login: SSHServer? = nil, secrets: [String: String] = [:]
+    target: Target, localRoot: URL, login: SSHServer? = nil, secrets: [String: String] = [:], system: String? = nil
   ) {
     self.target = target
     self.localRoot = localRoot
     self.login = login
     self.secrets = secrets
+    self.system = system
   }
+
+  public var isWindows: Bool { system == BuildCapabilities.windows }
 
   public func start(_ command: String, directory: URL, environment: [String: String]) throws -> any ActionCommand {
     let remote = remoteCommand(command, directory: directory)
-    if let login { return SSHActionCommand(server: server(from: login), command: remote) }
+    if let login { return SSHActionCommand(server: server(from: login), command: remote, terminal: !isWindows) }
     #if os(macOS) || os(Windows) || os(Linux)
       let arguments = try sshArguments(remote)
       // Locally only the `ssh` client runs (from the home folder: the project needn't exist here); the remote side
@@ -161,9 +167,37 @@ public struct SSHExecutor: ActionExecutor {
   }
 
   /// `cd <folder there> && <command>` in the remote user's login shell, with paths into the project here
-  /// rewritten to the folder there, and the secrets set first as plain (unexported) shell variables.
+  /// rewritten to the folder there, and the secrets set first as plain (unexported) shell variables. On Windows, a
+  /// PowerShell script that runs the command in cmd there (`WindowsShell`).
   func remoteCommand(_ command: String, directory: URL) -> String {
-    "exec \"$SHELL\" -lc \(posixShellQuote(remoteScript(command, directory: directory)))"
+    if isWindows { return WindowsShell.invocation(windowsScript(command, directory: directory)) }
+    return "exec \"$SHELL\" -lc \(posixShellQuote(remoteScript(command, directory: directory)))"
+  }
+
+  /// What PowerShell runs on a Windows machine: a script sent as one (`WindowsShell.script`) as it is, any other
+  /// command in cmd in the folder there, translated from POSIX with each path into the project here rewritten. The
+  /// secrets are for a Mac's keychain and aren't sent.
+  func windowsScript(_ command: String, directory: URL) -> String {
+    if command.hasPrefix(WindowsShell.powerShellPrefix) {
+      return WindowsShell.preamble + "\nSet-Location -LiteralPath \(WindowsShell.quote(remotePath(directory.path))) -ErrorAction SilentlyContinue\n"
+        + command.dropFirst(WindowsShell.powerShellPrefix.count)
+    }
+    return WindowsShell.runScript(cmdLine: windowsCommandLine(command), directory: remotePath(directory.path))
+  }
+
+  /// The command as cmd runs it there.
+  func windowsCommandLine(_ command: String) -> String {
+    let root = localRoot.path
+    #if os(Windows)
+      return command.replacingOccurrences(of: root, with: target.directory)
+    #else
+      return WindowsShell.cmdLine(fromPOSIX: command) { word in
+        guard let range = word.range(of: root) else { return word }
+        let rest = word[range.upperBound...]
+        guard rest.isEmpty || rest.hasPrefix("/") else { return word }
+        return word[..<range.lowerBound] + target.directory + rest.replacingOccurrences(of: "/", with: "\\")
+      }
+    #endif
   }
 
   /// What the login shell there runs. Always POSIX quoting, from a Windows client too (security audit L9).
@@ -222,15 +256,17 @@ public struct SSHExecutor: ActionExecutor {
   func remotePath(_ local: String) -> String {
     let root = localRoot.path
     guard local == root || local.hasPrefix(root + "/") else { return target.directory }
-    return target.directory + local.dropFirst(root.count)
+    let rest = String(local.dropFirst(root.count))
+    return target.directory + (isWindows ? rest.replacingOccurrences(of: "/", with: "\\") : rest)
   }
 
   /// `ssh -tt` with keepalives and no prompts (there's no one to answer them), pinning the host key when known. A host
   /// that's neither pinned here nor in the user's `known_hosts` is refused: `ssh` would otherwise sign in to whoever
   /// answers, with the user's keys.
   func sshArguments(_ remoteCommand: String) throws -> [String] {
+    // Windows' sshd sends nothing back from a command on a terminal: no terminal there (`WindowsShell.runScript`).
     var arguments = [
-      Self.sshPath, "-tt", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=15",
+      Self.sshPath, isWindows ? "-T" : "-tt", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "-o", "ServerAliveInterval=15",
       "-o", "ServerAliveCountMax=3",
       "-p", String(target.port),
     ]
@@ -268,8 +304,8 @@ public struct SSHExecutor: ActionExecutor {
 final class SSHActionCommand: ActionCommand, @unchecked Sendable {
   private let command: SSHCommand
 
-  init(server: SSHServer, command: String) {
-    self.command = SSHCommand(server: server, command: command)
+  init(server: SSHServer, command: String, terminal: Bool = true) {
+    self.command = SSHCommand(server: server, command: command, terminal: terminal)
   }
 
   func run(onLine: @escaping @Sendable (ActionLine) -> Void) async -> Int32 {

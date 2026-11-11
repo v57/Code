@@ -459,7 +459,14 @@ public struct SwiftPackageDetector: ProjectDetector {
     let common: [ActionKind: String] = [
       .build: "swift build", .test: "swift test", .clean: "swift package clean",
     ]
-    if executables.isEmpty {
+    let winUIApps = Self.winUIApps(in: manifest).map { name in
+      var commands = common
+      commands[.build] = "swift build --product \(shellQuote(name))"
+      commands[.run] = Self.winUIRunCommand(name)
+      return ActionScheme(
+        name: name, toolchain: .swiftPM, directory: folder.url, commands: commands, system: BuildCapabilities.windows)
+    }
+    if executables.isEmpty, winUIApps.isEmpty {
       return [ActionScheme(name: folder.name, toolchain: .swiftPM, directory: folder.url, commands: common)]
     }
     return executables.map { name in
@@ -469,7 +476,28 @@ public struct SwiftPackageDetector: ProjectDetector {
       return ActionScheme(
         name: name, toolchain: .swiftPM, directory: folder.url, commands: commands,
         executable: ".build/debug/\(name)")
+    } + winUIApps
+  }
+
+  /// v57/SwiftUI's Windows apps: a dynamic library named `…WinUI` that its C# host loads.
+  static func winUIApps(in manifest: String) -> [String] {
+    var names: [String] = []
+    for groups in matches(of: #"\.library\s*\(\s*name:\s*"([^"]+WinUI)"\s*,\s*type:\s*\.dynamic"#, in: manifest)
+    where !names.contains(groups[0]) {
+      names.append(groups[0])
     }
+    return names
+  }
+
+  /// Builds and stages a WinUI app with v57/SwiftUI's `Windows\scripts\build-app.ps1` (from the package's checkouts,
+  /// else a SwiftUI checkout next to it), then runs its host until the app quits.
+  static func winUIRunCommand(_ product: String) -> String {
+    let find =
+      "$s = @('.build\\checkouts\\SwiftUI', '..\\SwiftUI', '..\\..\\SwiftUI') | ForEach-Object { Join-Path $_ 'Windows\\scripts\\build-app.ps1' } | Where-Object { Test-Path $_ } | Select-Object -First 1; "
+      + "if (-not $s) { Write-Host 'error: v57/SwiftUI''s Windows\\scripts\\build-app.ps1 isn''t in the package''s checkouts or next to it.'; exit 1 }; "
+      + "try { & $s -PackagePath . -Product '\(product.replacingOccurrences(of: "'", with: "''"))' } catch { Write-Host ('error: ' + $_); exit 1 }; exit 0"
+    return "powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \(shellQuote(find)) && "
+      + shellQuote(".build\\winui\\\(product)\\SwiftUIHost.exe")
   }
 
   /// `.executableTarget(name: "x")` and `.executable(name: "x")` names.

@@ -187,6 +187,8 @@ public struct ActionStep: Sendable {
         ]
       default:
         guard let command = scheme.commands[kind] else { return [] }
+        // Run opens the product in the desktop session there (Linux, Windows), so an app's windows show on its screen.
+        if kind == .run { return [DesktopRun.step(command)] }
         return [.shell(kind.title, command)]
       }
     }

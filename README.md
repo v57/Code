@@ -258,8 +258,10 @@ Features
     files over 2 MB open without highlighting.
   - Xcode's toolbar: Run (⌘R; hold for Test, Build, Clean), Stop (⌘.), the
     Build From › scheme › destination picker (Build From when there's another
-    machine or a container runtime to build from: `BuildSource`), the activity
-    view with a progress bar,
+    machine or a container runtime to build from: `BuildSource`; a Windows
+    machine gets PowerShell running cmd, `WindowsShell`, and Run on Linux or
+    Windows opens the product in the desktop session there, `DesktopRun`),
+    the activity view with a progress bar,
     status and issue counts (click for the issue list, ⌥⌘5). The Product and
     Debug menus, the console (⇧⌘Y, or a click on the title) with the log,
     filter and debug bar, under the title or in its own window; it opens

@@ -22,6 +22,8 @@ struct DesktopJob: Sendable {
   var folder: String { "\(Self.runs)/\(id)" }
   /// The follower's last line: the job's exit status, never shown in the log.
   static let exitMarker = "CODE-JOB-EXIT "
+  /// What a start script prints when there's no desktop session to start the job in.
+  static let plainMarker = "CODE-JOB-PLAIN"
 
   /// Makes the job (its script, plist and log) and starts it, then follows its log. Runs in the project's folder,
   /// which becomes the job's.
@@ -74,51 +76,89 @@ struct DesktopJob: Sendable {
     "launchctl bootout \"gui/$(id -u)/\(label)\" 2>/dev/null; echo 130 > \"\(folder)/status\""
   }
 
-  /// The step: starts the job, and follows it again after each dropped connection until it ends.
+}
+
+extension DesktopJob: FollowedJob {
+  var machine: String { "the Mac" }
+}
+
+/// A command started in the desktop session of the machine an action runs on, writing to a log there that an SSH
+/// command follows: a launchd job on a Mac (`DesktopJob`), a scheduled task on Windows (`WindowsDesktopJob`).
+protocol FollowedJob: Sendable {
+  /// What the log shows as the command.
+  var command: String { get }
+  /// Starts the job and follows its log, ending with `DesktopJob.exitMarker` and the job's status.
+  var startScript: String { get }
+  /// Follows the log again from line `line` (1-based), ending as `startScript` does.
+  func followScript(from line: Int) -> String
+  /// Ends the job and marks it stopped.
+  var stopScript: String { get }
+  /// "the Mac": for the log's messages.
+  var machine: String { get }
+}
+
+extension FollowedJob {
+  /// The step: starts the job, and follows it again after each dropped connection until it ends. A start script that
+  /// prints `DesktopJob.plainMarker` found no desktop session, and the command runs over the connection instead.
   func step(_ title: String, resource: ProgressResource = .cpu) -> ActionStep {
     let job = self
-    return ActionStep(title, resource: resource) { context in
-      let state = FollowState()
-      let filter: @Sendable (ActionLine) -> Bool = { line in
-        if !line.isTransient, line.text.hasPrefix(Self.exitMarker) {
-          state.finish(Int32(line.text.dropFirst(Self.exitMarker.count).trimmingCharacters(in: .whitespaces)) ?? 1)
-          return false
-        }
-        if !line.isTransient { state.countLine() }
-        return true
+    return ActionStep(title, resource: resource) { context in try await job.run(title, context: context) }
+  }
+
+  func run(_ title: String, context: ActionContext) async throws {
+    let state = FollowState()
+    let filter: @Sendable (ActionLine) -> Bool = { line in
+      if !line.isTransient, line.text.hasPrefix(DesktopJob.exitMarker) {
+        state.finish(Int32(line.text.dropFirst(DesktopJob.exitMarker.count).trimmingCharacters(in: .whitespaces)) ?? 1)
+        return false
       }
-      let executor = context.executor
-      let directory = context.directory
-      context.onStop {
-        Task.detached {
-          guard let stop = try? executor.start(job.stopScript, directory: directory, environment: [:]) else { return }
-          _ = await stop.run { _ in }
-        }
+      if !line.isTransient, line.text.hasPrefix(DesktopJob.plainMarker) {
+        state.runPlainly()
+        return false
       }
-      try await context.run(job.startScript, title: title, allowFailure: true, shown: job.command, filter: filter)
-      var attempts = 0
-      while state.exitStatus == nil {
-        // The connection dropped (or the follower ended early): the job goes on there; follow it again.
-        attempts += 1
-        if attempts > 30 { throw ActionError.launchFailed("lost the connection to the build and couldn’t get it back") }
-        try await Task.sleep(for: .seconds(attempts == 1 ? 1 : 3))
-        if attempts == 1 { context.log("Reconnecting: the build goes on on the Mac.") }
-        try await context.run(
-          job.followScript(from: state.lines + 1), title: title, allowFailure: true, shown: "", filter: filter)
-      }
-      if let status = state.exitStatus, status != 0 { throw ActionError.failed(status: status, step: title) }
+      if !line.isTransient { state.countLine() }
+      return true
     }
+    let executor = context.executor
+    let directory = context.directory
+    let stopScript = stopScript
+    context.onStop {
+      Task.detached {
+        guard let stop = try? executor.start(stopScript, directory: directory, environment: [:]) else { return }
+        _ = await stop.run { _ in }
+      }
+    }
+    try await context.run(startScript, title: title, allowFailure: true, shown: command, filter: filter)
+    if state.isPlain {
+      context.log("Nobody is logged in on \(machine)’s screen: running over the connection instead.")
+      try await context.run(command, title: title, shown: "")
+      return
+    }
+    var attempts = 0
+    while state.exitStatus == nil {
+      // The connection dropped (or the follower ended early): the job goes on there; follow it again.
+      attempts += 1
+      if attempts > 30 { throw ActionError.launchFailed("lost the connection to \(machine) and couldn’t get it back") }
+      try await Task.sleep(for: .seconds(attempts == 1 ? 1 : 3))
+      if attempts == 1 { context.log("Reconnecting: it goes on on \(machine).") }
+      try await context.run(
+        followScript(from: state.lines + 1), title: title, allowFailure: true, shown: "", filter: filter)
+    }
+    if let status = state.exitStatus, status != 0 { throw ActionError.failed(status: status, step: title) }
   }
+}
 
-  /// What the follower has shown so far, and the job's exit status once known.
-  private final class FollowState: @unchecked Sendable {
-    private let lock = NSLock()
-    private var shown = 0
-    private var status: Int32?
+/// What the follower has shown so far, and the job's exit status once known.
+private final class FollowState: @unchecked Sendable {
+  private let lock = NSLock()
+  private var shown = 0
+  private var status: Int32?
+  private var plain = false
 
-    var lines: Int { lock.withLock { shown } }
-    var exitStatus: Int32? { lock.withLock { status } }
-    func countLine() { lock.withLock { shown += 1 } }
-    func finish(_ status: Int32) { lock.withLock { self.status = status } }
-  }
+  var lines: Int { lock.withLock { shown } }
+  var exitStatus: Int32? { lock.withLock { status } }
+  var isPlain: Bool { lock.withLock { plain } }
+  func countLine() { lock.withLock { shown += 1 } }
+  func finish(_ status: Int32) { lock.withLock { self.status = status } }
+  func runPlainly() { lock.withLock { plain = true } }
 }
