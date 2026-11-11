@@ -146,10 +146,14 @@ let package = Package(
 // Off Apple platforms SwiftUI, CryptoKit and os are v57/SwiftUI's, and SwiftUIPortability adds the Foundation APIs
 // swift-corelibs-foundation lacks.
 package.dependencies += [v57("SwiftUI")]
-for target in package.targets where target.type == .regular {
+for target in package.targets where target.type == .regular || target.type == .executable {
   target.dependencies += [
     .product(name: "SwiftUIPortability", package: "SwiftUI"), .product(name: "os", package: "SwiftUI"),
     .product(name: "CryptoKit", package: "SwiftUI"),
+  ]
+  // Imported everywhere, as Foundation brings `String(localized:)` and the rest on Apple platforms.
+  target.swiftSettings = (target.swiftSettings ?? []) + [
+    .unsafeFlags(["-Xfrontend", "-import-module", "-Xfrontend", "SwiftUIPortability"])
   ]
   if ["CodeIcons", "CodeKit", "CodeActionsUI"].contains(target.name) {
     target.dependencies += [.product(name: "SwiftUI", package: "SwiftUI")]

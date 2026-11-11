@@ -1,5 +1,8 @@
 import Foundation
 import CodeSwiftModel
+#if os(Windows)
+  import WinSDK
+#endif
 
 // swift-model query --root <dir> --queries <reference.json> --out <answers.json> [--no-sdk] [--no-references]
 // swift-model bench --root <dir> --file <relative path> [--no-sdk]
@@ -13,10 +16,24 @@ func milliseconds(since start: DispatchTime) -> Double {
   Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1_000_000
 }
 
+/// The process's peak resident memory in MB.
 func peakRSS() -> Double {
-  var usage = rusage()
-  getrusage(RUSAGE_SELF, &usage)
-  return Double(usage.ru_maxrss) / 1_048_576
+  #if os(Windows)
+    var counters = PROCESS_MEMORY_COUNTERS()
+    counters.cb = DWORD(MemoryLayout<PROCESS_MEMORY_COUNTERS>.size)
+    guard K32GetProcessMemoryInfo(GetCurrentProcess(), &counters, counters.cb) else { return 0 }
+    return Double(counters.PeakWorkingSetSize) / 1_048_576
+  #else
+    var usage = rusage()
+    #if canImport(Glibc)
+      // Glibc imports RUSAGE_SELF as an enum case, and ru_maxrss is in kilobytes (bytes on Darwin).
+      getrusage(RUSAGE_SELF.rawValue, &usage)
+      return Double(usage.ru_maxrss) / 1024
+    #else
+      getrusage(RUSAGE_SELF, &usage)
+      return Double(usage.ru_maxrss) / 1_048_576
+    #endif
+  #endif
 }
 
 guard CommandLine.arguments.count > 1, let root = option("--root") else {
