@@ -89,6 +89,7 @@ import Testing
     // Run stages it with SwiftUI's build-app.ps1, then runs its host until the app quits.
     let line = WindowsShell.cmdLine(fromPOSIX: winUI.commands[.run]!)
     #expect(line.hasPrefix("powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"$s = @("))
+    #expect(line.contains("-PackagePath $PWD.Path -Product"))
     #expect(line.hasSuffix(#"-Product 'CodeWinUI' } catch { Write-Host ('error: ' + $_); exit 1 }; exit 0" && .build\winui\CodeWinUI\SwiftUIHost.exe"#))
   }
 

@@ -490,12 +490,13 @@ public struct SwiftPackageDetector: ProjectDetector {
   }
 
   /// Builds and stages a WinUI app with v57/SwiftUI's `Windows\scripts\build-app.ps1` (from the package's checkouts,
-  /// else a SwiftUI checkout next to it), then runs its host until the app quits.
+  /// else a SwiftUI checkout next to it), then runs its host until the app quits. The package's path is absolute: the
+  /// script reads a relative one from SwiftUI's own folder, which only GalleryWinUI and the other SwiftUI apps share.
   static func winUIRunCommand(_ product: String) -> String {
     let find =
       "$s = @('.build\\checkouts\\SwiftUI', '..\\SwiftUI', '..\\..\\SwiftUI') | ForEach-Object { Join-Path $_ 'Windows\\scripts\\build-app.ps1' } | Where-Object { Test-Path $_ } | Select-Object -First 1; "
       + "if (-not $s) { Write-Host 'error: v57/SwiftUI''s Windows\\scripts\\build-app.ps1 isn''t in the package''s checkouts or next to it.'; exit 1 }; "
-      + "try { & $s -PackagePath . -Product '\(product.replacingOccurrences(of: "'", with: "''"))' } catch { Write-Host ('error: ' + $_); exit 1 }; exit 0"
+      + "try { & $s -PackagePath $PWD.Path -Product '\(product.replacingOccurrences(of: "'", with: "''"))' } catch { Write-Host ('error: ' + $_); exit 1 }; exit 0"
     return "powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \(shellQuote(find)) && "
       + shellQuote(".build\\winui\\\(product)\\SwiftUIHost.exe")
   }
