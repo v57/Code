@@ -1,4 +1,5 @@
-import AppKit
+// The symbol menu is CodeKit's on macOS only (`SymbolMenu`).
+#if os(macOS)
 import CodeKit
 import ComponentKit
 import SwiftUI
@@ -33,7 +34,7 @@ struct SymbolMenuView: View {
           // The highlight stays when the pointer leaves: its sentence below still says what ↩ does.
           if inside { menu.highlighted = row.id }
         } pick: {
-          menu.pick(row, newTab: NSEvent.modifierFlags.contains(.option))
+          menu.pick(row, newTab: KitDesktop.modifierKeys.contains(.option))
         }
       }
       if let footer = content.footer {
@@ -312,3 +313,4 @@ struct SymbolKindTile: View {
     }
   }
 }
+#endif

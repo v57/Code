@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import CodeKit
 import SwiftUI
@@ -177,3 +178,11 @@ private final class SymbolMenuWindow: NSPanel {
 extension NSAppearance {
   fileprivate var isDark: Bool { bestMatch(from: [.aqua, .darkAqua]) == .darkAqua }
 }
+#else
+  import CodeKit
+
+  /// The symbol menu (CodeKit's `SymbolMenu`) and its panel are macOS-only so far.
+  @MainActor enum SymbolMenuPanel {
+    static func install(on model: WindowModel) {}
+  }
+#endif

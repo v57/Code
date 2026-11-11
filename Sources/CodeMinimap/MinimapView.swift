@@ -479,3 +479,17 @@
     }
   }
 #endif
+
+import Foundation
+
+/// The room the editor's minimap column takes, for views laid out beside the editor: `MinimapView.defaultWidth` where
+/// there's a minimap (macOS), none elsewhere yet.
+@MainActor public enum MinimapLayout {
+  public static var columnWidth: CGFloat {
+    #if canImport(AppKit)
+      MinimapView.defaultWidth
+    #else
+      0
+    #endif
+  }
+}

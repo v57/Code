@@ -109,7 +109,7 @@ struct PresetBar: View {
 
   /// The editor's minimap column stays clear, as the boards leave it.
   private var trailingInset: CGFloat {
-    (showsMinimap && workspace.selectedDocument != nil ? MinimapView.defaultWidth : 0) + KitMetrics.gutter + 4
+    (showsMinimap && workspace.selectedDocument != nil ? MinimapLayout.columnWidth : 0) + KitMetrics.gutter + 4
   }
 
   /// How many cards fit in one line, the "N more" card's room kept when some don't.
