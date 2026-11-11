@@ -45,7 +45,7 @@ import VaultKit
     for target in project.targets {
       phase = .loading(String(localized: "Connecting to \(target.name)"))
       do {
-        let client = try await SFTPClient.connect(server: try login(for: target), timeout: 15)
+        let client = try await connect(to: target)
         phase = .loading(String(localized: "Reading the project on \(target.name)"))
         let copy = try await ProjectMirror.fetch(target.directory, projectID: project.id, client: client)
         files = client
@@ -64,9 +64,21 @@ import VaultKit
   func fileClient() async throws -> SFTPClient {
     if let files, files.isAlive { return files }
     guard let source else { throw SSHTunnelError.closed }
-    let client = try await SFTPClient.connect(server: try login(for: source), timeout: 15)
+    let client = try await connect(to: source)
     files = client
     return client
+  }
+
+  /// An SFTP connection to the target, dialed a second time after a short wait when the first couldn't reach it: right
+  /// after Code comes to the front, iOS's first dial on the local network can fail with "No route to host" while the
+  /// network path (or the `.local` name) isn't ready yet, and the same dial a moment later connects (C-011).
+  private func connect(to target: SSHExecutor.Target) async throws -> SFTPClient {
+    do {
+      return try await SFTPClient.connect(server: try login(for: target), timeout: 15)
+    } catch SSHTunnelError.connectFailed {
+      try await Task.sleep(for: .seconds(2))
+      return try await SFTPClient.connect(server: try login(for: target), timeout: 15)
+    }
   }
 
   /// Ends the project: stops what runs and closes the connection. Called once the project's screen is gone for good
