@@ -28,6 +28,34 @@ import Testing
     #expect(scheme.inBuildFolders(folders) == scheme)
   }
 
+  @Test func offUnlessOptedInEvenWhenTheFolderExists() throws {
+    try FileManager.default.createDirectory(at: folders.root, withIntermediateDirectories: true)
+    let app = try folder("v57/App")
+    let off = BuildFolders(developer: developer, leases: folders.leases, isEnabled: false)
+    let scheme = ActionScheme(name: "tool", toolchain: .swiftPM, directory: app, commands: [.build: "swift build"])
+    #expect(off.instance(.swiftpm, for: app) == nil)
+    #expect(scheme.inBuildFolders(off) == scheme)
+    #expect(folders.instance(.swiftpm, for: app) != nil)
+  }
+
+  @Test func optInFromTheEnvironmentOrDefaults() throws {
+    let home = URL(fileURLWithPath: "/Users/someone")
+    let suite = "BuildFoldersTests-\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suite))
+    defer { defaults.removePersistentDomain(forName: suite) }
+    #expect(BuildFolders.optIn(environment: [:], defaults: defaults, home: home) == nil)
+    #expect(BuildFolders.optIn(environment: ["V57_BUILD_FOLDERS": "0"], defaults: defaults, home: home) == nil)
+    #expect(
+      BuildFolders.optIn(environment: ["V57_BUILD_FOLDERS": "1"], defaults: defaults, home: home)?.path
+        == "/Users/someone/Developer/Builds")
+    #expect(
+      BuildFolders.optIn(environment: ["V57_BUILD_FOLDERS": "~/Builds"], defaults: defaults, home: home)?.path
+        == "/Users/someone/Builds")
+    defaults.set("/Volumes/Fast/Builds", forKey: BuildFolders.defaultsKey)
+    #expect(BuildFolders.optIn(environment: [:], defaults: defaults, home: home)?.path == "/Volumes/Fast/Builds")
+    #expect(BuildFolders.optIn(environment: ["V57_BUILD_FOLDERS": "no"], defaults: defaults, home: home) == nil)
+  }
+
   @Test func worktreesShareTheMainCheckoutsInstances() throws {
     try FileManager.default.createDirectory(at: folders.root, withIntermediateDirectories: true)
     let main = try folder("v57/Shell")

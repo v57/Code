@@ -6,11 +6,12 @@ import Foundation
   import Glibc
 #endif
 
-/// Where builds go when `~/Developer/Builds` exists: an instance `<kind>/<project>/<n>` of it, the layout the
-/// build-lease tool hands coding agents (`~/.claude/hooks/build-lease.py`), so every worktree of a repo, the agents
-/// and Code share dependencies and build products and only the project's own sources rebuild. `project` is the repo's
-/// main checkout relative to `~/Developer` ("v57/Shell"), plus the package's folder inside the repo for SwiftPM and
-/// Cargo. Without that folder, each tool builds where it always does (Xcode's DerivedData, `.build`, `target`).
+/// Where builds go once the user opts in (`standard`, `optIn`): an instance `<kind>/<project>/<n>` of a builds folder
+/// (`~/Developer/Builds`), the layout the build-lease tool hands coding agents (`~/.claude/hooks/build-lease.py`), so
+/// every worktree of a repo, the agents and Code share dependencies and build products and only the project's own
+/// sources rebuild. `project` is the repo's main checkout relative to `~/Developer` ("v57/Shell"), plus the package's
+/// folder inside the repo for SwiftPM and Cargo. By default, and when the folder doesn't exist, each tool builds where
+/// it always does (Xcode's DerivedData, `.build`, `target`): a folder that happens to exist isn't consent (C-010).
 public struct BuildFolders: Sendable {
   public enum Kind: String, Sendable {
     case xcode, swiftpm, cargo
@@ -22,28 +23,59 @@ public struct BuildFolders: Sendable {
   public var root: URL
   /// The agents' leases (`<instance path with / as __>.json`): an instance one holds isn't picked.
   public var leases: URL
+  /// Whether builds go here at all; off, `instance` is always nil and schemes stay as they are.
+  public var isEnabled: Bool
 
-  public init(developer: URL, root: URL? = nil, leases: URL) {
+  public init(developer: URL, root: URL? = nil, leases: URL, isEnabled: Bool = true) {
     self.developer = developer
     self.root = root ?? developer.appendingPathComponent("Builds")
     self.leases = leases
+    self.isEnabled = isEnabled
   }
 
+  /// The environment variable and user default that opt in (`optIn`).
+  public static let environmentKey = "V57_BUILD_FOLDERS"
+  public static let defaultsKey = "V57BuildFolders"
+
+  /// The builds folder the user or an agent chose, nil when nobody did: `V57_BUILD_FOLDERS` in the environment (the
+  /// agents' shells), else the `V57BuildFolders` user default (the app's own, or every app's with `defaults write -g`).
+  /// `1`/`yes`/`true` means `~/Developer/Builds`, a path means that folder, `0`/`no`/`false` or nothing means off.
+  public static func optIn(
+    environment: [String: String] = ProcessInfo.processInfo.environment, defaults: UserDefaults = .standard,
+    home: URL = URL(fileURLWithPath: NSHomeDirectory())
+  ) -> URL? {
+    guard
+      let value = (environment[environmentKey] ?? defaults.string(forKey: defaultsKey))?
+        .trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty
+    else { return nil }
+    switch value.lowercased() {
+    case "0", "no", "false", "off": return nil
+    case "1", "yes", "true", "on": return home.appendingPathComponent("Developer/Builds")
+    default:
+      let path = value.hasPrefix("~/") ? home.path + value.dropFirst(1) : value
+      return URL(fileURLWithPath: path, isDirectory: true)
+    }
+  }
+
+  /// The builds folder `optIn` names, off unless someone opted in: by default Xcode, SwiftPM and Cargo build where
+  /// they always do.
   public static var standard: BuildFolders {
     let home = URL(fileURLWithPath: NSHomeDirectory())
+    let root = optIn(home: home)
     return BuildFolders(
-      developer: home.appendingPathComponent("Developer"),
-      leases: home.appendingPathComponent(".claude/build-leases"))
+      developer: home.appendingPathComponent("Developer"), root: root,
+      leases: home.appendingPathComponent(".claude/build-leases"), isEnabled: root != nil)
   }
 
   /// The record each instance keeps of its last build, which the build-lease tool reads and writes too.
   static let meta = ".build-lease.json"
 
-  /// The instance to build `directory` into as `kind`, nil when `root` doesn't exist. Picks a free one (no live lease)
-  /// last built from this folder, else the free one used most recently, else makes the next; records the build in it.
+  /// The instance to build `directory` into as `kind`, nil when off or `root` doesn't exist. Picks a free one (no live
+  /// lease) last built from this folder, else the free one used most recently, else makes the next; records the build
+  /// in it.
   public func instance(_ kind: Kind, for directory: URL, now: Date = Date()) -> URL? {
     var isDirectory: ObjCBool = false
-    guard FileManager.default.fileExists(atPath: root.path, isDirectory: &isDirectory), isDirectory.boolValue
+    guard isEnabled, FileManager.default.fileExists(atPath: root.path, isDirectory: &isDirectory), isDirectory.boolValue
     else { return nil }
     let source = directory.resolvingSymlinksInPath()
     let project = root.appendingPathComponent(kind.rawValue).appendingPathComponent(projectName(source, kind))
@@ -147,8 +179,8 @@ public struct BuildFolders: Sendable {
 
 extension ActionScheme {
   /// The scheme with its builds in `folders` (`BuildFolders`): Xcode's derived data, SwiftPM's scratch path and
-  /// Cargo's target folder, and the executable built there. Unchanged when the folder doesn't exist or the toolchain
-  /// has none. Leases nothing but records the build, so call it when an action starts, on the machine it runs on.
+  /// Cargo's target folder, and the executable built there. Unchanged when off (nobody opted in), when the folder
+  /// doesn't exist or the toolchain has none. Leases nothing but records the build, so call it when an action starts, on the machine it runs on.
   public func inBuildFolders(_ folders: BuildFolders = .standard) -> ActionScheme {
     var scheme = self
     switch toolchain {

@@ -128,10 +128,12 @@ Xcode apps
 
 Build folders
 
-- `BuildFolders`: when `~/Developer/Builds` exists, builds go to an instance `<kind>/<project>/<n>` of it, shared by
-  every checkout of a repository, so dependencies build once. `ActionScheme.inBuildFolders()` moves Xcode's derived
-  data, SwiftPM's scratch path and Cargo's target folder there when an action starts. Without the folder, each tool
-  builds where it always does. Archives go to `.build/<scheme>` in the scheme's folder.
+- `BuildFolders`: off by default, so each tool builds where it always does (Xcode's DerivedData, `.build`,
+  `target`). Opted in (`V57_BUILD_FOLDERS` in the environment, or the `V57BuildFolders` user default, `defaults write
+  -g` for every app: `1` for `~/Developer/Builds` or a folder's path), builds go to an instance `<kind>/<project>/<n>`
+  of that folder, the agents' build-lease layout, shared by every checkout of a repository, so dependencies build once.
+  `ActionScheme.inBuildFolders()` moves Xcode's derived data, SwiftPM's scratch path and Cargo's target folder there
+  when an action starts. Archives go to `.build/<scheme>` in the scheme's folder.
 
 ## Adding a kind of project
 

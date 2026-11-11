@@ -779,8 +779,9 @@
       for run in replaced { stop(run) }
       // The new run takes the place of the last one's result on the editor (the console keeps it).
       for run in runs where !run.isWorking && run.kind == kind && run.scheme.id == scheme.id { run.isDismissed = true }
-      // The debugger (the override) runs here, never on another machine. Builds here go to ~/Developer/Builds
-      // when it exists (`BuildFolders`), a container's to its volume; another machine builds where its tools do.
+      // The debugger (the override) runs here, never on another machine. Builds here go where the project's tools put
+      // them, or to the builds folder the user opted into (`BuildFolders`), a container's to its volume; another
+      // machine builds where its tools do.
       let destination = destination ?? source.destination(image: ContainerImages.image(for: scheme, root: root))
       let remote = !source.isLocal || destination?.kind == .remote
       let building =
