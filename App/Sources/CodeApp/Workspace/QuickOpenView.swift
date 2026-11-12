@@ -300,7 +300,7 @@ struct QuickOpenView: View {
   @ViewBuilder private var symbolGroup: some View {
     if !symbols.isEmpty, !query.isEmpty {
       PaletteGroup(
-        "Symbols", meta: [symbols.count == 1 ? String(localized: "1 match") : String(localized: "\(symbols.count) matches")],
+        "Symbols", meta: [String(localized: "\(symbols.count) matches")],
         systemImage: "curlybraces", hue: .purple
       ) {
         ForEach(symbols) { symbol in
@@ -392,13 +392,11 @@ struct QuickOpenView: View {
     } else if results.isEmpty {
       if !isSearching { parts.append(String(localized: "No matching files")) }
     } else {
-      parts.append(results.count == 1 ? String(localized: "1 match") : String(localized: "\(results.count) matches"))
+      parts.append(String(localized: "\(results.count) matches"))
     }
     if hiddenMatches > 0 {
       parts.append(
-        hiddenMatches == 1
-          ? String(localized: "1 hidden file also matches")
-          : String(localized: "\(hiddenMatches) hidden files also match"))
+        String(localized: "\(hiddenMatches) hidden files also match"))
     }
     return parts
   }

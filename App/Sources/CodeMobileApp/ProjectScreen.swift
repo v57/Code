@@ -406,9 +406,9 @@ struct IssuesView: View {
         KitSection(
           "Issues",
           meta: [
-            errors == 0 ? "" : errors == 1 ? String(localized: "1 error") : String(localized: "\(errors) errors"),
+            errors == 0 ? "" : String(localized: "\(errors) errors"),
             warnings == 0
-              ? "" : warnings == 1 ? String(localized: "1 warning") : String(localized: "\(warnings) warnings"),
+              ? "" : String(localized: "\(warnings) warnings"),
             device.map { String(localized: "from \($0)") } ?? "",
           ],
           systemImage: errors > 0 ? "xmark.octagon" : "exclamationmark.triangle", hue: errors > 0 ? .red : .orange

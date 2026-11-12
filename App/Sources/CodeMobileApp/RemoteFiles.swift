@@ -26,7 +26,7 @@ struct RemoteFolderView: View {
         ScrollView {
           KitSection(
             "Files", meta: [
-              entries.count == 1 ? String(localized: "1 item") : String(localized: "\(entries.count) items"),
+              String(localized: "\(entries.count) items"),
               String(localized: "over SFTP"),
             ],
             systemImage: "folder", hue: .blue

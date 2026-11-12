@@ -137,10 +137,10 @@ struct FindNavigatorView: View {
     }
     let matches = find.matchCount
     let files = find.results.count
-    let matchText = matches == 1 ? String(localized: "1 match") : String(localized: "\(matches) matches")
+    let matchText = String(localized: "\(matches) matches")
     return [
       find.isTruncated ? String(localized: "\(matchText) (stopped)") : matchText,
-      files == 1 ? String(localized: "1 file") : String(localized: "\(files) files"),
+      String(localized: "\(files) files"),
     ]
   }
 

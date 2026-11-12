@@ -193,13 +193,13 @@ struct ProjectsSidebar: View {
       selection: $selection, searchText: $search, searchPrompt: "Search Projects", columnVisibility: $columnVisibility
     ) {
       VaultAccountPicker(
-        meta: projects.count == 1 ? String(localized: "1 project") : String(localized: "\(projects.count) projects"))
+        meta: String(localized: "\(projects.count) projects"))
       KitSection(
         "Projects",
         meta: projects.isEmpty
           ? [String(localized: "None yet")]
           : [
-            projects.count == 1 ? String(localized: "1 project") : String(localized: "\(projects.count) projects"),
+            String(localized: "\(projects.count) projects"),
             String(localized: "on your devices"),
           ],
         systemImage: "folder", hue: .orange
@@ -224,7 +224,7 @@ struct ProjectsSidebar: View {
     .status {
       HStack(spacing: 6) {
         StatusDot(hue: deviceCount > 0 ? .green : .gray)
-        Text(deviceCount == 0 ? "No devices" : deviceCount == 1 ? "1 device" : "\(deviceCount) devices")
+        Text(deviceCount == 0 ? "No devices" : "\(deviceCount) devices")
         Spacer(minLength: 0)
         // The kit's icon button: a kit button style sets its own label style, so `.labelStyle(.iconOnly)` around
         // `.kitPlain` still showed the title ("Priva…").

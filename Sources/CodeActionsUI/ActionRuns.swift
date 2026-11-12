@@ -88,7 +88,7 @@ public enum ActionRuns {
         systemImage: systemImage, status: status,
         progress: isLast && status.isWorking ? progress : nil,
         warnings: warnings == 0
-          ? nil : warnings == 1 ? String(localized: "1 warning") : String(localized: "\(warnings) warnings"),
+          ? nil : String(localized: "\(warnings) warnings"),
         output: lines.joined(separator: "\n"))
     }
   }
