@@ -1,5 +1,5 @@
 {
-  "originHash" : "8a1ab9740585a8697689e71ea7b83e597289bccb28bd830c06cfaa6492b8045f",
+  "originHash" : "2466628aa939cf9338e4e7b708835f6dbff49823f3d4277893d907c7373d4a70",
   "pins" : [
     {
       "identity" : "component",
@@ -7,7 +7,7 @@
       "location" : "https://github.com/v57/Component.git",
       "state" : {
         "branch" : "main",
-        "revision" : "2017be1b0b1266fe2abdacdda726a56526d0e133"
+        "revision" : "e2bd87dc479ba767fd649d98c9f128be8d82217f"
       }
     },
     {
@@ -16,7 +16,7 @@
       "location" : "https://github.com/v57/Platform.git",
       "state" : {
         "branch" : "main",
-        "revision" : "5da0561b61c3384fdaef210c0b4ee6b67e343ac1"
+        "revision" : "b9118699964cd87214921f9808fc47ce87634e69"
       }
     },
     {
@@ -25,7 +25,7 @@
       "location" : "https://github.com/v57/SSH.git",
       "state" : {
         "branch" : "main",
-        "revision" : "d9584bc0e7caf7182ad0c3ad7a27c0fb1f6dff5e"
+        "revision" : "55496ea2043e1632d0a85d135b5069cd0fb12564"
       }
     }
   ],
