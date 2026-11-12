@@ -1,6 +1,10 @@
 import CodeFolders
 import Foundation
 
+#if os(macOS)
+  import CryptoKit
+#endif
+
 /// What an Upload to App Store asks before it starts: the build number it carries, which App Store Connect wants higher
 /// than the last one uploaded. Passed to the action in its environment.
 public enum AppStoreUpload {
@@ -417,13 +421,14 @@ public struct XcodeDetector: ProjectDetector {
   }
 
   /// The container's schemes from `xcodebuild -list`; where it has no answer (no xcodebuild on iPhone and iPad, looking
-  /// at a copy of a project on a Mac; a project whose remote packages don't resolve, next to the -Local workspace that
-  /// builds it) from its scheme files, then the targets Xcode makes schemes for.
+  /// at a copy of a project on a Mac; a project whose remote packages aren't checked out yet, or don't resolve, next to
+  /// the -Local workspace that builds it) from its scheme files, then the targets Xcode makes schemes for.
   static func schemeNames(_ container: URL, in folder: ProjectFolder) -> [String]? {
-    #if !os(iOS)
-      // xcodebuild resolves the packages the project names (security audit L10): only in a folder the person trusts.
-      if !folder.isMirror, FolderTrust.isTrusted(container), let listed = Self.list(container).flatMap(Self.parseSchemes),
-        !listed.isEmpty
+    #if os(macOS)
+      // xcodebuild runs the manifests of the packages the project names (security audit L10): only in a folder the
+      // person trusts. It never resolves them here (privacy): that waits for Build, Run or Resolve.
+      if !folder.isMirror, FolderTrust.isTrusted(container), PackageCheckouts.areComplete(for: container),
+        let listed = Self.list(container).flatMap(Self.parseSchemes), !listed.isEmpty
       {
         return listed
       }
@@ -438,12 +443,157 @@ public struct XcodeDetector: ProjectDetector {
     return names
   }
 
-  static func list(_ container: URL) -> String? {
+  /// `xcodebuild -list` that uses only the packages already checked out: with no `Package.resolved`, or one that names
+  /// a package not yet resolved, it fails without fetching anything. Not enough alone: with a `Package.resolved` and no
+  /// checkouts xcodebuild still clones the pinned revisions, which `PackageCheckouts.areComplete` rules out first.
+  static func listArguments(_ container: URL) -> [String] {
     let flag = container.pathExtension == "xcworkspace" ? "-workspace" : "-project"
-    return SubprocessCapture.run(
-      "/usr/bin/xcrun", ["xcodebuild", "-list", "-json", flag, container.path],
-      directory: container.deletingLastPathComponent(), timeout: 30)
+    return [
+      "xcodebuild", "-list", "-json", "-disableAutomaticPackageResolution", "-skipPackageUpdates", flag, container.path,
+    ]
   }
+
+  static func list(_ container: URL) -> String? {
+    SubprocessCapture.run(
+      "/usr/bin/xcrun", listArguments(container), directory: container.deletingLastPathComponent(), timeout: 30)
+  }
+}
+
+/// Whether Xcode already has every remote package a project or workspace pins checked out, so listing its schemes
+/// contacts no server: `xcodebuild -list` clones whatever its `Package.resolved` pins and its DerivedData lacks, even
+/// with `-disableAutomaticPackageResolution -skipPackageUpdates`.
+enum PackageCheckouts {
+  /// True when the container pins no remote package (no `Package.resolved`: xcodebuild's list then fails offline if it
+  /// needs one), or when each pin is checked out at its revision in the DerivedData Xcode uses for it. False when that
+  /// can't be told.
+  static func areComplete(for container: URL) -> Bool {
+    guard let resolved = try? Data(contentsOf: resolvedFile(of: container)) else { return true }
+    guard let pins = pins(in: resolved) else { return false }
+    if pins.isEmpty { return true }
+    #if os(macOS)
+      let sourcePackages = derivedData(of: container, in: derivedDataRoot(for: container))
+        .appendingPathComponent("SourcePackages")
+      guard let state = try? Data(contentsOf: sourcePackages.appendingPathComponent("workspace-state.json")) else {
+        return false
+      }
+      return areCheckedOut(pins, state: state, in: sourcePackages)
+    #else
+      return false
+    #endif
+  }
+
+  /// A remote package `Package.resolved` pins: its identity and the revision (source control) or version (registry).
+  struct Pin: Equatable {
+    var identity: String
+    var revision: String?
+    var version: String?
+  }
+
+  /// Where Xcode keeps a project's or workspace's `Package.resolved`.
+  static func resolvedFile(of container: URL) -> URL {
+    let shared =
+      container.pathExtension == "xcworkspace"
+      ? container.appendingPathComponent("xcshareddata")
+      : container.appendingPathComponent("project.xcworkspace/xcshareddata")
+    return shared.appendingPathComponent("swiftpm/Package.resolved")
+  }
+
+  /// The pins of a `Package.resolved` (version 2 and later); nil for a file this can't read.
+  static func pins(in data: Data) -> [Pin]? {
+    struct File: Decodable {
+      struct Pin: Decodable {
+        struct State: Decodable {
+          let revision: String?
+          let version: String?
+        }
+        let identity: String
+        let state: State
+      }
+      let version: Int
+      let pins: [Pin]?
+    }
+    guard let file = try? JSONDecoder().decode(File.self, from: data), file.version >= 2 else { return nil }
+    return (file.pins ?? []).map { Pin(identity: $0.identity, revision: $0.state.revision, version: $0.state.version) }
+  }
+
+  /// Whether `workspace-state.json` (`state`) has each pin checked out at the pinned revision, or downloaded at the
+  /// pinned version, with its checkout and every binary artifact it records on disk.
+  static func areCheckedOut(_ pins: [Pin], state: Data, in sourcePackages: URL) -> Bool {
+    struct State: Decodable {
+      struct Object: Decodable {
+        struct Dependency: Decodable {
+          struct Ref: Decodable { let identity: String }
+          struct Checkout: Decodable {
+            struct Position: Decodable { let revision: String? }
+            let name: String
+            let checkoutState: Position?
+            let version: String?
+          }
+          let packageRef: Ref
+          let state: Checkout
+          let subpath: String
+        }
+        struct Artifact: Decodable { let path: String }
+        let dependencies: [Dependency]
+        let artifacts: [Artifact]?
+      }
+      let object: Object
+    }
+    guard let state = try? JSONDecoder().decode(State.self, from: state) else { return false }
+    let files = FileManager.default
+    for pin in pins {
+      guard let dependency = state.object.dependencies.first(where: { $0.packageRef.identity == pin.identity })
+      else { return false }
+      switch dependency.state.name {
+      case "sourceControlCheckout":
+        guard let revision = pin.revision, dependency.state.checkoutState?.revision == revision,
+          files.fileExists(atPath: sourcePackages.appendingPathComponent("checkouts/\(dependency.subpath)").path)
+        else { return false }
+      case "registryDownload":
+        guard let version = pin.version, dependency.state.version == version else { return false }
+      default:
+        return false
+      }
+    }
+    return (state.object.artifacts ?? []).allSatisfy { files.fileExists(atPath: $0.path) }
+  }
+
+  #if os(macOS)
+    /// Xcode's DerivedData folder: Settings › Locations' custom one (relative to the container's folder when
+    /// relative), else `~/Library/Developer/Xcode/DerivedData`.
+    static func derivedDataRoot(for container: URL) -> URL {
+      if let custom = UserDefaults(suiteName: "com.apple.dt.Xcode")?.string(forKey: "IDECustomDerivedDataLocation"),
+        !custom.isEmpty
+      {
+        let path = (custom as NSString).expandingTildeInPath
+        return path.hasPrefix("/")
+          ? URL(fileURLWithPath: path) : container.deletingLastPathComponent().appendingPathComponent(path)
+      }
+      return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Developer/Xcode/DerivedData")
+    }
+
+    /// The container's folder in DerivedData: its name and a hash of its standardized path (`/private/tmp` is `/tmp`),
+    /// as Xcode and xcodebuild name it.
+    static func derivedData(of container: URL, in root: URL) -> URL {
+      let path = (container.path as NSString).standardizingPath
+      let name = (path as NSString).lastPathComponent
+      return root.appendingPathComponent("\((name as NSString).deletingPathExtension)-\(derivedDataHash(path))")
+    }
+
+    /// Xcode's DerivedData hash: the path's MD5, each 64-bit half (big-endian) as 14 base-26 letters.
+    static func derivedDataHash(_ path: String) -> String {
+      let digest = Array(Insecure.MD5.hash(data: Data(path.utf8)))
+      return [digest[0..<8], digest[8..<16]].map { half in
+        var value = half.reduce(UInt64(0)) { $0 << 8 | UInt64($1) }
+        var letters = [Character](repeating: "a", count: 14)
+        for index in (0..<14).reversed() {
+          letters[index] = Character(UnicodeScalar(UInt8(97 + value % 26)))
+          value /= 26
+        }
+        return String(letters)
+      }.joined()
+    }
+  #endif
 }
 
 /// A Swift package: a scheme per executable product, or one for the whole

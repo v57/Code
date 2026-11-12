@@ -438,6 +438,88 @@ import Testing
     #expect(XcodeDetector.own(["Kit", "Remote"], in: folder) == ["Kit", "Remote"])
   }
 
+  /// Listing schemes never resolves packages (privacy): xcodebuild is told not to, and runs only when every pinned
+  /// package is already checked out, since it clones a `Package.resolved`'s pins anyway.
+  @Test func xcodeListingResolvesNothing() throws {
+    let project = URL(fileURLWithPath: "/tmp/App/App.xcodeproj")
+    let arguments = XcodeDetector.listArguments(project)
+    #expect(arguments.contains("-disableAutomaticPackageResolution"))
+    #expect(arguments.contains("-skipPackageUpdates"))
+    #expect(!arguments.contains("-resolvePackageDependencies"))
+    #expect(
+      PackageCheckouts.resolvedFile(of: project).path
+        == "/tmp/App/App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved")
+    #expect(
+      PackageCheckouts.resolvedFile(of: URL(fileURLWithPath: "/tmp/App/App.xcworkspace")).path
+        == "/tmp/App/App.xcworkspace/xcshareddata/swiftpm/Package.resolved")
+    #if os(macOS)
+      let root = URL(fileURLWithPath: "/DerivedData")
+      #expect(
+        PackageCheckouts.derivedData(of: URL(fileURLWithPath: "/Users/me/App/App.xcodeproj"), in: root).path
+          == "/DerivedData/App-asblhmggdmxzvhcgfanmpnmbfief")
+      // xcodebuild hashes the standardized path: an existing /private/tmp/… is /tmp/….
+      let temporary = try folder(["App.xcworkspace/contents.xcworkspacedata": ""])
+      defer { try? FileManager.default.removeItem(at: temporary) }
+      let workspace = (temporary.appendingPathComponent("App.xcworkspace").path as NSString).standardizingPath
+      #expect(!workspace.hasPrefix("/private/"))
+      #expect(
+        PackageCheckouts.derivedData(of: URL(fileURLWithPath: "/private" + workspace), in: root)
+          == PackageCheckouts.derivedData(of: URL(fileURLWithPath: workspace), in: root))
+    #endif
+
+    let resolved = Data(
+      #"""
+      {"originHash": "x", "version": 3, "pins": [
+        {"identity": "kit", "kind": "remoteSourceControl", "location": "https://example.com/Kit.git",
+         "state": {"branch": "main", "revision": "aaa"}},
+        {"identity": "store", "kind": "registry", "location": "", "state": {"version": "1.2.0"}}]}
+      """#.utf8)
+    let pins = try #require(PackageCheckouts.pins(in: resolved))
+    #expect(
+      pins == [
+        .init(identity: "kit", revision: "aaa", version: nil), .init(identity: "store", revision: nil, version: "1.2.0"),
+      ])
+    #expect(PackageCheckouts.pins(in: Data(#"{"version": 1, "object": {"pins": []}}"#.utf8)) == nil)
+
+    let sourcePackages = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: sourcePackages) }
+    try FileManager.default.createDirectory(
+      at: sourcePackages.appendingPathComponent("checkouts/Kit"), withIntermediateDirectories: true)
+    func state(kitRevision: String = "aaa", storeVersion: String = "1.2.0", artifact: String? = nil) -> Data {
+      let artifacts = artifact.map { #"[{"path": "\#(sourcePackages.path)/\#($0)"}]"# } ?? "[]"
+      return Data(
+        #"""
+        {"version": 7, "object": {"artifacts": \#(artifacts), "dependencies": [
+          {"packageRef": {"identity": "app", "kind": "fileSystem"}, "state": {"name": "fileSystem", "path": "/x"},
+           "subpath": "app"},
+          {"packageRef": {"identity": "kit"}, "subpath": "Kit",
+           "state": {"name": "sourceControlCheckout", "checkoutState": {"branch": "main", "revision": "\#(kitRevision)"}}},
+          {"packageRef": {"identity": "store"}, "subpath": "store",
+           "state": {"name": "registryDownload", "version": "\#(storeVersion)"}}]}}
+        """#.utf8)
+    }
+    #expect(PackageCheckouts.areCheckedOut(pins, state: state(), in: sourcePackages))
+    // A pin moved since the checkout, a missing checkout or artifact, a package not resolved: xcodebuild would fetch.
+    #expect(!PackageCheckouts.areCheckedOut(pins, state: state(kitRevision: "bbb"), in: sourcePackages))
+    #expect(!PackageCheckouts.areCheckedOut(pins, state: state(storeVersion: "1.1.0"), in: sourcePackages))
+    #expect(!PackageCheckouts.areCheckedOut(pins, state: state(artifact: "artifacts/kit/Kit.xcframework"), in: sourcePackages))
+    let added = pins + [.init(identity: "other", revision: "ccc", version: nil)]
+    #expect(!PackageCheckouts.areCheckedOut(added, state: state(), in: sourcePackages))
+    try FileManager.default.removeItem(at: sourcePackages.appendingPathComponent("checkouts/Kit"))
+    #expect(!PackageCheckouts.areCheckedOut(pins, state: state(), in: sourcePackages))
+
+    // A project without a Package.resolved lists (xcodebuild then fails offline if it needs packages); one whose pins
+    // aren't checked out in its DerivedData falls back to its scheme files.
+    let folder = try folder(["App.xcodeproj/project.pbxproj": ""])
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let container = folder.appendingPathComponent("App.xcodeproj")
+    #expect(PackageCheckouts.areComplete(for: container))
+    try FileManager.default.createDirectory(
+      at: PackageCheckouts.resolvedFile(of: container).deletingLastPathComponent(), withIntermediateDirectories: true)
+    try resolved.write(to: PackageCheckouts.resolvedFile(of: container))
+    #expect(!PackageCheckouts.areComplete(for: container))
+  }
+
   @Test func xcodeTargetPlatforms() throws {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: root) }
