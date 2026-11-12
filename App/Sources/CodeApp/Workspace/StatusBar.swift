@@ -75,9 +75,11 @@ private struct CodeStatusBar: ViewModifier {
     let selection = model.selection
     let line = selection.line
     let column = selection.column
-    guard selection.length > 0 else { return String(localized: "Line: \(line)  Col: \(column)") }
-    return selection.lineCount > 1
-      ? String(localized: "Line: \(line)  Col: \(column)  (\(selection.length) characters, \(selection.lineCount) lines)")
-      : String(localized: "Line: \(line)  Col: \(column)  (\(selection.length) characters)")
+    let place = String(localized: "Line: \(line)  Col: \(column)")
+    guard selection.length > 0 else { return place }
+    // Each count is its own phrase, so each takes its language's plural.
+    var counts = String(localized: "\(selection.length) characters")
+    if selection.lineCount > 1 { counts += ", " + String(localized: "\(selection.lineCount) lines") }
+    return place + "  (" + counts + ")"
   }
 }
