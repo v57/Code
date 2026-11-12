@@ -6,8 +6,8 @@ A project's own files can contain code that runs when an editor opens them: a la
 formatter installed in the project, or a package manifest that fetches packages. So the first time you open a folder
 that Code didn't create, Code asks **Trust the authors of “*folder*”?**
 
-- **Trust Folder**: the folder's own code may run. Language servers read its build settings, its formatters run when
-  you save, and Xcode and Swift read the project and fetch its packages.
+- **Trust Folder**: the folder's own code may run. Language servers read its build settings (for an Xcode project,
+  Xcode reads them and fetches its packages), its formatters run when you save, and Swift reads the project.
 - **Don’t Trust**: the folder opens in **Restricted Mode**. You can read and edit every file, and nothing in the folder
   runs on its own.
 
@@ -49,16 +49,19 @@ Code contacts no server on its own. Here's everything it can contact, and when.
 
 - **An untrusted folder**: nothing. Reading and editing files, the built-in language server and the scanner stay on
   your Mac.
-- **A trusted folder**: Xcode and Swift read the project when it opens and when you pick an Xcode scheme, and they
-  fetch every Swift package the project names, as Xcode does. Language servers may download toolchains or
-  dependencies, depending on the server.
+- **A trusted folder**: listing an Xcode project's schemes fetches nothing. Code reads them from the project's files,
+  or asks Xcode only when every package the project pins is already checked out on this Mac. When you pick an Xcode
+  scheme, Xcode reads its build settings for the Swift language server, and that fetches every Swift package the
+  project names, as Xcode does. Language servers may download toolchains or dependencies, depending on the server.
 
 ### Only when you choose it
 
 - **Run**, **Build**, **Test**, **Clean**, **Install** and **Export**: the project's own commands, which may fetch
   dependencies.
-- **Other Machines** and **Containers** destinations: building, testing or running there signs in to that machine
-  over SSH, or starts a container, which may download its image first.
+- **Other Machines** and **Containers** destinations, and **Build From**: building, testing or running there signs
+  in to that machine over SSH, or starts a container, which may download its image first. Picking a machine under
+  **Build From**, or its **Refresh**, asks that machine what it can build; the machines listed under
+  **Find on Another Machine** aren't contacted until you pick one.
 - **Install** in Settings ▸ Languages or Settings ▸ Formatting: runs the shown command (Homebrew, npm, gem and so on),
   which downloads the tool from its source.
 - **Export…** and **Upload to App Store**: send the app to Apple for notarization or to App Store Connect.

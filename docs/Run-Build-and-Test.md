@@ -19,6 +19,24 @@ The toolbar shows **scheme › destination**:
 
 **Product ▸ Refresh Schemes** and **Product ▸ Refresh Run Destinations** do the same from the menu bar.
 
+## Build From
+
+When there's another machine or a container runtime to build from, the toolbar shows **Build From** before the
+scheme. Its menu lists:
+
+- this Mac, which builds here from this folder;
+- **Other Machines**: your other devices that have this project, which build it there from their own files;
+- **Containers**: a container runtime such as Docker, which builds in a new container with this folder in it and
+  keeps the products in a volume. A stopped runtime has **Start**, which runs its start command;
+- **Find on Another Machine**: your machines that may have the project. Nothing is contacted until you pick one.
+
+With a machine picked, **Set Folder on *machine*…** asks where the project is on it, then lists its schemes from
+there. **Refresh** looks for your machines and runtimes again. A machine that can't be reached stays picked, with a
+warning that says why.
+
+A Windows machine works too: Code speaks PowerShell there, and Run opens the program in that machine's desktop
+session. On a Linux machine, Run opens it on the signed-in user's desktop.
+
 ## Run destinations
 
 Click the destination to choose where Run puts the app. Depending on the scheme and what's connected, the menu lists:
@@ -44,7 +62,8 @@ found it.
 - Stop (■) or **Product ▸ Stop** (⌘.) ends the action and everything it started.
 
 The toolbar's title shows the project, what it's doing and a progress bar, then the result. Commands run with your
-login shell's environment, so your PATH applies.
+login shell's environment, so your PATH applies. Builds go where each project's own tools put them: Xcode's
+DerivedData, SwiftPM's `.build`, Cargo's `target`.
 
 Turn off **Run, Build and Test** in **Settings ▸ Run** to hide these buttons from the toolbar.
 

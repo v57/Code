@@ -32,6 +32,10 @@ Code edits like Xcode's source editor:
 - Return after an unclosed `{` adds the `}`. A closing bracket on a blank line lines up with its opener.
 - `///` comments continue on the next line when you press Return.
 - Backspace in the indentation deletes one level. ⌘← goes to the indentation first, then to the start of the line.
+- Tab in a line's indentation that is short of its block indents it to the block's level at once, as on the empty
+  line of a body you just opened.
+- ⌥← and ⌥→ stop at punctuation in code: in `Text("Hello").font(.title)` they stop at `Text`, `(`, `"Hello"`, `)`,
+  `.font` and so on. In comments and strings they skip punctuation, as in prose.
 - The matching bracket flashes. Double-click a bracket to select the whole block.
 - You can scroll past the last line.
 

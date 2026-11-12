@@ -39,8 +39,9 @@ address it knows for the Mac, such as its local address and its Hub Network addr
   key in the Vault app and try again.
 - If this device's key needs your confirmation, Face ID or Touch ID asks before Code signs in.
 
-If no device answers, Code shows **Couldn’t Open *project*** with each device's reason. Fix the cause (the Mac is
-asleep, Remote Login is off, this device isn't allowed under **Can Sign In**) and tap **Try Again**.
+If the first try can't reach the device, Code tries again two seconds later. If no device answers, Code shows
+**Couldn’t Open *project*** with each device's reason. Fix the cause (the Mac is asleep, Remote Login is off, this
+device isn't allowed under **Can Sign In**) and tap **Try Again**.
 
 A folder in the project that the Mac doesn't let you read is skipped, and a banner names it.
 

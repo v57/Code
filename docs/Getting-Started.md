@@ -6,7 +6,7 @@
 
 1. Open Code. The first time, you see the welcome window.
 2. Click **Open…** and choose a folder, or drop a folder on the window. You can also choose **File ▸ Open Folder…**
-   (⌘O) at any time.
+   (⇧⌘O, or ⌘O in a window without a project) at any time.
 3. The first time you open a folder Code didn't create, Code asks **Trust the authors of “*folder*”?**
    - Click **Trust Folder** if you know where the code comes from. Its language servers, formatters and build tools
      can then run.
@@ -26,7 +26,7 @@ Code is also added to your vault's projects, so your other v57 apps and devices 
 - Code saves on its own about a second after you stop typing, and when you switch tabs, switch apps or quit.
   **File ▸ Save** (⌘S) also formats the file when a formatter applies. See
   [Languages and Formatting](Languages-and-Formatting.md).
-- Press ⇧⌘O (**Go ▸ Open Quickly…**) and type part of a file's name to open it without the sidebar, or a symbol's
+- Press ⌘O (**Go ▸ Open Quickly…**) and type part of a file's name to open it without the sidebar, or a symbol's
   (`MessageView.body`) to jump to its declaration.
 
 ### Run your project
