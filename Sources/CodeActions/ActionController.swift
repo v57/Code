@@ -930,8 +930,8 @@
 
     /// "2 errors"; a test's errors are its failed tests ("2 failed", "2 of 40 failed").
     private static func errors(_ count: Int, _ kind: ActionKind, tests: Int = 0) -> String {
-      guard kind == .test else { return "\(count) error\(count == 1 ? "" : "s")" }
-      return tests >= count ? "\(count) of \(tests) failed" : "\(count) failed"
+      guard kind == .test else { return String(localized: "\(count) errors") }
+      return tests >= count ? String(localized: "\(count.formatted()) of \(tests) failed") : String(localized: "\(count) failed")
     }
 
     /// Keeps the runs still going and the newest finished ones, `keptRuns` in all.

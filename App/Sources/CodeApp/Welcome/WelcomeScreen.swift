@@ -129,7 +129,7 @@ struct WelcomeScreen: View {
   private func groupItem(_ group: VaultProjectGroup, projects count: Int) -> some View {
     let isOpen = !collapsedGroups.contains(group.id)
     return RecentItem(
-      group.name, subtitle: group.note.flatMap { $0.isEmpty ? nil : $0 } ?? (count == 1 ? "1 project" : "\(count) projects"),
+      group.name, subtitle: group.note.flatMap { $0.isEmpty ? nil : $0 } ?? String(localized: "\(count) projects"),
       systemImage: isOpen ? "folder.fill" : "folder", id: "group:\(group.id)"
     ) {
       withAnimation(.kit) { collapsedGroups.toggle(group.id) }

@@ -379,8 +379,10 @@ enum ProcessText {
 
   /// "31 / 48 tests", or "31 tests" before a run of them finished.
   @MainActor static func tests(of run: ActionRun) -> String {
-    if let expected = run.testsExpected, expected >= run.testsRun { return "\(run.testsRun) / \(expected) tests" }
-    return run.testsRun == 1 ? "1 test" : "\(run.testsRun) tests"
+    if let expected = run.testsExpected, expected >= run.testsRun {
+      return String(localized: "\(run.testsRun.formatted()) / \(expected) tests")
+    }
+    return String(localized: "\(run.testsRun) tests")
   }
 
   /// The card's line under the name: where it runs, for how long, how far ("on studio-mac · 1:42 · 31 of 48"); a

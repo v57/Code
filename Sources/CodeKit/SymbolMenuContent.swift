@@ -212,8 +212,8 @@ public struct SymbolMenuContent: Equatable, Sendable {
     built.append(
       Row(
         id: "references", separated: true, icon: .references, title: "Find References", trail: count,
-        preview: references.map { "Lists the \($0 == 1 ? "place" : "\($0) places") that use \(name) in Find in Project." }
-          ?? "Lists the places that use \(name) in Find in Project.",
+        preview: references.map { String(localized: "Lists the \($0) places that use \(name) in Find in Project.") }
+          ?? String(localized: "Lists the places that use \(name) in Find in Project."),
         action: .findReferences(bare)))
     if !several, !lead.symbol.isValue {
       let qualified = lead.qualifiedName
@@ -223,7 +223,9 @@ public struct SymbolMenuContent: Equatable, Sendable {
 
     let path = Array((lead.parents.reversed() + [lead.symbol]).suffix(several ? 2 : 3))
     var summary = lead.documentation
-    if several { summary = "\(rows.count) places declare `\(bare)`: ⌘-click shows this menu instead of jumping." }
+    if several {
+      summary = String(localized: "\(rows.count) places declare `\(bare)`: ⌘-click shows this menu instead of jumping.")
+    }
     var footer: String?
     if let pendingServer, !first.isSure || rows.contains(where: { !$0.isSure }) {
       footer = "From \(Self.tierName(first.tier)). \(pendingServer) is still checking."
