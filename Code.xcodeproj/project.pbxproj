@@ -17,6 +17,7 @@
 			membershipExceptions = (
 				"Code-iOS-Info.plist",
 				Info.plist,
+				PrivacyInfo.xcprivacy,
 			);
 			target = 000000000000000100000000 /* Code */;
 		};
