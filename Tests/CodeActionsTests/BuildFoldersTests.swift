@@ -43,7 +43,10 @@ import Testing
     let suite = "BuildFoldersTests-\(UUID().uuidString)"
     let defaults = try #require(UserDefaults(suiteName: suite))
     defer { defaults.removePersistentDomain(forName: suite) }
-    #expect(BuildFolders.optIn(environment: [:], defaults: defaults, home: home) == nil)
+    // A suite also reads the global domain: on a Mac with `defaults write -g V57BuildFolders 1` it isn't unset.
+    if defaults.object(forKey: BuildFolders.defaultsKey) == nil {
+      #expect(BuildFolders.optIn(environment: [:], defaults: defaults, home: home) == nil)
+    }
     #expect(BuildFolders.optIn(environment: ["V57_BUILD_FOLDERS": "0"], defaults: defaults, home: home) == nil)
     #expect(
       BuildFolders.optIn(environment: ["V57_BUILD_FOLDERS": "1"], defaults: defaults, home: home)?.path
