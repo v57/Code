@@ -78,6 +78,8 @@ import SwiftUI
   var navigator = Navigator.project
   /// The navigator's search line (Find in Project) is open: ⇧⌘F and ⌥⌘3 open it.
   var isFindLineOpen = false
+  /// Bumped by ⇧⌘F: the search line takes the cursor, also when it was open already.
+  var findFocusRequests = 0
   /// Find in Project, shown in the Find navigator.
   let find = ProjectFind()
   /// Expanded packages and folders under Package Dependencies.
@@ -260,6 +262,7 @@ import SwiftUI
     setNavigatorVisible(true)
     navigator = .find
     isFindLineOpen = true
+    findFocusRequests += 1
     if replacing { find.isReplacing = true }
     if let textView = workspace.selectedDocument?.textView, textView.isFocused {
       let range = textView.selectionRange

@@ -311,6 +311,9 @@
         model.findInProject()
         model.find.text = argument
         model.find.search(in: model.workspace)
+      case "findinproject":
+        // The menu's ⇧⌘F (findinproject:replace: ⌥⇧⌘F), the query kept.
+        model.findInProject(replacing: argument == "replace")
       case "findmode":
         if let mode = SearchQuery.Mode(rawValue: argument) { model.find.mode = mode }
       case "findcase": model.find.isCaseSensitive = argument != "off"
@@ -462,7 +465,8 @@
                 + "\($0.progress?.message ?? "-") tests \($0.testsRun)"
             }.joined(separator: "; "))
         lines.append(
-          "responder: \(document?.textView?.window?.firstResponder.map { String(describing: type(of: $0)) } ?? "-")")
+          "responder: \(document?.textView?.window?.firstResponder.map { String(describing: type(of: $0)) } ?? "-")"
+            + ((document?.textView?.window?.firstResponder as? NSTextView)?.isFieldEditor == true ? " (field editor)" : ""))
         lines.append("log tail:")
         lines += actions.log.entries.suffix(15).map { "  " + $0.text }
         try? lines.joined(separator: "\n").write(

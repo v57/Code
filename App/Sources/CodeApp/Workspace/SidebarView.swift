@@ -146,6 +146,8 @@ private struct NavigatorSidebar<Content: View, BottomBar: View>: View {
     // the whole tree again whenever the rows it could scroll to changed, on every tab switch).
     .revealsSelection()
     .kitRowDensity(.compact)
+    // ⇧⌘F puts the cursor in the search line, also when it's open already.
+    .kitSearchFocus(model.findFocusRequests)
     .onChange(of: find.text) { _, text in
       // Typing in the search line searches the project; closing it goes back to the tree.
       model.navigator = text.isEmpty ? .project : .find
