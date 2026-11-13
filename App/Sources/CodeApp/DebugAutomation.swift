@@ -231,6 +231,7 @@
           "up": #selector(NSResponder.moveUp(_:)), "down": #selector(NSResponder.moveDown(_:)),
           "return": #selector(NSResponder.insertNewline(_:)), "tab": #selector(NSResponder.insertTab(_:)),
           "backtab": #selector(NSResponder.insertBacktab(_:)), "esc": #selector(NSResponder.cancelOperation(_:)),
+          "delete": #selector(NSResponder.deleteBackward(_:)),
           // The symbol menu's ⌘↑ and ⌥↩, as the editor's key bindings send them.
           "cmdup": #selector(NSResponder.moveToBeginningOfDocument(_:)),
           "optreturn": #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)),
@@ -387,7 +388,7 @@
           "execution: \(String(describing: services.executionLocation))",
           "debugger: \(String(describing: services.debugger?.state))",
           "status: \(services.statusMessage ?? "-")",
-          "completions: \(document?.completion?.shownItems.prefix(15).map(\.label).joined(separator: ", ") ?? "-")",
+          "completions: \(document?.completion?.shownItems.prefix(15).map { $0.label + ($0.labelDetail ?? "") }.joined(separator: ", ") ?? "-")",
           "selection: \(document?.textView.map { NSStringFromRange($0.selectedRange()) } ?? "-")",
           "line text: \(document?.textView.map { view in let text = view.string as NSString; return text.substring(with: text.lineRange(for: view.selectedRange())) } ?? "-")",
         ]
