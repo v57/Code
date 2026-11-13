@@ -105,6 +105,21 @@ import Testing
     }
   }
 
+  /// Like the Swift model: the first names it finds, limited, so a list for a shorter word is incomplete.
+  @MainActor private final class WordProvider: CompletionProvider {
+    var words: [String] = []
+    var triggerCharacters: Set<String> { ["."] }
+
+    func completions(for context: CompletionContext) async -> CompletionList? {
+      let word = context.text.substring(with: context.wordRange)
+      words.append(word)
+      await Task.yield()
+      if word.isEmpty { return CompletionList(items: [CompletionItem(label: "frame", kind: .method)], isIncomplete: true) }
+      return CompletionList(
+        items: ["frame", "regularGlass"].filter { $0.hasPrefix(word) }.map { CompletionItem(label: $0, kind: .method) })
+    }
+  }
+
   @MainActor @Suite struct ControllerTests {
     private func makeEditor(_ text: String) -> (CodeTextView, NSWindow) {
       let scroll = CodeEditorScrollView(
@@ -181,6 +196,22 @@ import Testing
       // A non-identifier character closes the list.
       type("(", in: textView)
       #expect(!controller.isShowing)
+    }
+
+    /// An incomplete list that arrives after more was typed is asked for again, at the word as it is now.
+    @Test func lateIncompleteListIsAskedAgain() async throws {
+      let (textView, window) = makeEditor("view")
+      defer { window.close() }
+      let provider = WordProvider()
+      let controller = CompletionController(textView: textView, provider: provider)
+      // Typed before the first answer arrives.
+      type(".regu", in: textView)
+      await settle()
+      #expect(provider.words.first == "")
+      try await Task.sleep(for: .milliseconds(150))
+      await settle()
+      #expect(provider.words.last == "regu")
+      #expect(controller.shownItems.map(\.label) == ["regularGlass"])
     }
 
     @Test func noListWhileTypingInComments() async {

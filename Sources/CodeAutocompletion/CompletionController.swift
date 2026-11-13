@@ -279,6 +279,10 @@
       session.requestLocation = location
       self.session = session
       refilter(keeping: keeping)
+      // Typed on while it was asked: an incomplete list may lack what fits the word now.
+      if list.isIncomplete, let caret = textView?.selectedRange().location, caret != location {
+        requestIfIncomplete()
+      }
     }
 
     /// The rows down to the selection, which a list that arrives later leaves in place.
