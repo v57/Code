@@ -9,7 +9,8 @@
 
   /// Completions for a workspace document, in steps: the Swift model's list (Swift) or Code's scanner's (other
   /// languages) right away, then the language server's with the fast list's extra names, when the server takes longer
-  /// than a moment. Without a server, the fast list alone, else the file's words and the language's keywords.
+  /// than a moment. Without a server (or with only Code's built-in one), the fast list alone, else the file's words and
+  /// the language's keywords.
   @MainActor final class DocumentCompletionProvider: CompletionProvider {
     weak var services: ProjectServices?
     weak var document: TextDocument?
@@ -18,10 +19,12 @@
 
     init(textView: CodeTextView) { self.textView = textView }
 
-    /// The file's server, when it completes code.
+    /// The file's server, when it completes code. Not Code's built-in one while the fast list is on: that's the
+    /// scanner again, out of process, whose bare names would come first and hide the model's signatures and types.
     private var server: (LanguageServerManager, URL)? {
       guard let services, let url = document?.url, services.languageServers.supportsCompletion(url)
       else { return nil }
+      if hasFastList, services.languageServers.isBuiltIn(url) { return nil }
       return (services.languageServers, url)
     }
 

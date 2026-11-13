@@ -227,6 +227,11 @@
       server(ofOpen: url)?.supportsCompletion ?? false
     }
 
+    /// Whether this open file's server is Code's own (`code-lsp`: Code's scanner in a process of its own).
+    public func isBuiltIn(_ url: URL) -> Bool {
+      server(ofOpen: url)?.configuration.install == .builtIn
+    }
+
     /// The characters that ask this file's server for completions.
     public func completionTriggerCharacters(_ url: URL) -> Set<String> {
       server(ofOpen: url)?.completionTriggerCharacters ?? []
