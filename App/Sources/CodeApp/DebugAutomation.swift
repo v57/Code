@@ -24,6 +24,9 @@
   /// the editor; negative scrolls down), `find:<query>` (Find in Project),
   /// `findmode:containing|matchingWord|regularExpression`, `findcase:on|off`,
   /// `findopen:<file index>:<match index>` (opens a result),
+  /// `replacemode:on|off` (Find in Project's Replace mode), `replace:<text>` (Replace mode with that replacement),
+  /// `replaceone:<file index>[:<match index>]` (Replace on a result: one match, or the file's), `replaceall[:ask]`
+  /// (Replace All without asking, or its dialog), `undo[:<path>]` (the selected editor's Undo; writes the action's name to the path),
   /// `dependency:<folder path>` (expands it under Package Dependencies),
   /// `select:<path>` (selects a navigator row, as a click does),
   /// `folder:<relative path>:on|off` (expands or collapses a tree folder),
@@ -311,6 +314,25 @@
       case "findmode":
         if let mode = SearchQuery.Mode(rawValue: argument) { model.find.mode = mode }
       case "findcase": model.find.isCaseSensitive = argument != "off"
+      case "replacemode": model.find.isReplacing = argument != "off"
+      case "replace":
+        model.find.isReplacing = true
+        model.find.replacement = argument
+      case "replaceone":
+        let parts = argument.split(separator: ":").compactMap { Int($0) }
+        if let index = parts.first, model.find.results.indices.contains(index) {
+          let selection = FindSelection(path: model.find.results[index].path, match: parts.count > 1 ? parts[1] : nil)
+          model.find.replace(selection, in: model.workspace)
+        }
+      case "replaceall":
+        if argument == "ask" { model.find.isConfirmingReplaceAll = true } else { model.find.replaceAll(in: model.workspace) }
+      case "undo":
+        // The selected editor's Undo, writing what it undid ("Replace") to the dump's path.
+        if let undoManager = document?.textView?.undoManager {
+          let name = undoManager.undoActionName
+          undoManager.undo()
+          try? name.write(toFile: argument.isEmpty ? "/tmp/code-debug-undo.txt" : argument, atomically: true, encoding: .utf8)
+        }
       case "findopen":
         let parts = argument.split(separator: ":").compactMap { Int($0) }
         if parts.count == 2, model.find.results.indices.contains(parts[0]) {
@@ -424,6 +446,9 @@
         lines.append(
           "find: \(find.text) searching \(find.isSearching) \(find.matchCount) in \(find.results.count) files: "
             + find.results.prefix(8).map { "\($0.path)×\($0.matches.count)" }.joined(separator: ", "))
+        lines.append(
+          "replace: \(find.isReplacing ? "on" : "off") \"\(find.replacement)\" busy \(find.isReplacingFiles) "
+            + (find.replaceSummary ?? "-"))
         let index = model.workspace.index
         lines.append("index: \(index.paths.count) visible, \(index.hiddenPaths.count) hidden")
         lines.append(

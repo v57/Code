@@ -254,12 +254,13 @@ import SwiftUI
     }
   }
 
-  /// ⇧⌘F: the Find navigator. A selection on one line becomes the query
-  /// and is searched for.
-  func findInProject() {
+  /// ⇧⌘F: the Find navigator (⌥⇧⌘F in Replace mode, else as it was). A
+  /// selection on one line becomes the query and is searched for.
+  func findInProject(replacing: Bool = false) {
     setNavigatorVisible(true)
     navigator = .find
     isFindLineOpen = true
+    if replacing { find.isReplacing = true }
     if let textView = workspace.selectedDocument?.textView, textView.isFocused {
       let range = textView.selectionRange
       let selected = (textView.string as NSString).substring(with: range)

@@ -192,3 +192,107 @@ public enum ProjectSearch {
     return String(data: data, encoding: .utf8) ?? String(data: data, encoding: .isoLatin1)
   }
 }
+
+// MARK: - Replace
+
+extension SearchQuery {
+  /// What a match is replaced by: `replacement` as typed, or for a regular
+  /// expression a template (`$1` is the first group, `\$` a dollar sign).
+  public func template(_ replacement: String) -> String {
+    mode == .regularExpression ? replacement : NSRegularExpression.escapedTemplate(for: replacement)
+  }
+}
+
+/// Find in Project's Replace: the same matches as `ProjectSearch` (none of
+/// zero length), replaced in a text or a file.
+public enum ProjectReplace {
+  /// `text` with every match replaced, and how many there were.
+  public static func replacingAll(in text: String, query: SearchQuery, with replacement: String)
+    -> (text: String, count: Int)
+  {
+    guard let expression = query.expression else { return (text, 0) }
+    let string = text as NSString
+    let template = query.template(replacement)
+    let result = NSMutableString()
+    var count = 0
+    var copied = 0
+    expression.enumerateMatches(in: text, range: NSRange(location: 0, length: string.length)) { match, _, _ in
+      guard let match, match.range.length > 0 else { return }
+      result.append(string.substring(with: NSRange(location: copied, length: match.range.location - copied)))
+      result.append(expression.replacementString(for: match, in: text, offset: 0, template: template))
+      copied = NSMaxRange(match.range)
+      count += 1
+    }
+    guard count > 0 else { return (text, 0) }
+    result.append(string.substring(from: copied))
+    return (result as String, count)
+  }
+
+  /// `text` with the match found at `line` and `column` (as in a
+  /// `SearchMatch`) replaced, or nil when the text there no longer matches.
+  public static func replacing(
+    line: Int, column: Int, in text: String, query: SearchQuery, with replacement: String
+  ) -> String? {
+    guard let expression = query.expression, let location = location(line: line, column: column, in: text) else {
+      return nil
+    }
+    let string = text as NSString
+    // Transparent bounds: \b and lookbehinds see the text before the match.
+    guard
+      let match = expression.firstMatch(
+        in: text, options: [.withTransparentBounds, .withoutAnchoringBounds],
+        range: NSRange(location: location, length: string.length - location)),
+      match.range.location == location, match.range.length > 0
+    else { return nil }
+    let new = expression.replacementString(for: match, in: text, offset: 0, template: query.template(replacement))
+    return string.replacingCharacters(in: match.range, with: new)
+  }
+
+  /// What `match` becomes, for showing next to it: the replacement with a
+  /// regular expression's groups filled in from the match's line.
+  public static func preview(of match: SearchMatch, query: SearchQuery, replacement: String) -> String {
+    guard query.mode == .regularExpression, let expression = query.expression else { return replacement }
+    let preview = match.preview
+    let range = NSRange(match.range, in: preview)
+    guard
+      let found = expression.firstMatch(
+        in: preview, options: [.withTransparentBounds, .withoutAnchoringBounds],
+        range: NSRange(location: range.location, length: (preview as NSString).length - range.location)),
+      found.range.location == range.location
+    else { return replacement }
+    return expression.replacementString(for: found, in: preview, offset: 0, template: query.template(replacement))
+  }
+
+  /// Replaces every match in the file at `url`, keeping its encoding, and
+  /// returns how many there were (0 leaves the file alone).
+  public static func replaceAll(inFileAt url: URL, query: SearchQuery, with replacement: String) throws -> Int {
+    guard case .text(let text, let encoding) = TextDocument.read(url) else { return 0 }
+    let (new, count) = replacingAll(in: text, query: query, with: replacement)
+    if count > 0 { _ = try TextDocument.write(new, to: url, encoding: encoding) }
+    return count
+  }
+
+  /// Replaces one match in the file at `url`; false when it's no longer there.
+  public static func replace(
+    line: Int, column: Int, inFileAt url: URL, query: SearchQuery, with replacement: String
+  ) throws -> Bool {
+    guard case .text(let text, let encoding) = TextDocument.read(url),
+      let new = replacing(line: line, column: column, in: text, query: query, with: replacement)
+    else { return false }
+    _ = try TextDocument.write(new, to: url, encoding: encoding)
+    return true
+  }
+
+  /// The UTF-16 offset of `column` (from 0) on `line` (from 1).
+  static func location(line: Int, column: Int, in text: String) -> Int? {
+    let string = text as NSString
+    var start = 0
+    for _ in 1..<max(line, 1) {
+      let newline = string.range(of: "\n", range: NSRange(location: start, length: string.length - start))
+      guard newline.location != NSNotFound else { return nil }
+      start = newline.location + 1
+    }
+    let location = start + column
+    return location <= string.length ? location : nil
+  }
+}

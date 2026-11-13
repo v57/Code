@@ -62,6 +62,8 @@ public struct TextEdit: Equatable, Sendable {
   func identifierRange(at location: Int) -> NSRange?
   /// Replaces the text with a formatted version as one undoable edit.
   func applyFormattedText(_ newText: String)
+  /// Replaces the text with an edited version as one undoable edit named `actionName`.
+  func applyEditedText(_ newText: String, actionName: String)
   /// Moves the caret to `line` and `column` (from 1), selecting `length` characters.
   func goTo(line: Int, column: Int, length: Int)
   /// Adds or removes a breakpoint on `line` (from 0).

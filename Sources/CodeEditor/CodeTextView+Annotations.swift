@@ -9,6 +9,13 @@
     /// ("Format"), touching only the part that changed so the caret, scroll
     /// position and line marks stay where they were.
     public func applyFormattedText(_ newText: String) {
+      applyEditedText(newText, actionName: String(localized: "Format"))
+    }
+
+    /// Replaces the text with an edited version as one undoable edit named
+    /// `actionName` (Find in Project's Replace), touching only the part that
+    /// changed so the caret, scroll position and line marks stay where they were.
+    public func applyEditedText(_ newText: String, actionName: String) {
       guard let storage = textStorage else { return }
       let old = storage.mutableString
       let new = newText as NSString
@@ -33,7 +40,7 @@
       storage.replaceCharacters(
         in: oldRange, with: NSAttributedString(string: replacement, attributes: typingAttributes))
       didChangeText()
-      undoManager?.setActionName(String(localized: "Format"))
+      undoManager?.setActionName(actionName)
       // The caret: shifted when after the change, else kept on its line.
       let delta = (replacement as NSString).length - oldRange.length
       var caret: Int

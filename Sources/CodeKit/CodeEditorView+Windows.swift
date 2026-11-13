@@ -143,7 +143,9 @@
 
     func identifierRange(at location: Int) -> NSRange? { identifierRange(in: text as NSString, at: location) }
 
-    func applyFormattedText(_ newText: String) {
+    func applyFormattedText(_ newText: String) { applyEditedText(newText, actionName: "") }
+
+    func applyEditedText(_ newText: String, actionName: String) {
       guard newText != text else { return }
       let caret = selectedRange.location
       text = newText

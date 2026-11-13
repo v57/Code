@@ -288,6 +288,9 @@ struct CodeCommands: Commands {
       Button("Find in Project…") { model?.findInProject() }
         .keyboardShortcut("f", modifiers: [.command, .shift])
         .disabled(model == nil)
+      Button("Find and Replace in Project…") { model?.findInProject(replacing: true) }
+        .keyboardShortcut("f", modifiers: [.command, .shift, .option])
+        .disabled(model == nil)
     }
     SidebarCommands()
   }
