@@ -73,7 +73,10 @@ import SwiftUI
     // The registry decides whether the folder has a window: SwiftUI only
     // knows the folders windows were opened with, not the ones a Welcome
     // window adopted.
-    if !focus(folder) { openWindow?(id: WorkspaceWindow.id, value: folder) }
+    if !focus(folder) {
+      ProjectsList.fold()
+      openWindow?(id: WorkspaceWindow.id, value: folder)
+    }
   }
 
   /// Brings the window showing `folder` to the front. False when no window

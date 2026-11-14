@@ -80,7 +80,7 @@ struct WorkspaceWindow: View {
     // After the launch's open events: `onOpenURL` runs before this looks, so a folder opened from Finder wins.
     .task {
       await Task.yield()
-      if model == nil, root == nil, let folder = AppState.shared.takeLaunchProject() { open(folder) }
+      if model == nil, root == nil, let folder = AppState.shared.takeLaunchProject() { open(folder, isLaunch: true) }
     }
     .onChange(of: root, initial: true) { _, root in makeModel(root) }
     // The project's account was deleted (the scope fell back to Personal): its project leaves with it.
@@ -93,8 +93,8 @@ struct WorkspaceWindow: View {
   }
 
   /// Opens a folder or file from Finder, the Dock, the Welcome screen or a
-  /// drop.
-  private func open(_ url: URL) {
+  /// drop; the launch's last project with `isLaunch`, which keeps the Projects list as it was.
+  private func open(_ url: URL, isLaunch: Bool = false) {
     guard url.isFileURL, let (folder, file) = AppState.target(of: url) else { return }
     AppState.shared.didOpenFolder = true
     // The folder this window shows, or is about to (`root` is set before the
@@ -121,6 +121,8 @@ struct WorkspaceWindow: View {
     }
     if let file { AppState.shared.addPendingFile(file, in: folder) }
     AppState.shared.recents.add(folder)
+    // A folder opened from outside shows its tree, the Projects list folded away.
+    if !isLaunch { ProjectsList.fold() }
     root = folder
   }
 

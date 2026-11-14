@@ -4,6 +4,21 @@ import SwiftUI
 import VaultKit
 import VaultUI
 
+/// Where the sidebar's Projects list keeps whether it's open.
+enum ProjectsList {
+  /// Open above a folder that isn't one of the vault's projects (the section's own card).
+  static let expandedKey = "sidebar.projectsExpanded"
+  /// Open above a vault project (VaultUI's folded list, `key` + "ListOpen").
+  static let listOpenKey = "sidebar.projectsListOpen"
+
+  /// Folds the list away (in every window: the state is shared): a folder opened from Finder, the Dock or the command
+  /// line shows its tree, not the list.
+  @MainActor static func fold() {
+    UserDefaults.standard.set(false, forKey: expandedKey)
+    UserDefaults.standard.set(false, forKey: listOpenKey)
+  }
+}
+
 /// The projects the v57 apps share (added in Git and the others, through the vault) that are on this Mac, in the
 /// vault's groups: VaultUI's projects section, folded away by default once a project is open (the tree needs the
 /// room), the open project's tree in its section under it. Picking a project shows it in this window, or brings
@@ -20,6 +35,9 @@ struct ProjectsSection<FileTree: View, Accessory: View, Fallback: View>: View {
   @KitStorage("welcome.collapsedGroups") private var collapsedGroups = KitIDSet()
   /// The projects and groups removed from Code's lists (vault ids).
   @KitStorage(RemovedProjects.key) private var removed = KitIDSet()
+  /// The list is open above a folder that isn't one of the vault's projects (closed until it's wanted). Above a vault
+  /// project the section folds the list itself (`sidebar.projectsListOpen`).
+  @KitStorage(ProjectsList.expandedKey) private var isExpanded = false
 
   var body: some View {
     if let vault, case let tree = vault.codeProjectTree(removed: removed.ids), !tree.isEmpty {
@@ -33,7 +51,7 @@ struct ProjectsSection<FileTree: View, Accessory: View, Fallback: View>: View {
     let root = workspace.root.standardizedFileURL
     let current = tree.projects().first { $0.localURL?.standardizedFileURL == root }
     let account = vault.isPersonal ? nil : Vaults.shared.account(id: vault.accountID)?.name
-    VaultProjectsSection(
+    let list = VaultProjectsSection(
       tree,
       selection: Binding(
         get: { current?.id },
@@ -46,6 +64,8 @@ struct ProjectsSection<FileTree: View, Accessory: View, Fallback: View>: View {
     } menu: {
       EmptyView()
     }
+    // Above a folder outside the vault's projects the list stays, so it closes like a card instead.
+    (current == nil ? list.isExpanded($isExpanded) : list)
     .title(String(localized: "Projects"), meta: [account].compactMap { $0 })
     .projectHeader(meta: { _ in meta }, accessory: { _ in accessory() })
     .trailing { project in

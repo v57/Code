@@ -261,7 +261,11 @@
         }
       case "projects":
         // The sidebar's Projects card: projects:on|off, animated as its header's click is.
-        withKitAnimation { UserDefaults.standard.set(argument != "off", forKey: "sidebar.projectsExpanded") }
+        // Both keys: the list folded above a vault project, the card closed above another folder.
+        withKitAnimation {
+          UserDefaults.standard.set(argument != "off", forKey: ProjectsList.expandedKey)
+          UserDefaults.standard.set(argument != "off", forKey: ProjectsList.listOpenKey)
+        }
       case "findbar":
         // The editor's find bar (⌘F): findbar:off closes it.
         let action: NSTextFinder.Action = argument == "off" ? .hideFindInterface : .showFindInterface
