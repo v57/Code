@@ -222,15 +222,34 @@
       sectionsTask = Task { [weak self] in
         try? await Task.sleep(for: .milliseconds(400))
         guard !Task.isCancelled else { return }
-        self?.updateSections()
+        await self?.findSections()
       }
     }
 
     private func updateSections() {
-      let textView = scrollView.textView
-      guard let text = textView.textStorage?.mutableString else { return }
-      container.minimap.sections = MinimapSections.find(in: text, lines: textView.lineIndex)
+      sectionsTask?.cancel()
+      sectionsTask = Task { [weak self] in await self?.findSections() }
     }
+
+    /// Searches a copy of the text off the main thread: in a 10 MB file the search held it ~100 ms after each pause
+    /// in typing (a copy takes a few).
+    private func findSections() async {
+      let textView = scrollView.textView
+      guard let storage = textView.textStorage else { return }
+      let text = SendableText(storage.mutableString.copy() as! NSString)
+      let lines = textView.lineIndex
+      let sections = await Task.detached(priority: .utility) {
+        MinimapSections.find(in: text.string, lines: lines)
+      }.value
+      guard !Task.isCancelled else { return }
+      container.minimap.sections = sections
+    }
+  }
+
+  /// An immutable copy of an editor's text, searched off the main thread.
+  private struct SendableText: @unchecked Sendable {
+    let string: NSString
+    init(_ string: NSString) { self.string = string }
   }
 
   /// The editor's scroll view with the minimap at its right, as in Xcode.

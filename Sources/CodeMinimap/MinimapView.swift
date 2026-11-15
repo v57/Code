@@ -461,7 +461,7 @@
       pattern: #"^[ \t]*(?://+|#+|--|;+|/\*+)[ \t]*(?:MARK:|pragma mark|region\b)[ \t]*(-)?[ \t]*(.*?)[ \t]*(?:\*/)?[ \t]*$"#,
       options: [.anchorsMatchLines, .caseInsensitive])
 
-    public static func find(in text: NSString, lines: LineIndex) -> [MinimapSection] {
+    nonisolated public static func find(in text: NSString, lines: LineIndex) -> [MinimapSection] {
       guard text.range(of: "MARK").location != NSNotFound || text.range(of: "pragma mark").location != NSNotFound
         || text.range(of: "region").location != NSNotFound
       else { return [] }
