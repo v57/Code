@@ -6,6 +6,26 @@ import Foundation
 public enum EditorPlaceholder {
   public static let open = "<#"
   public static let close = "#>"
+  /// The longest placeholder looked for, markers included: a search stays
+  /// near the range it's given instead of walking a minified file's one line.
+  public static let maxLength = 1024
+
+  /// The lines touching `range`, but at most `maxLength` characters either
+  /// side of it: on a 5 MB line `lineRange(for:)` per glyph run hung Code.
+  public static func scope(of range: NSRange, in text: NSString) -> NSRange {
+    let length = text.length
+    let start = min(max(range.location, 0), length)
+    let end = min(max(NSMaxRange(range), start), length)
+    let lower = max(0, start - maxLength)
+    let before = text.rangeOfCharacter(
+      from: .newlines, options: .backwards, range: NSRange(location: lower, length: start - lower))
+    let lineStart = before.location == NSNotFound ? lower : NSMaxRange(before)
+    let upper = min(length, end + maxLength)
+    let after = text.rangeOfCharacter(
+      from: .newlines, options: [], range: NSRange(location: end, length: upper - end))
+    let lineEnd = after.location == NSNotFound ? upper : NSMaxRange(after)
+    return NSRange(location: lineStart, length: lineEnd - lineStart)
+  }
 
   /// Placeholder ranges (markers included) in `range` of `text`: "<#" and
   /// "#>" on one line with something between them.
@@ -19,7 +39,8 @@ public enum EditorPlaceholder {
       guard opening.location != NSNotFound else { break }
       var i = NSMaxRange(opening)
       var closing = NSNotFound
-      while i + 1 < text.length {
+      let limit = min(text.length, opening.location + maxLength)
+      while i + 1 < limit {
         let c = text.character(at: i)
         if c == 0x0A || c == 0x0D { break }
         if c == 0x23, text.character(at: i + 1) == 0x3E {  // "#>"

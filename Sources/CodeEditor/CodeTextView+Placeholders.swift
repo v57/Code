@@ -12,9 +12,7 @@
     /// The placeholders on the lines touching `range`.
     func placeholders(onLinesOf range: NSRange) -> [NSRange] {
       guard let text = textStorage?.mutableString, text.length > 0 else { return [] }
-      let clamped = NSIntersectionRange(range, NSRange(location: 0, length: text.length))
-      let lines = text.lineRange(
-        for: NSRange(location: min(range.location, text.length), length: clamped.length))
+      let lines = EditorPlaceholder.scope(of: range, in: text)
       // Literal: a Unicode-aware search made glyph generation for a file's text twice as slow.
       guard text.range(of: EditorPlaceholder.open, options: .literal, range: lines).location != NSNotFound else {
         return []
@@ -47,7 +45,7 @@
       // A quick check before scanning: Tab in a file without placeholders.
       guard text.range(of: EditorPlaceholder.open).location != NSNotFound else { return false }
       let all = NSRange(location: 0, length: text.length)
-      let lines = text.lineRange(for: selection)
+      let lines = EditorPlaceholder.scope(of: selection, in: text)
       let scope = onlyNearby && !isOnPlaceholder ? lines : all
       let found: NSRange?
       if forward {
@@ -209,8 +207,7 @@
       guard let layoutManager, let text = textStorage?.mutableString, text.length > 0 else {
         return
       }
-      let lines = text.lineRange(
-        for: NSIntersectionRange(range, NSRange(location: 0, length: text.length)))
+      let lines = EditorPlaceholder.scope(of: range, in: text)
       guard
         text.range(of: "<#", options: .literal, range: lines).location != NSNotFound
           || text.range(of: "#>", options: .literal, range: lines).location != NSNotFound

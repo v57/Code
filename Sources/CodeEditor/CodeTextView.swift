@@ -58,6 +58,10 @@
     var isApplyingExternalText = false
     /// An edit assist is changing the text itself (no assists on its edits).
     var isAssisting = false
+    /// The caret line's rect when an edit began, redrawn with the new one once it ends.
+    private var lineRectBeforeEdit: NSRect?
+    /// The selection moved during an edit: `onSelectionChange` is told when it ends.
+    private var selectionChangedInEdit = false
     /// Between `shouldChangeText` and `didChangeText`: AppKit may move the
     /// selection before the storage reports the edit, so selection-driven
     /// cleanup waits for the edit to finish.
@@ -361,24 +365,89 @@
       for line in first...last {
         let lineRange = lineIndex.range(ofLine: line)
         guard lineRange.length > 0 else { continue }
-        storage.addAttribute(
-          .paragraphStyle, value: paragraphStyle(indent: indentWidth(ofLine: line, in: text)),
-          range: lineRange)
-        guard fonts, let highlighter else { continue }
+        let style = paragraphStyle(indent: indentWidth(ofLine: line, in: text))
+        let tokens = fonts ? highlighter?.tokens(ofLine: line) : nil
+        // Setting the same attributes still invalidates the line's layout: on a minified file's
+        // 5 MB line that laid it out a second time after every keystroke.
+        if lineRange.length >= Self.longLineLength,
+          lineAttributesMatch(lineRange, style: style, tokens: tokens, in: storage)
+        {
+          continue
+        }
+        storage.addAttribute(.paragraphStyle, value: style, range: lineRange)
+        guard let tokens else { continue }
         storage.addAttribute(.font, value: baseFont, range: lineRange)
-        for token in highlighter.tokens(ofLine: line) {
+        for token in tokens {
           // Later tokens win (a link inside a comment), so every token sets
           // its font, the base font included.
-          var range = token.range
-          // Doc prose starts after a monospaced space ("/// Text"), as in Xcode.
-          if token.kind == .prose, range.length > 1, text.character(at: range.location) == 0x20 {
-            range.location += 1
-            range.length -= 1
-          }
-          storage.addAttribute(.font, value: kindFonts[token.kind] ?? baseFont, range: range)
+          storage.addAttribute(.font, value: kindFonts[token.kind] ?? baseFont, range: fontRange(of: token, in: text))
         }
       }
       storage.endEditing()
+    }
+
+    /// Lines at least this long are checked before their attributes are set again.
+    static let longLineLength = 2048
+
+    /// Where a token's font goes: doc prose starts after a monospaced space ("/// Text"), as in Xcode.
+    private func fontRange(of token: CodeToken, in text: NSString) -> NSRange {
+      var range = token.range
+      if token.kind == .prose, range.length > 1, text.character(at: range.location) == 0x20 {
+        range.location += 1
+        range.length -= 1
+      }
+      return range
+    }
+
+    /// Whether `lineRange` already has `style` and the fonts `tokens` give it (nil: fonts aren't set).
+    private func lineAttributesMatch(
+      _ lineRange: NSRange, style: NSParagraphStyle, tokens: [CodeToken]?, in storage: NSTextStorage
+    ) -> Bool {
+      var effective = NSRange()
+      guard
+        let current = storage.attribute(
+          .paragraphStyle, at: lineRange.location, longestEffectiveRange: &effective, in: lineRange)
+          as? NSParagraphStyle,
+        effective == lineRange, current.isEqual(style)
+      else { return false }
+      guard let tokens else { return true }
+      // The fonts wanted, one byte per character: an index into `table`.
+      var table: [NSFont] = [baseFont]
+      var wanted = [UInt8](repeating: 0, count: lineRange.length)
+      let text = storage.mutableString
+      for token in tokens {
+        let font = kindFonts[token.kind] ?? baseFont
+        let index: Int
+        if let found = table.firstIndex(where: { $0 === font }) {
+          index = found
+        } else {
+          guard table.count < 255 else { return false }
+          table.append(font)
+          index = table.count - 1
+        }
+        let range = NSIntersectionRange(fontRange(of: token, in: text), lineRange)
+        guard range.length > 0 else { continue }
+        let start = range.location - lineRange.location
+        wanted.withUnsafeMutableBufferPointer { buffer in
+          buffer[start..<(start + range.length)].update(repeating: UInt8(index))
+        }
+      }
+      var matches = true
+      storage.enumerateAttribute(.font, in: lineRange) { value, range, stop in
+        guard let font = value as? NSFont,
+          let index = table.firstIndex(where: { $0 === font || $0.isEqual(font) })
+        else {
+          matches = false
+          stop.pointee = true
+          return
+        }
+        let start = range.location - lineRange.location
+        if wanted[start..<(start + range.length)].contains(where: { Int($0) != index }) {
+          matches = false
+          stop.pointee = true
+        }
+      }
+      return matches
     }
 
     /// Width of a line's leading whitespace, in points.
@@ -900,7 +969,10 @@
       inRanges affectedRanges: [NSValue], replacementStrings: [String]?
     ) -> Bool {
       let allowed = super.shouldChangeText(inRanges: affectedRanges, replacementStrings: replacementStrings)
-      if allowed { isInEdit = true }
+      if allowed {
+        if !isInEdit, configuration.highlightCurrentLine { lineRectBeforeEdit = currentLineRect() }
+        isInEdit = true
+      }
       return allowed
     }
 
@@ -909,6 +981,17 @@
       super.didChangeText()
       dropStaleTypeOverMarkers()
       flushDirty()
+      if selectionChangedInEdit {
+        selectionChangedInEdit = false
+        onSelectionChange?(currentSelection)
+      }
+      if let oldLineRect = lineRectBeforeEdit {
+        // The caret's line, moved during the edit: asked for only now, when the edit's
+        // layout is done once (inside the edit it laid a minified file's one line out again).
+        lineRectBeforeEdit = nil
+        setNeedsDisplay(oldLineRect)
+        if let newLineRect = currentLineRect() { setNeedsDisplay(newLineRect) }
+      }
       // Typing after a bold keyword must not continue in bold.
       typingAttributes = baseAttributes
       rulerNeedsDisplay()
@@ -918,20 +1001,23 @@
     public override func setSelectedRanges(
       _ ranges: [NSValue], affinity: NSSelectionAffinity, stillSelecting: Bool
     ) {
-      let oldLineRect = currentLineRect()
+      let highlightsLine = configuration.highlightCurrentLine && !isInEdit
+      let oldLineRect = highlightsLine ? currentLineRect() : nil
       // A caret placed inside a placeholder selects all of it.
       var ranges = ranges
       if !stillSelecting, !isInEdit, ranges.count == 1, let placeholder = placeholder(around: ranges[0].rangeValue) {
         ranges = [NSValue(range: placeholder)]
       }
       super.setSelectedRanges(ranges, affinity: affinity, stillSelecting: stillSelecting)
-      if configuration.highlightCurrentLine {
+      if highlightsLine {
         if let oldLineRect { setNeedsDisplay(oldLineRect) }
         if let newLineRect = currentLineRect() { setNeedsDisplay(newLineRect) }
       }
       rulerNeedsDisplay()
       if !stillSelecting && !isInEdit { selectionDidChange() }
-      onSelectionChange?(currentSelection)
+      // Inside an edit the handler's caret-line geometry would lay the line out before the
+      // edit's own attributes do it again (twice per keystroke on a minified file's one line).
+      if isInEdit { selectionChangedInEdit = true } else { onSelectionChange?(currentSelection) }
     }
 
     public var currentSelection: EditorSelection {
@@ -946,7 +1032,7 @@
     /// The caret's line (all its wrapped fragments), in view coordinates; nil
     /// while text is selected.
     func currentLineRect() -> NSRect? {
-      guard let layoutManager, let textContainer, selectedRange().length == 0 else { return nil }
+      guard let layoutManager, selectedRange().length == 0 else { return nil }
       let caret = selectedRange().location
       let line = lineIndex.line(containing: caret)
       let range = lineIndex.range(ofLine: line)
@@ -957,7 +1043,11 @@
         if rect.isEmpty { return nil }
       } else {
         let glyphs = layoutManager.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
-        rect = layoutManager.boundingRect(forGlyphRange: glyphs, in: textContainer)
+        guard glyphs.length > 0 else { return nil }
+        // The first and last fragments, not the bounding rect of every glyph: that walked a
+        // minified file's 5 MB line on each caret move.
+        rect = layoutManager.lineFragmentRect(forGlyphAt: glyphs.location, effectiveRange: nil)
+          .union(layoutManager.lineFragmentRect(forGlyphAt: NSMaxRange(glyphs) - 1, effectiveRange: nil))
       }
       return NSRect(x: 0, y: rect.minY + textContainerOrigin.y, width: bounds.width, height: rect.height)
     }
@@ -976,7 +1066,18 @@
       }
       guard range.length > 0 else { return nil }
       let glyphs = layoutManager.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
-      let rect = layoutManager.boundingRect(forGlyphRange: glyphs, in: textContainer)
+      guard glyphs.length > 0 else { return nil }
+      let rect: NSRect
+      let firstFragment = layoutManager.lineFragmentRect(forGlyphAt: glyphs.location, effectiveRange: nil)
+      let lastFragment = layoutManager.lineFragmentRect(forGlyphAt: NSMaxRange(glyphs) - 1, effectiveRange: nil)
+      if firstFragment.minY == lastFragment.minY {
+        rect = layoutManager.boundingRect(forGlyphRange: glyphs, in: textContainer)
+      } else {
+        // Wrapped: its first and last rows' text. Every row's bounding rect walked a minified
+        // file's 5 MB line on each scroll step.
+        rect = layoutManager.lineFragmentUsedRect(forGlyphAt: glyphs.location, effectiveRange: nil)
+          .union(layoutManager.lineFragmentUsedRect(forGlyphAt: NSMaxRange(glyphs) - 1, effectiveRange: nil))
+      }
       return rect.offsetBy(dx: textContainerOrigin.x, dy: textContainerOrigin.y)
     }
 
