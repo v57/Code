@@ -185,6 +185,27 @@ import SwiftUI
   }
 }
 
+/// A row of the Find navigator's list: a file's, or one of its matches'.
+struct FindRow: Identifiable {
+  let file: FileSearchResult
+  let selection: FindSelection
+  var id: FindSelection { selection }
+
+  /// Each file's row followed by its matches' unless it's folded away.
+  static func rows(_ results: [FileSearchResult], collapsed: Set<String>) -> [FindRow] {
+    var rows: [FindRow] = []
+    rows.reserveCapacity(results.reduce(results.count) { $0 + $1.matches.count })
+    for file in results {
+      rows.append(FindRow(file: file, selection: FindSelection(path: file.path, match: nil)))
+      guard !collapsed.contains(file.path) else { continue }
+      for index in file.matches.indices {
+        rows.append(FindRow(file: file, selection: FindSelection(path: file.path, match: index)))
+      }
+    }
+    return rows
+  }
+}
+
 /// A row of the results: a file, or one of its matches.
 nonisolated struct FindSelection: Hashable, Sendable {
   var path: String
@@ -210,17 +231,19 @@ struct FindNavigatorView: View {
     if find.isReplacing { replaceControls(find) }
     KitSection("Results", meta: summary(find), systemImage: "magnifyingglass", status: status(find)) {
       let replacement = find.isReplacing ? find.replacement : nil
-      ForEach(find.results) { file in
-        FileResultRow(file: file, isExpanded: isExpanded(file.path))
-        if !find.collapsed.contains(file.path) {
-          ForEach(Array(file.matches.enumerated()), id: \.offset) { index, match in
-            MatchRow(
-              match: match, selection: FindSelection(path: file.path, match: index),
-              replacement: replacement.map { replacement in
-                find.searchedQuery.map { ProjectReplace.preview(of: match, query: $0, replacement: replacement) }
-                  ?? replacement
-              })
-          }
+      // One flat list of rows: a ForEach of matches inside each file's made the stack walk every file for each row
+      // it placed, and every batch of results (10,000 matches in 549 files) cost 15–28 ms a frame as it grew.
+      ForEach(FindRow.rows(find.results, collapsed: find.collapsed)) { row in
+        if let index = row.selection.match {
+          let match = row.file.matches[index]
+          MatchRow(
+            match: match, selection: row.selection,
+            replacement: replacement.map { replacement in
+              find.searchedQuery.map { ProjectReplace.preview(of: match, query: $0, replacement: replacement) }
+                ?? replacement
+            })
+        } else {
+          FileResultRow(file: row.file, isExpanded: isExpanded(row.file.path))
         }
       }
     }
