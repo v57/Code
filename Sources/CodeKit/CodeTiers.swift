@@ -1,15 +1,21 @@
 #if os(macOS) || os(Windows) || os(Linux)
   import CodeFolders
+  import CodeGoModel
   import CodeScan
   import CodeSwiftModel
   import Foundation
 
-  /// The two fast tiers of one workspace, in this process: Code's scanner for every language, and the Swift model for
-  /// Swift. Each works on its own serial queue, built on first use, and answers with the editor's current text.
+  /// The fast tiers of one workspace, in this process: Code's scanner for every language, and a language's model
+  /// (CodeModel's front ends: Swift, Go) for its files. Each works on its own serial queue, built on first use, and
+  /// answers with the editor's current text.
   final class CodeTiers: @unchecked Sendable {
+    /// The languages with a model, by file extension.
+    static let languages: [ModelLanguage] = [.swift, .go]
+
     let root: URL
     private let scanner: ScannerTier
-    private var swift: SwiftModelTier?
+    /// The models made so far, by language name.
+    private var models: [String: ModelTier] = [:]
     private let lock = NSLock()
 
     init(root: URL) {
@@ -17,50 +23,62 @@
       scanner = ScannerTier(root: self.root)
     }
 
-    /// The Swift model, made (and its project loaded, in the background) on first use.
-    private var swiftModel: SwiftModelTier {
+    /// The language whose model reads a file, if any.
+    static func language(for url: URL) -> ModelLanguage? {
+      let path = url.path
+      return languages.first { $0.handles(path) }
+    }
+
+    /// A language's model, made (and its project loaded, in the background) on first use.
+    private func model(for language: ModelLanguage) -> ModelTier {
       lock.lock()
       defer { lock.unlock() }
-      if let swift { return swift }
-      let made = SwiftModelTier(root: root)
-      swift = made
+      if let made = models[language.name] { return made }
+      let made = ModelTier(language: language, root: root)
+      models[language.name] = made
       return made
     }
 
-    /// Starts loading the Swift model, so that the first question doesn't wait for all of it.
-    func prepareSwiftModel() { _ = swiftModel }
-
-    /// Drops the Swift model and its memory (turned off in settings).
-    func dropSwiftModel() {
+    private var madeModels: [ModelTier] {
       lock.lock()
-      swift = nil
+      defer { lock.unlock() }
+      return Array(models.values)
+    }
+
+    /// Starts loading the model of a file's language, so that the first question doesn't wait for all of it.
+    func prepareModel(for url: URL) {
+      guard let language = Self.language(for: url) else { return }
+      _ = model(for: language)
+    }
+
+    /// Drops the models settings turned off, and their memory.
+    func dropModels(keeping keeps: (ModelLanguage) -> Bool) {
+      lock.lock()
+      for language in Self.languages where !keeps(language) { models[language.name] = nil }
       lock.unlock()
     }
 
-    var hasSwiftModel: Bool {
+    func hasModel(for language: ModelLanguage) -> Bool {
       lock.lock()
       defer { lock.unlock() }
-      return swift != nil
+      return models[language.name] != nil
     }
 
     /// Reads the whole project again (the folder became trusted: its manifest may now be evaluated).
-    func reloadSwiftModel() {
-      lock.lock()
-      let swift = swift
-      lock.unlock()
-      swift?.filesChanged([], reload: true)
+    func reloadModels() {
+      for model in madeModels { model.filesChanged([], reload: true) }
     }
 
-    /// Files changed on disk: the Swift model reads them again, or the whole project when files came or went or a
-    /// manifest changed. The scanner checks its files itself when asked.
+    /// Files changed on disk: each model reads its language's again, or the whole project when files came or went or
+    /// a manifest changed. The scanner checks its files itself when asked.
     func filesChanged(_ urls: [URL], structural: Bool) {
-      lock.lock()
-      let swift = swift
-      lock.unlock()
-      guard let swift else { return }
       let paths = urls.map(\.standardizedFileURL.path)
-      let reload = paths.contains { $0.hasSuffix("/Package.swift") } || (structural && paths.contains { $0.hasSuffix(".swift") })
-      swift.filesChanged(paths.filter { $0.hasSuffix(".swift") }, reload: reload)
+      for model in madeModels {
+        let language = model.language
+        let own = paths.filter { language.handles($0) }
+        let reload = paths.contains { language.manifests.contains(($0 as NSString).lastPathComponent) } || (structural && !own.isEmpty)
+        model.filesChanged(own, reload: reload)
+      }
     }
 
     func scannerDefinitions(url: URL, text: String, line: Int, column: Int) async -> DefinitionAnswer? {
@@ -68,11 +86,13 @@
     }
 
     func modelDefinitions(url: URL, text: String, line: Int, column: Int) async -> DefinitionAnswer? {
-      await swiftModel.definitions(path: url.standardizedFileURL.path, text: text, line: line, column: column)
+      guard let language = Self.language(for: url) else { return nil }
+      return await model(for: language).definitions(path: url.standardizedFileURL.path, text: text, line: line, column: column)
     }
 
     func modelCompletions(url: URL, text: String, line: Int, column: Int) async -> ModelCompletionList? {
-      await swiftModel.completions(path: url.standardizedFileURL.path, text: text, line: line, column: column)
+      guard let language = Self.language(for: url) else { return nil }
+      return await model(for: language).completions(path: url.standardizedFileURL.path, text: text, line: line, column: column)
     }
 
     /// What the scanner knows of the symbol at a position, for the symbol menu.
@@ -80,18 +100,19 @@
       await scanner.symbols(path: url.standardizedFileURL.path, text: text, line: line, column: column)
     }
 
-    /// What the Swift model knows of the symbol at a position, and how many places use it (counted only when asked:
-    /// it reads every file that has the name).
+    /// What the file's language model knows of the symbol at a position, and how many places use it (counted only
+    /// when asked: it reads every file that has the name).
     func modelSymbols(url: URL, text: String, line: Int, column: Int, countReferences: Bool) async
       -> (answer: SymbolAnswer?, references: Int?)
     {
-      await swiftModel.symbols(
+      guard let language = Self.language(for: url) else { return (nil, nil) }
+      return await model(for: language).symbols(
         path: url.standardizedFileURL.path, text: text, line: line, column: column, countReferences: countReferences)
     }
 
-    /// The declaration at a place (a language server's answer), described by the Swift model, else the scanner.
+    /// The declaration at a place (a language server's answer), described by its language's model, else the scanner.
     func describe(_ place: DefinitionPlace, useModel: Bool, useScanner: Bool) async -> SymbolDescription? {
-      if useModel, Self.isSwift(place.url), let found = await swiftModel.describe(place) { return found }
+      if useModel, let language = Self.language(for: place.url), let found = await model(for: language).describe(place) { return found }
       guard useScanner else { return nil }
       return await scanner.describe(place)
     }
@@ -104,8 +125,18 @@
       await scanner.symbols(matching: query, limit: limit)
     }
 
-    /// Whether a file is one the Swift model reads.
-    static func isSwift(_ url: URL) -> Bool { url.pathExtension.lowercased() == "swift" }
+  }
+
+  extension ServiceSettings {
+    /// Whether a file's language model answers for it: Swift's has a switch of its own, the others share one.
+    func usesModel(for url: URL) -> Bool {
+      guard let language = CodeTiers.language(for: url) else { return false }
+      return language.name == ModelLanguage.swift.name ? usesSwiftModel : usesLanguageModels
+    }
+
+    func usesModel(_ language: ModelLanguage) -> Bool {
+      language.name == ModelLanguage.swift.name ? usesSwiftModel : usesLanguageModels
+    }
   }
 
   /// The line's text at `line` (from 0), trimmed, for the definitions menu.
@@ -292,19 +323,22 @@
     }
   }
 
-  /// The Swift model of the workspace (CodeSwiftModel): declarations from every Swift file, the SDK's interfaces and
-  /// headers read when a question needs them. 150 to 200 MB for a large app; the first question waits for the project
-  /// to load (under a second).
-  private final class SwiftModelTier: @unchecked Sendable {
-    private let queue = DispatchQueue(label: "CodeKit.swiftModel", qos: .userInitiated)
-    private var model: Model?
+  /// One language's model of the workspace (a CodeModel front end): declarations from every file of the language and
+  /// what they import, read when a question needs them. Swift's is 150 to 200 MB for a large app; the first question
+  /// waits for the project to load (under a second).
+  private final class ModelTier: @unchecked Sendable {
+    let language: ModelLanguage
+    private let queue: DispatchQueue
+    private var model: (any LanguageModel)?
     /// The text each file was last given as, by path, so that an unchanged file isn't read again.
     private var given: [String: Int] = [:]
 
     private let root: String
     private let isBroad: Bool
 
-    init(root: URL) {
+    init(language: ModelLanguage, root: URL) {
+      self.language = language
+      queue = DispatchQueue(label: "CodeKit.model." + language.name, qos: .userInitiated)
       self.root = root.path
       isBroad = FolderScope.isBroad(root)
       queue.async { [self] in load() }
@@ -313,7 +347,7 @@
     private func load() {
       guard !isBroad else { return }
       // A manifest is code: evaluated only in a trusted folder (FolderTrust).
-      model = Model(project: Project(root: root, runsManifest: FolderTrust.isTrusted(URL(fileURLWithPath: root))))
+      model = language.make(root, FolderTrust.isTrusted(URL(fileURLWithPath: root)))
       given = [:]
     }
 
@@ -347,7 +381,7 @@
     }
 
     /// The model, with `path` as the editor has it.
-    private func prepare(path: String, text: String) -> Model? {
+    private func prepare(path: String, text: String) -> (any LanguageModel)? {
       guard let model else { return nil }
       var hasher = Hasher()
       hasher.combine(text)

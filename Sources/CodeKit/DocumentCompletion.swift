@@ -43,16 +43,16 @@
       return (characters.isEmpty ? ["."] : characters).union(calls)
     }
 
-    /// Whether the Swift model (a Swift file) or Code's scanner (another) answers.
+    /// Whether a language's model (a Swift or Go file) or Code's scanner (another) answers.
     private var hasFastList: Bool {
       guard let services, let url = document?.url else { return false }
-      return CodeTiers.isSwift(url) ? services.settings.usesSwiftModel : services.settings.usesScanner
+      return CodeTiers.language(for: url) != nil ? services.settings.usesModel(for: url) : services.settings.usesScanner
     }
 
     /// Whether "(" lists a call's overloads: the Swift model's, in a Swift file.
     private var listsOverloads: Bool {
       guard let services, let url = document?.url else { return false }
-      return services.settings.usesSwiftModel && CodeTiers.isSwift(url)
+      return services.settings.usesSwiftModel && CodeTiers.language(for: url)?.name == ModelLanguage.swift.name
     }
 
     func completions(for context: CompletionContext) async -> CompletionList? {
@@ -112,12 +112,12 @@
         items: list.items + fast.items.filter { !names.contains(name($0)) }, isIncomplete: list.isIncomplete)
     }
 
-    /// The Swift model's list for a Swift file, Code's scanner's for another; nil when they're off.
+    /// The language model's list for a Swift or Go file, Code's scanner's for another; nil when they're off.
     private func fastCompletions(for context: CompletionContext, text: String) async -> CompletionList? {
       guard let services, let url = document?.url, let textView else { return nil }
       let position = textView.position(of: context.location)
       let tiers = services.tiers
-      if services.settings.usesSwiftModel, CodeTiers.isSwift(url) {
+      if services.settings.usesModel(for: url) {
         guard
           let list = await tiers.modelCompletions(
             url: url, text: text, line: position.line, column: position.column), list.context != .none

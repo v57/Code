@@ -46,7 +46,7 @@ extension LanguageModel {
 
 /// A language with a model: its files, and how to make its model for a folder. Each front end has one
 /// (`ModelLanguage.swift`, `ModelLanguage.go`); CodeKit and `code-model` list them.
-public struct ModelLanguage {
+public struct ModelLanguage: Sendable {
   /// The language's name, as `LanguageSpec` has it: "Swift", "Go".
   public var name: String
   /// Lowercased file extensions without the dot.
@@ -54,9 +54,9 @@ public struct ModelLanguage {
   /// File names whose change means reading the whole project again (`Package.swift`, `go.mod`).
   public var manifests: Set<String>
   /// The model of the project under `root`. `trusted`: the folder's own code may be run (a manifest evaluated).
-  public var make: (_ root: String, _ trusted: Bool) -> any LanguageModel
+  public var make: @Sendable (_ root: String, _ trusted: Bool) -> any LanguageModel
 
-  public init(name: String, extensions: Set<String>, manifests: Set<String>, make: @escaping (String, Bool) -> any LanguageModel) {
+  public init(name: String, extensions: Set<String>, manifests: Set<String>, make: @escaping @Sendable (String, Bool) -> any LanguageModel) {
     self.name = name
     self.extensions = extensions
     self.manifests = manifests

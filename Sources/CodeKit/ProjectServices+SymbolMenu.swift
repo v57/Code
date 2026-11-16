@@ -154,7 +154,7 @@
       let text = textView.string
       let tiers = tiers
       let servers = languageServers
-      let useModel = settings.usesSwiftModel && CodeTiers.isSwift(url)
+      let useModel = settings.usesModel(for: url)
       let useScanner = settings.usesScanner
       let serverOpen = languageServers.isOpen(url)
       let serverMode = serverOpen ? settings.serverDefinitions : .off

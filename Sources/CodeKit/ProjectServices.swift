@@ -43,6 +43,8 @@
     /// The Swift model answers Swift questions in milliseconds, from source; off frees its memory (150 to 200 MB for a
     /// large app).
     public var usesSwiftModel = true
+    /// The other languages' models (Go's) answer the same way, from source; off frees their memory.
+    public var usesLanguageModels = true
     /// When the language server is asked for definitions.
     public var serverDefinitions = ServerDefinitions.whenUnsure
 
@@ -204,7 +206,8 @@
       formatting.requiresConfig = settings.formatterRequiresConfig
       formatting.customCommands = settings.formatterCommands
       formatting.usesProjectCode = isTrusted
-      if !settings.usesSwiftModel { tiers.dropSwiftModel() }
+      let settings = settings
+      tiers.dropModels { settings.usesModel($0) }
       guard let previous, isReady else { return }
       if settings.actionsEnabled && !previous.actionsEnabled { actions.scan() }
       if !settings.actionsEnabled && previous.actionsEnabled { actions.stopAll() }
@@ -232,7 +235,7 @@
     func documentShown(_ document: TextDocument, textView: any CodeTextEditing) {
       shown[document.url.standardizedFileURL] = WeakTextView(textView: textView)
       // The project loads while the file is read, not on the first ⌘-click.
-      if settings.usesSwiftModel, CodeTiers.isSwift(document.url) { tiers.prepareSwiftModel() }
+      if settings.usesModel(for: document.url) { tiers.prepareModel(for: document.url) }
       guard isReady else { return }
       languageServers.didOpen(document.url, text: textView.string)
     }
@@ -266,7 +269,7 @@
       isTrusted = true
       languageServers.isTrusted = true
       formatting.usesProjectCode = true
-      tiers.reloadSwiftModel()
+      tiers.reloadModels()
       if isReady {
         if settings.actionsEnabled { actions.scan() }
         reopenShownDocuments()
@@ -463,7 +466,7 @@
       let position = textView.position(of: location)
       let text = textView.string
       let anchor = textView.identifierRange(at: location)?.location ?? location
-      let useModel = settings.usesSwiftModel && CodeTiers.isSwift(url)
+      let useModel = settings.usesModel(for: url)
       let serverOpen = languageServers.isOpen(url)
       let serverMode = serverOpen ? settings.serverDefinitions : .off
       var asked: Set<DefinitionTier> = []
@@ -681,7 +684,7 @@
         let tiers = tiers
         let servers = languageServers
         let root = workspace.root
-        let useModel = settings.usesSwiftModel && CodeTiers.isSwift(url)
+        let useModel = settings.usesModel(for: url)
         let useScanner = settings.usesScanner
         let serverOpen = languageServers.isOpen(url)
         let lspPosition = LSPPosition(line: position.line, character: position.column)
