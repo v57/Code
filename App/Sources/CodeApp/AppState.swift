@@ -32,7 +32,8 @@ import SwiftUI
   @ObservationIgnored var pendingWindowAccount: String?
   /// Files to open once their folder's window is up, by folder.
   @ObservationIgnored private var pendingFiles: [URL: [URL]] = [:]
-  @ObservationIgnored private var workspaces: [ObjectIdentifier: WeakWorkspace] = [:]
+  /// Observed: the process stack lists every window's runs (`projectModels`).
+  private var workspaces: [ObjectIdentifier: WeakWorkspace] = [:]
   /// The first window's launch project was decided.
   @ObservationIgnored private var hasOpenedLaunchProject = false
   /// A folder or file was opened from outside (Finder, the Dock, the command line): it wins over the last project.
@@ -229,6 +230,34 @@ import SwiftUI
     backgroundProjects = [:]
     loadingProjects = [:]
     failedProjects = [:]
+  }
+
+  /// Every project's model that can run something: the windows', the ones running or failed with no window, and the
+  /// ones loading for a quick action. The editor's process stack shows all their runs.
+  var projectModels: [WindowModel] {
+    var models: [WindowModel] = []
+    for model in workspaces.values.compactMap(\.model)
+      + Array(backgroundProjects.values) + Array(failedProjects.values) + Array(loadingProjects.values)
+    where !models.contains(where: { $0 === model }) {
+      models.append(model)
+    }
+    return models
+  }
+
+  /// Shows another project's run (the process stack): its console at the run, or its issues, in the window showing
+  /// the project, else in a new window that takes the project kept without one.
+  func show(_ run: ActionRun, of owner: WindowModel, issues: Bool = false) {
+    if issues {
+      owner.isIssuesPresented = true
+    } else {
+      owner.showConsole(at: run)
+    }
+    let root = owner.workspace.root
+    if model(for: root) === owner {
+      focus(root)
+    } else {
+      open(root)
+    }
   }
 
   // MARK: - Quick actions of the Projects list

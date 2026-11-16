@@ -2,8 +2,9 @@ import CodeKit
 import ComponentKit
 import SwiftUI
 
-/// Every build, test and run of the window's project, floating on the editor as a circle: stacked down its trailing
-/// edge 8pt before the minimap (before the scroller without one) and 8pt under the bars, newest at the bottom. The
+/// Every build, test and run of every project (this window's, other windows', those running with no window), floating
+/// on the editor as a circle: stacked down its trailing edge 8pt before the minimap (before the scroller without one)
+/// and 8pt under the bars, newest at the bottom; another project's names it under the pointer and in its card. The
 /// pointer grows a circle leftwards into a capsule with its name, status and Stop; a click opens it further into a
 /// card with its output, following as it runs (`ProcessCard`); a click outside or Esc closes it. A succeeded run
 /// leaves after 3 s, a stopped one at once, a failed one stays until dismissed. Past five, the fifth circle counts the
@@ -28,10 +29,9 @@ struct ProcessStack: View {
   static let lingers: TimeInterval = 3
 
   var body: some View {
-    let actions = model.services.actions
-    let shown = actions.runs.filter(Self.isShown)
+    let shown = Self.runs(around: model)
     let overflow = Self.overflow(of: shown)
-    let circles = shown.filter { run in !overflow.contains { $0 === run } }
+    let circles = shown.filter { entry in !overflow.contains { $0.run === entry.run } }
     GeometryReader { proxy in
       let trailing = (geometry?.trailingInset ?? 0) + Self.gap
       ZStack(alignment: .topTrailing) {
@@ -42,9 +42,10 @@ struct ProcessStack: View {
             .onTapGesture { close() }
         }
         VStack(alignment: .trailing, spacing: Self.spacing) {
-          ForEach(circles) { run in
+          ForEach(circles) { entry in
+            let run = entry.run
             ProcessItem(
-              run: run, isHovered: hovered == run.id, isOpen: openID == run.id,
+              entry: entry, all: shown, isHovered: hovered == run.id, isOpen: openID == run.id,
               hover: { inside in
                 withKitAnimation(.kitFast) {
                   if inside {
@@ -59,7 +60,7 @@ struct ProcessStack: View {
             .transition(.opacity.combined(with: .scale(scale: 0.6, anchor: .trailing)))
           }
           if !overflow.isEmpty {
-            OverflowCircle(runs: overflow)
+            OverflowCircle(entries: overflow)
               .transition(.opacity)
           }
         }
@@ -73,7 +74,7 @@ struct ProcessStack: View {
     }
     .animation(.kit, value: shown.map(\.id))
     .animation(.kit, value: geometry?.caretLine?.maxY)
-    .task(id: shown.filter { $0.phase == .succeeded }.map(\.id)) { await dismissSucceeded() }
+    .task(id: shown.filter { $0.run.phase == .succeeded }.map(\.id)) { await dismissSucceeded() }
     .onChange(of: shown.map(\.id)) { _, ids in
       if let openID, !ids.contains(openID) { self.openID = nil }
     }
@@ -104,24 +105,37 @@ struct ProcessStack: View {
   /// Takes the runs that succeeded off the stack `lingers` seconds after they did, unless the pointer is on one or
   /// its card is open.
   private func dismissSucceeded() async {
-    let actions = model.services.actions
     while !Task.isCancelled {
-      let done = actions.runs.filter { $0.phase == .succeeded && !$0.isDismissed }
+      let done = Self.runs(around: model).filter { $0.run.phase == .succeeded }
       guard !done.isEmpty else { return }
       let now = Date()
-      for run in done
-      where now.timeIntervalSince(run.finished ?? now) >= Self.lingers && hovered != run.id && openID != run.id {
-        withKitAnimation { actions.dismiss(run) }
+      for entry in done {
+        let run = entry.run
+        guard now.timeIntervalSince(run.finished ?? now) >= Self.lingers, hovered != run.id, openID != run.id else {
+          continue
+        }
+        withKitAnimation { entry.owner.services.actions.dismiss(run) }
       }
       try? await Task.sleep(for: .milliseconds(400))
     }
   }
 
+  /// The runs the stack shows over `model`'s editor: every project's (`AppState.projectModels`, and `model`'s own),
+  /// oldest first.
+  static func runs(around model: WindowModel) -> [StackRun] {
+    var owners = AppState.shared.projectModels
+    if !owners.contains(where: { $0 === model }) { owners.append(model) }
+    return owners.flatMap { owner in
+      owner.services.actions.runs.filter(isShown).map { StackRun(run: $0, owner: owner, isOwn: owner === model) }
+    }
+    .sorted { $0.run.started < $1.run.started }
+  }
+
   /// The runs the fifth circle lists when there are more than five: the oldest finished ones first, then the oldest
   /// still going, so what runs stays in sight.
-  static func overflow(of shown: [ActionRun]) -> [ActionRun] {
+  static func overflow(of shown: [StackRun]) -> [StackRun] {
     guard shown.count > maxCircles else { return [] }
-    let hidden = shown.filter { !$0.isWorking } + shown.filter(\.isWorking)
+    let hidden = shown.filter { !$0.run.isWorking } + shown.filter(\.run.isWorking)
     let ids = Set(hidden.prefix(shown.count - maxCircles + 1).map(\.id))
     return shown.filter { ids.contains($0.id) }
   }
@@ -136,7 +150,7 @@ struct ProcessStack: View {
   }
 
   /// Debug builds' `stack:` commands (hover, open a circle by its place from the top).
-  private func follow(_ command: ProcessStackDebug?, circles: [ActionRun]) {
+  private func follow(_ command: ProcessStackDebug?, circles: [StackRun]) {
     guard let command else { return }
     func run(_ index: Int) -> ActionRun.ID? { circles.indices.contains(index) ? circles[index].id : nil }
     withKitAnimation {
@@ -147,6 +161,33 @@ struct ProcessStack: View {
         hovered = nil
         openID = nil
       }
+    }
+  }
+}
+
+/// A run on the stack and the project it belongs to.
+struct StackRun: Identifiable {
+  let run: ActionRun
+  /// The model of the project that runs it, whose controller stops, restarts and dismisses it.
+  let owner: WindowModel
+  /// It is the window's own project's.
+  let isOwn: Bool
+
+  var id: ActionRun.ID { run.id }
+  /// The project's name for another project's run; nil for the window's own.
+  var project: String? { isOwn ? nil : owner.workspace.name }
+
+  /// Opens the console at the run, or its issues: in this window for its own project, else in the window showing
+  /// the run's project (a new one for a project running with no window).
+  @MainActor func show(issues: Bool = false) {
+    if isOwn {
+      if issues {
+        owner.isIssuesPresented = true
+      } else {
+        owner.showConsole(at: run)
+      }
+    } else {
+      AppState.shared.show(run, of: owner, issues: issues)
     }
   }
 }
@@ -165,24 +206,27 @@ struct ProcessStackDebug: Equatable {
 
 /// One run: a circle at rest, a capsule under the pointer, a card when clicked.
 private struct ProcessItem: View {
-  let run: ActionRun
+  let entry: StackRun
+  /// Every run on the stack, for the menu's Stop All and Hide Finished.
+  let all: [StackRun]
   let isHovered: Bool
   let isOpen: Bool
   let hover: (Bool) -> Void
   let open: () -> Void
   let close: () -> Void
-  @Environment(WindowModel.self) private var model
+
+  private var run: ActionRun { entry.run }
 
   var body: some View {
     Group {
       if isOpen {
-        ProcessCard(run: run, close: close)
+        ProcessCard(entry: entry, close: close)
           .transition(.opacity.combined(with: .scale(scale: 0.92, anchor: .topTrailing)))
       } else {
         capsule
       }
     }
-    .kitContextMenu { ProcessMenu(run: run) }
+    .kitContextMenu { ProcessMenu(entry: entry, all: all) }
   }
 
   private var capsule: some View {
@@ -194,6 +238,13 @@ private struct ProcessItem: View {
           .font(.system(size: 12, weight: .semibold))
           .lineLimit(1)
           .transition(.opacity)
+        if let project = entry.project {
+          Text(project)
+            .font(.system(size: 12))
+            .foregroundStyle(.kitSecondary)
+            .lineLimit(1)
+            .transition(.opacity)
+        }
         TimelineView(.periodic(from: .now, by: 1)) { context in
           let status = ProcessText.status(of: run, at: context.date)
           if !status.isEmpty {
@@ -205,7 +256,7 @@ private struct ProcessItem: View {
           }
         }
         .transition(.opacity)
-        MiniButton(run: run)
+        MiniButton(entry: entry)
           .transition(.opacity)
       }
     }
@@ -224,7 +275,7 @@ private struct ProcessItem: View {
     .onHover(perform: hover)
     .onTapGesture(perform: open)
     .accessibilityElement(children: .combine)
-    .accessibilityLabel(run.title)
+    .accessibilityLabel(entry.project.map { "\(run.title), \($0)" } ?? run.title)
     .accessibilityValue(ProcessText.status(of: run, at: Date()))
     .accessibilityAddTraits(.isButton)
     .accessibilityAction { open() }
@@ -233,11 +284,11 @@ private struct ProcessItem: View {
 
 /// The capsule's Stop, or × on a failure (dismisses it).
 private struct MiniButton: View {
-  let run: ActionRun
-  @Environment(WindowModel.self) private var model
+  let entry: StackRun
 
   var body: some View {
-    let actions = model.services.actions
+    let run = entry.run
+    let actions = entry.owner.services.actions
     let working = run.isWorking
     Button {
       withKitAnimation { working ? actions.stop(run) : actions.dismiss(run) }
@@ -278,11 +329,10 @@ struct ProcessIcon: View {
 
 /// The circle that counts the runs past the fifth and lists them in a menu.
 private struct OverflowCircle: View {
-  let runs: [ActionRun]
-  @Environment(WindowModel.self) private var model
+  let entries: [StackRun]
 
   var body: some View {
-    Text("+\(runs.count)")
+    Text("+\(entries.count)")
       .font(.system(size: 11, weight: .semibold))
       .monospacedDigit()
       .frame(width: ProcessStack.circle, height: ProcessStack.circle)
@@ -295,49 +345,58 @@ private struct OverflowCircle: View {
       }
       .contentShape(Circle())
       .kitMenu {
-        ForEach(runs) { run in
-          Button(run.title, systemImage: ProcessText.menuSymbol(of: run)) { model.showConsole(at: run) }
-            .kitMenuHint(ProcessText.status(of: run, at: Date()))
-            .kitMenuPreview("Opens the console at \(run.title)’s output.")
+        ForEach(entries) { entry in
+          let run = entry.run
+          Button(entry.project.map { "\(run.title) · \($0)" } ?? run.title, systemImage: ProcessText.menuSymbol(of: run)) {
+            entry.show()
+          }
+          .kitMenuHint(ProcessText.status(of: run, at: Date()))
+          .kitMenuPreview(ProcessText.showsOutput(entry))
         }
       }
-      .accessibilityLabel("\(runs.count) more")
+      .accessibilityLabel("\(entries.count) more")
   }
 }
 
 /// A circle's right-click menu: the run's actions, then the ones for all of them.
 private struct ProcessMenu: View {
-  let run: ActionRun
-  @Environment(WindowModel.self) private var model
+  let entry: StackRun
+  let all: [StackRun]
 
   var body: some View {
-    let actions = model.services.actions
-    let working = actions.runs.filter(\.isWorking)
-    let finished = actions.runs.filter { !$0.isWorking && !$0.isDismissed }
-    KitMenuPreview(ProcessText.summary(of: run))
-    Button("Show Output", systemImage: "terminal") { model.showConsole(at: run) }
-      .kitMenuPreview("Opens the console at \(run.title)’s output.")
+    let run = entry.run
+    let actions = entry.owner.services.actions
+    let working = all.filter(\.run.isWorking)
+    let finished = all.filter { !$0.run.isWorking }
+    KitMenuPreview(ProcessText.summary(of: run, project: entry.project))
+    Button("Show Output", systemImage: "terminal") { entry.show() }
+      .kitMenuPreview(ProcessText.showsOutput(entry))
     Button("Restart", systemImage: "arrow.clockwise") { actions.restart(run) }
-      .kitMenuHint("⌘R")
+      .kitMenuHint(entry.isOwn ? "⌘R" : nil)
       .kitMenuPreview(
         run.isWorking ? "Stops \(run.title) and starts it again." : "Runs \(run.title) again.")
     if run.isWorking {
       Button("Stop", systemImage: "stop.fill") { actions.stop(run) }
-        .kitMenuHint("⌘.")
+        .kitMenuHint(entry.isOwn ? "⌘." : nil)
         .kitMenuPreview("Stops \(run.title).")
     } else {
       Button("Dismiss", systemImage: "xmark") { actions.dismiss(run) }
         .kitMenuPreview("Takes \(run.title) off the editor. The console keeps its output.")
     }
     Divider()
-    Button("Stop All", systemImage: "stop.fill") { actions.stopAll() }
-      .kitMenuHint(working.isEmpty ? nil : "\(working.count)")
-      .kitMenuPreview(working.isEmpty ? nil : "Stops \(ProcessText.list(working.map(\.title))).")
-      .disabled(working.isEmpty)
-    Button("Hide Finished", systemImage: "xmark") { withKitAnimation { actions.hideFinished() } }
-      .kitMenuPreview(
-        finished.isEmpty ? nil : "Takes \(ProcessText.list(finished.map(\.title))) off the editor. The console keeps them.")
-      .disabled(finished.isEmpty)
+    Button("Stop All", systemImage: "stop.fill") {
+      for entry in working { entry.owner.services.actions.stop(entry.run) }
+    }
+    .kitMenuHint(working.isEmpty ? nil : "\(working.count)")
+    .kitMenuPreview(working.isEmpty ? nil : "Stops \(ProcessText.list(working.map(ProcessText.name))).")
+    .disabled(working.isEmpty)
+    Button("Hide Finished", systemImage: "xmark") {
+      withKitAnimation { for entry in finished { entry.owner.services.actions.dismiss(entry.run) } }
+    }
+    .kitMenuPreview(
+      finished.isEmpty
+        ? nil : "Takes \(ProcessText.list(finished.map(ProcessText.name))) off the editor. The console keeps them.")
+    .disabled(finished.isEmpty)
   }
 }
 
@@ -385,13 +444,13 @@ enum ProcessText {
     return String(localized: "\(run.testsRun) tests")
   }
 
-  /// The card's line under the name: where it runs, for how long, how far ("on studio-mac · 1:42 · 31 of 48"); a
-  /// failure's says what failed ("Test · 2 failed").
-  @MainActor static func meta(of run: ActionRun, at now: Date) -> String {
+  /// The card's line under the name: another project's name, where it runs, for how long, how far ("Git · on
+  /// studio-mac · 1:42 · 31 of 48"); a failure's says what failed ("Test · 2 failed").
+  @MainActor static func meta(of run: ActionRun, project: String? = nil, at now: Date) -> String {
     if case .failed(let message) = run.phase {
-      return [run.kind.title, message].joined(separator: " · ")
+      return [project, run.kind.title, message].compactMap { $0 }.joined(separator: " · ")
     }
-    var parts: [String] = []
+    var parts: [String] = project.map { [$0] } ?? []
     if let place = run.place {
       parts.append("on \(place)")
     } else if let destination = run.destination, run.kind == .run || run.kind == .test {
@@ -412,10 +471,22 @@ enum ProcessText {
   }
 
   /// The right-click menu's panel while no row is highlighted.
-  @MainActor static func summary(of run: ActionRun) -> String {
+  @MainActor static func summary(of run: ActionRun, project: String? = nil) -> String {
     let status = status(of: run, at: Date())
     let place = run.place.map { " on \($0)" } ?? ""
-    return status.isEmpty ? "\(run.title)\(place)." : "\(run.title)\(place): \(status)."
+    let title = project.map { "\(run.title) (\($0))" } ?? run.title
+    return status.isEmpty ? "\(title)\(place)." : "\(title)\(place): \(status)."
+  }
+
+  /// A run in a list of them: its title, and its project's name when it is another project's.
+  @MainActor static func name(_ entry: StackRun) -> String {
+    entry.project.map { "\(entry.run.title) (\($0))" } ?? entry.run.title
+  }
+
+  /// What Show Output does: opens the console here, or in the window of the run's project.
+  @MainActor static func showsOutput(_ entry: StackRun) -> String {
+    guard let project = entry.project else { return "Opens the console at \(entry.run.title)’s output." }
+    return "Opens \(project)’s console at \(entry.run.title)’s output, in its window."
   }
 
   /// A row's icon in the overflow menu: the kind's, a failure's ×.

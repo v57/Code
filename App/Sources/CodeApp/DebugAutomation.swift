@@ -486,6 +486,10 @@
                 + "\($0.progress?.message ?? "-") tests \($0.testsRun)"
             }.joined(separator: "; "))
         lines.append(
+          "stack: "
+            + ProcessStack.runs(around: model).map { "\($0.run.title) (\($0.project ?? "own")) \($0.run.phase)" }
+            .joined(separator: "; "))
+        lines.append(
           "responder: \(document?.textView?.window?.firstResponder.map { String(describing: type(of: $0)) } ?? "-")"
             + ((document?.textView?.window?.firstResponder as? NSTextView)?.isFieldEditor == true ? " (field editor)" : ""))
         lines.append("log tail:")

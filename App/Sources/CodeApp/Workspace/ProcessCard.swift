@@ -6,14 +6,15 @@ import SwiftUI
 /// the last lines of its output following as it runs (scroll back for more), and its actions: Open in Console,
 /// Restart, Stop; a failure's offers Show Issues, Restart, Dismiss. Esc or its × closes it back to a circle.
 struct ProcessCard: View {
-  let run: ActionRun
+  let entry: StackRun
   let close: () -> Void
-  @Environment(WindowModel.self) private var model
   @FocusState private var isFocused: Bool
 
   static let width: CGFloat = 360
   /// Lines of output the card keeps: Open in Console has the rest.
   static let lines = 200
+
+  private var run: ActionRun { entry.run }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
@@ -49,7 +50,7 @@ struct ProcessCard: View {
           .font(.system(size: 13, weight: .semibold))
           .lineLimit(1)
         TimelineView(.periodic(from: .now, by: 1)) { context in
-          Text(ProcessText.meta(of: run, at: context.date))
+          Text(ProcessText.meta(of: run, project: entry.project, at: context.date))
             .font(.system(size: 11))
             .monospacedDigit()
             .foregroundStyle(.kitSecondary)
@@ -71,14 +72,14 @@ struct ProcessCard: View {
   }
 
   @ViewBuilder private var actions: some View {
-    let controller = model.services.actions
+    let controller = entry.owner.services.actions
     HStack(spacing: 6) {
       if case .failed = run.phase, !run.issues.isEmpty {
-        Button("Show Issues", systemImage: "exclamationmark.triangle") { model.isIssuesPresented = true }
+        Button("Show Issues", systemImage: "exclamationmark.triangle") { entry.show(issues: true) }
       } else {
         Button("Open in Console", systemImage: "terminal") {
           close()
-          model.showConsole(at: run)
+          entry.show()
         }
       }
       Button {
