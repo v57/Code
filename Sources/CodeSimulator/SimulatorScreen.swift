@@ -218,21 +218,50 @@ import UniformTypeIdentifiers
     return CGImageDestinationFinalize(destination)
   }
 
+  // MARK: Appearance
+
+  /// Whether the device is in Dark Mode (`simctl ui appearance`); nil when it can't be asked.
+  public nonisolated static func isDark(udid: String) async -> Bool? {
+    guard let output = await simctl(["ui", udid, "appearance"]) else { return nil }
+    return output.contains("dark")
+  }
+
+  /// Switches the device between Light and Dark Mode.
+  public nonisolated static func setDark(_ isDark: Bool, udid: String) async {
+    _ = await simctl(["ui", udid, "appearance", isDark ? "dark" : "light"])
+  }
+
+  private nonisolated static func simctl(_ arguments: [String]) async -> String? {
+    await Task.detached {
+      let process = Process()
+      process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
+      process.arguments = ["simctl"] + arguments
+      let pipe = Pipe()
+      process.standardOutput = pipe
+      process.standardError = FileHandle.nullDevice
+      guard (try? process.run()) != nil else { return nil }
+      let data = pipe.fileHandleForReading.readDataToEndOfFile()
+      process.waitUntilExit()
+      return process.terminationStatus == 0 ? String(decoding: data, as: UTF8.self) : nil
+    }.value
+  }
+
+  /// The selected Xcode's Developer folder, as `xcode-select -p` answers, read from where xcode-select keeps it: no
+  /// subprocess, since waiting for one on the main thread runs the run loop, and a view asking again from there
+  /// would wait on this same first answer forever.
   private static func developerDirectory() -> String? {
-    if let directory = ProcessInfo.processInfo.environment["DEVELOPER_DIR"], !directory.isEmpty { return directory }
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/usr/bin/xcode-select")
-    process.arguments = ["-p"]
-    let pipe = Pipe()
-    process.standardOutput = pipe
-    process.standardError = FileHandle.nullDevice
-    guard (try? process.run()) != nil else { return nil }
-    let data = pipe.fileHandleForReading.readDataToEndOfFile()
-    process.waitUntilExit()
-    let path = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+    var candidates: [String] = []
+    if let directory = ProcessInfo.processInfo.environment["DEVELOPER_DIR"], !directory.isEmpty {
+      candidates.append(directory)
+    }
+    if let link = try? FileManager.default.destinationOfSymbolicLink(atPath: "/var/db/xcode_select_link") {
+      candidates.append(link)
+    }
+    candidates.append("/Applications/Xcode.app/Contents/Developer")
     // The command line tools alone have no simulators.
-    guard process.terminationStatus == 0, path.hasSuffix("/Contents/Developer") else { return nil }
-    return path
+    return candidates.first {
+      $0.hasSuffix("/Contents/Developer") && FileManager.default.fileExists(atPath: $0)
+    }
   }
 }
 #else

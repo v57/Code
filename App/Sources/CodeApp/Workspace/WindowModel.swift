@@ -35,6 +35,8 @@ import SwiftUI
   @ObservationIgnored private var consoleWindow: WindowReference?
   /// The run the console was last asked to show (a process card's Open in Console); it scrolls there.
   private(set) var consoleFocus: ConsoleFocus?
+  /// The preview pane beside the editor: the running app (`PreviewPane`).
+  let preview = PreviewModel()
   /// A Debug build's command for the editor's process stack (`DebugAutomation`'s `stack:`).
   var processStackDebug: ProcessStackDebug?
   var isIssuesPresented = false
@@ -132,6 +134,13 @@ import SwiftUI
     SymbolMenuPanel.install(on: self)
   }
 
+  // MARK: - Preview
+
+  /// The toolbar's Preview button and ⌥⌘P: shows or hides the pane beside the editor.
+  func togglePreview() {
+    withKitAnimation(.kitSlow) { preview.setVisible(!preview.isVisible) }
+  }
+
   // MARK: - Console
 
   /// The toolbar title's click and ⇧⌘Y: shows or hides the console under the title, or brings its own window
@@ -215,6 +224,10 @@ import SwiftUI
       environment["NOTARY_PROFILE"] = profile
     }
     keepInBackgroundIfWindowless()
+    // The pane shows the simulator itself, so Run leaves Simulator.app closed.
+    if preview.isVisible, case .simulator = PreviewTarget.current(services.actions) {
+      environment[ActionPlanner.simulatorShownInAppVariable] = "1"
+    }
     services.actions.perform(kind, environment: environment)
   }
 

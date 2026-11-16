@@ -67,6 +67,8 @@ Libraries
                        what each file sees, types, answers, places and
                        references; a language plugs in its parser and
                        project layout (neutral)
+    CodeSimulator      a booted iOS Simulator's screen and input from Xcode's
+                       own frameworks, for the preview pane (macOS)
     CodeSwiftModel     a Swift code model on CodeModel from source text plus CodeScan's
                        tokens, built in layers only as far as a question
                        needs: definitions (exact, candidates or unknown),

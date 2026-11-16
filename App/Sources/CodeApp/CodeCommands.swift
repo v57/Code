@@ -270,6 +270,11 @@ struct CodeCommands: Commands {
       }
       .keyboardShortcut("y", modifiers: [.command, .shift])
       .disabled(model == nil)
+      Button(model?.preview.isVisible == true ? "Hide Preview" : "Show Preview") {
+        model?.togglePreview()
+      }
+      .keyboardShortcut("p", modifiers: [.command, .option])
+      .disabled(model == nil || !actionsEnabled)
       Button("Show Issues") { model?.isIssuesPresented = true }
         .keyboardShortcut("5", modifiers: [.command, .option])
         .disabled(model == nil || !actionsEnabled)

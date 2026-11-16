@@ -37,16 +37,18 @@ let package = Package(
     .package(path: ".."),
     // The shared design, the user's vault (projects, devices, accounts), in-app updates and SSH.
     v57("Component"), v57("Vault"), v57("UpdateKit"), v57("SSH"),
+    // RemoteUI: the preview pane's picture of another device.
+    v57("Remote"),
   ],
   targets: [
     .target(
       name: "CodeApp",
       dependencies: [
         .product(name: "CodeKit", package: kits), .product(name: "CodeActionsUI", package: kits),
-        .product(name: "CodeServer", package: kits),
+        .product(name: "CodeServer", package: kits), .product(name: "CodeSimulator", package: kits),
         .product(name: "ComponentKit", package: "Component"), .product(name: "VaultKit", package: "Vault"),
         .product(name: "VaultUI", package: "Vault"), .product(name: "UpdateKit", package: "UpdateKit"),
-        .product(name: "SSHKit", package: "SSH"),
+        .product(name: "SSHKit", package: "SSH"), .product(name: "RemoteUI", package: "Remote"), .product(name: "RemoteKit", package: "Remote"),
       ],
       swiftSettings: appSettings),
     .target(

@@ -253,6 +253,10 @@ public struct ActionStep: Sendable {
       return steps
     }
 
+    /// Set in an action's environment when the app shows the simulator's screen itself: Run then leaves
+    /// Simulator.app closed.
+    public static let simulatorShownInAppVariable = "CODE_SIMULATOR_SHOWN_IN_APP"
+
     static func launch(_ product: XcodeProduct, on destination: RunDestination, context: ActionContext)
       async throws
     {
@@ -260,11 +264,14 @@ public struct ActionStep: Sendable {
       case .iOSSimulator:
         let udid = shellQuote(destination.id)
         try await context.run("xcrun simctl boot \(udid)", title: "Boot", allowFailure: true)
-        try await context.run(
-          // Simulator.app, or DeviceHub in Xcodes that replaced it.
-          "open -b com.apple.iphonesimulator --args -CurrentDeviceUDID \(udid) 2>/dev/null || open -b com.apple.dt.Devices",
-          title: "Open Simulator",
-          allowFailure: true)
+        // The app's own preview shows the device (CodeSimulator): no Simulator window then.
+        if context.environment[simulatorShownInAppVariable] == nil {
+          try await context.run(
+            // Simulator.app, or DeviceHub in Xcodes that replaced it.
+            "open -b com.apple.iphonesimulator --args -CurrentDeviceUDID \(udid) 2>/dev/null || open -b com.apple.dt.Devices",
+            title: "Open Simulator",
+            allowFailure: true)
+        }
         try await context.run(
           "xcrun simctl install \(udid) \(shellQuote(product.wrapperPath))", title: "Install")
         guard let bundleID = product.bundleIdentifier else {

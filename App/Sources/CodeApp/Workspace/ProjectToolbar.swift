@@ -264,6 +264,11 @@ private struct SchemeTools: View {
         .kitMenu(isPresented: model.isPresented(.destination)) { destinationItems }
         .kitHelp("Choose where to run")
       }
+      ToolGroup(iconOnly: true) {
+        Button("Preview", systemImage: "rectangle.righthalf.inset.filled") { model.togglePreview() }
+          .kitToolOn(model.preview.isVisible)
+          .kitHelp(model.preview.isVisible ? "Hide Preview" : "Show Preview", shortcut: "⌥⌘P")
+      }
     }
     // Container runtimes here, found without starting them, at open and whenever the menu opens.
     .task { actions.refreshBuildSources() }

@@ -1,6 +1,7 @@
 #if DEBUG && os(macOS)
   import AppKit
   import CodeKit
+  import CodeSimulator
   import ComponentKit
   import SSHKit
   import SwiftUI
@@ -273,6 +274,27 @@
         item.tag = action.rawValue
         document?.textView?.performFindPanelAction(item)
       case "insert": document?.textView?.insertText(argument, replacementRange: document!.textView!.selectedRange())
+      case "preview":
+        // preview:on|off, the pane beside the editor; preview:home|lock press the simulator's buttons,
+        // preview:tap:<x>,<y> touches it (0…1 of its screen), preview:shot:<path> writes its picture.
+        switch argument {
+        case "off": model.preview.setVisible(false)
+        case "home": model.preview.screen?.press(.home)
+        case "lock": model.preview.screen?.press(.lock)
+        case _ where argument.hasPrefix("tap:"):
+          let parts = argument.dropFirst(4).split(separator: ",").compactMap { Double($0) }
+          if parts.count == 2, let screen = model.preview.screen {
+            let point = CGPoint(x: parts[0], y: parts[1])
+            screen.touch(.down, at: point)
+            Task {
+              try? await Task.sleep(for: .milliseconds(120))
+              screen.touch(.up, at: point)
+            }
+          }
+        case _ where argument.hasPrefix("shot:"):
+          model.preview.screen?.writePNG(to: URL(fileURLWithPath: String(argument.dropFirst(5))))
+        default: model.preview.setVisible(true)
+        }
       case "console":
         // console:on|off under the title, console:window in its own window, console:attach back.
         switch argument {
@@ -419,6 +441,7 @@
           "containers: " + actions.containers.map(\.fileName).joined(separator: ", "),
           "container: \(actions.selectedContainer?.fileName ?? "-")",
           "console: \(model.isConsoleVisible ? "visible" : "hidden")",
+          "preview: \(model.preview.debugDescription)",
           "destinations: " + actions.destinations.map { "\($0.name)[\($0.kind.rawValue)]" }.joined(separator: ", "),
           "destination: \(actions.selectedDestination?.name ?? "-")",
           "state: \(actions.state)",

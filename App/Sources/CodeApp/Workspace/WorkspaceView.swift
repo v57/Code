@@ -22,14 +22,16 @@ struct WorkspaceView: View {
         .kitSidebarColumn()
         .toolbar(removing: .sidebarToggle)
     } detail: {
-      EditorArea()
-      // The tabs float over the editor, as the toolbar does above them and the status bar under it: the editor runs
-      // on under all of them. A single tab isn't shown.
-      .safeAreaInset(edge: .top, spacing: 0) { TabStrip() }
-      // The run presets over the tabs, under the title bar's groups.
-      .presetBar()
-      .kitPane(.content)
-      .codeStatusBar()
+      PreviewSplit(model: model) {
+        EditorArea()
+          // The tabs float over the editor, as the toolbar does above them and the status bar under it: the editor
+          // runs on under all of them. A single tab isn't shown.
+          .safeAreaInset(edge: .top, spacing: 0) { TabStrip() }
+          // The run presets over the tabs, under the title bar's groups.
+          .presetBar()
+          .kitPane(.content)
+          .codeStatusBar()
+      }
       .projectToolbar(model: model, actionsEnabled: serviceSettings.settings.actionsEnabled)
       .consoleOverlay(model: model)
       .kitSidebarToggle(columnVisibility: navigatorVisibility)
@@ -142,6 +144,24 @@ private struct SelectedTabFollower: ViewModifier {
         workspace.tree.reveal(url)
         model.sidebarSelection = url
       }
+    }
+  }
+}
+
+/// The editor, and the preview pane at its trailing edge while it shows (⌥⌘P).
+private struct PreviewSplit<Main: View>: View {
+  let model: WindowModel
+  @ViewBuilder var main: Main
+
+  var body: some View {
+    if model.preview.isVisible {
+      ResizableSplit("preview.width", pane: .trailing, width: 390, range: 300...640, mainMinWidth: 320) {
+        main
+      } pane: {
+        PreviewPane(model: model)
+      }
+    } else {
+      main
     }
   }
 }
