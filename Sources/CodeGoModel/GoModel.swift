@@ -154,11 +154,7 @@ public final class GoModel: LanguageModel {
     return found.isEmpty ? Answer(state: .unknown, sites: []) : summarize(found)
   }
 
-  private func summarize(_ sites: [Site]) -> Answer {
-    var unique: [Site] = []
-    for site in sites where !unique.contains(site) { unique.append(site) }
-    return Answer(state: unique.count == 1 ? .exact : .candidates, sites: unique)
-  }
+  private func summarize(_ sites: [Site]) -> Answer { Answer(summarizing: sites) }
 
   func isEmbeddedField(_ ref: DeclRef) -> Bool {
     let item = decl(ref)
@@ -330,20 +326,5 @@ public final class GoModel: LanguageModel {
     }
     for target in targets { if case .decl(let ref) = target { names.insert(decl(ref).name) } }
     return project.references(named: names, in: restrict, landingOn: targets) { self.answer(unitIndex: $0, token: $1) }
-  }
-}
-
-extension Unit {
-  /// The token at a byte offset: the first that ends after it, if it starts at or before it.
-  func token(at offset: Int) -> Int? {
-    var low = 0
-    var high = tokens.count - 1
-    guard high >= 0 else { return nil }
-    while low < high {
-      let middle = (low + high) / 2
-      if tokens[middle].end <= offset { low = middle + 1 } else { high = middle }
-    }
-    guard low < tokens.count, tokens[low].start <= offset else { return nil }
-    return low
   }
 }

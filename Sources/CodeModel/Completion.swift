@@ -210,3 +210,51 @@ extension Project {
     return ModelCompletionList(context: context, state: state, prefix: prefix, replaceStart: replaceStart, items: items, isIncomplete: isIncomplete)
   }
 }
+
+/// Where completion is asked in a file: the word being typed, if the cursor is in or at the end of one, the token
+/// after the cursor, what's typed so far and where the replaced text starts.
+package struct CompletionSite {
+  /// The identifier or keyword being typed.
+  package var anchor: Int?
+  /// The first token at or after the cursor that isn't the anchor: what's before it is what completion reads.
+  package var at: Int
+  package var prefix: String
+  /// In UTF-8 bytes.
+  package var replaceStart: Int
+  /// `x.|.y`, a name deleted between two dots: they lex as one `..`, and the cursor is after the first.
+  package var splitDot: Bool
+}
+
+extension Unit {
+  /// The completion site at a byte offset.
+  package func completionSite(at offset: Int) -> CompletionSite {
+    var low = 0
+    var high = tokens.count
+    while low < high {
+      let middle = (low + high) / 2
+      if tokens[middle].end < offset { low = middle + 1 } else { high = middle }
+    }
+    var anchor: Int?
+    if low < tokens.count, tokens[low].start < offset, offset <= tokens[low].end,
+      tokens[low].kind == .identifier || tokens[low].kind == .keyword || tokens[low].kind == .declarationKeyword
+    {
+      anchor = low
+    }
+    var at = low
+    if anchor == nil, low < tokens.count, tokens[low].end <= offset { at = low + 1 }
+    var splitDot = false
+    if anchor == nil, low < tokens.count, tokens[low].kind == .punctuation, tokens[low].length == 2,
+      tokens[low].start + 1 == offset, source.text[tokens[low].start] == 0x2E, source.text[tokens[low].start + 1] == 0x2E
+    {
+      at = low + 1
+      splitDot = true
+    }
+    let replaceStart = anchor.map { tokens[$0].start } ?? offset
+    var prefix = ""
+    if let anchor {
+      let token = tokens[anchor]
+      prefix = String(decoding: UnsafeBufferPointer(start: source.text + token.start, count: offset - token.start), as: UTF8.self)
+    }
+    return CompletionSite(anchor: anchor, at: at, prefix: prefix, replaceStart: replaceStart, splitDot: splitDot)
+  }
+}

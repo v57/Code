@@ -627,24 +627,3 @@ extension GoParser {
     parameters(open: open, close: close, into: &decl)
   }
 }
-
-extension Unit {
-  /// The bracket a token is directly inside, walking back.
-  func matchingOpenBefore(_ token: Int) -> Int? {
-    var depth = 0
-    var i = token - 1
-    var budget = 4096
-    while i >= 0, budget > 0 {
-      budget -= 1
-      switch tokens[i].kind {
-      case .close: depth += 1
-      case .open:
-        if depth == 0 { return i }
-        depth -= 1
-      default: break
-      }
-      i -= 1
-    }
-    return nil
-  }
-}

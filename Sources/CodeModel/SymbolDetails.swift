@@ -77,6 +77,7 @@ extension SymbolPart.Kind {
     case .typeAlias: self = .typeAlias
     case .associatedType: self = .associatedType
     case .macro: self = .macro
+    case .namespace: self = .module
     }
   }
 }

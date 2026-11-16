@@ -11,11 +11,14 @@ public typealias Name = UInt64
 public enum DeclKind: UInt8 {
   case structure, classType, actor, enumeration, protocolType, extensionDecl
   case function, initializer, deinitializer, subscriptDecl, variable, enumCase, typeAlias, associatedType, macro
+  /// A named scope of declarations that is no type: TypeScript's `namespace` and `declare module "x"`, C++'s
+  /// `namespace`, Rust's `mod`.
+  case namespace
   @inlinable package var isNominal: Bool { self == .structure || self == .classType || self == .actor || self == .enumeration || self == .protocolType }
   @inlinable package var isType: Bool { isNominal || self == .typeAlias || self == .associatedType }
   @inlinable package var isAccessorHolder: Bool { self == .variable || self == .subscriptDecl }
   @inlinable package var isCallable: Bool { self == .function || self == .initializer || self == .subscriptDecl || self == .macro }
-  @inlinable package var hasMembers: Bool { isNominal || self == .extensionDecl }
+  @inlinable package var hasMembers: Bool { isNominal || self == .extensionDecl || self == .namespace }
 }
 
 public enum Access: UInt8, Comparable {
@@ -103,6 +106,10 @@ public struct Import {
   package var aliasToken: Int32 = -1
   /// Where the import's path or module name is written.
   package var token: Int32 = -1
+  /// The declaration it takes from the module, 0 for the module itself: `import {a as b} from "m"` (with `alias` b),
+  /// Python's `from m import a`, Rust's `use m::a`. `memberToken` is where it's written.
+  package var member: Name = 0
+  package var memberToken: Int32 = -1
 
   package init(module: Name, moduleName: String, isExported: Bool, isTestable: Bool) {
     self.module = module

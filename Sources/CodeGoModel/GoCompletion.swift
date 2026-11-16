@@ -24,35 +24,12 @@ extension GoModel {
     func nothing(_ prefix: String, _ start: Int) -> ModelCompletionList {
       ModelCompletionList(context: .none, state: .exact, prefix: prefix, replaceStart: start, items: [], isIncomplete: false)
     }
-    if isInCommentOrString(unit, offset) { return nothing("", offset) }
-    var low = 0
-    var high = unit.tokens.count
-    while low < high {
-      let middle = (low + high) / 2
-      if unit.tokens[middle].end < offset { low = middle + 1 } else { high = middle }
-    }
-    var anchor: Int?
-    if low < unit.tokens.count, unit.tokens[low].start < offset, offset <= unit.tokens[low].end,
-      unit.tokens[low].kind == .identifier || unit.tokens[low].kind == .keyword || unit.tokens[low].kind == .declarationKeyword
-    {
-      anchor = low
-    }
-    var at = low
-    if anchor == nil, low < unit.tokens.count, unit.tokens[low].end <= offset { at = low + 1 }
-    // `x.|.y`, a name deleted between two dots: they lex as one `..`.
-    var splitDot = false
-    if anchor == nil, low < unit.tokens.count, unit.tokens[low].kind == .punctuation, unit.tokens[low].length == 2,
-      unit.tokens[low].start + 1 == offset, unit.source.text[unit.tokens[low].start] == 0x2E, unit.source.text[unit.tokens[low].start + 1] == 0x2E
-    {
-      at = low + 1
-      splitDot = true
-    }
-    let replaceStart = anchor.map { unit.tokens[$0].start } ?? offset
-    var prefix = ""
-    if let anchor {
-      let token = unit.tokens[anchor]
-      prefix = String(decoding: UnsafeBufferPointer(start: unit.source.text + token.start, count: offset - token.start), as: UTF8.self)
-    }
+    if unit.isInCommentOrString(offset) { return nothing("", offset) }
+    let site = unit.completionSite(at: offset)
+    let at = site.at
+    let splitDot = site.splitDot
+    let replaceStart = site.replaceStart
+    let prefix = site.prefix
     let typed = Array(prefix.utf8)
     let before = at - 1
     func finish(_ hits: [ModelCompletionHit], _ context: ModelCompletionContext, _ state: AnswerState) -> ModelCompletionList {
@@ -110,30 +87,6 @@ extension GoModel {
     switch dereferenced(ty) {
     case .nominal: return true
     default: return false
-    }
-  }
-
-  private func isInCommentOrString(_ unit: Unit, _ offset: Int) -> Bool {
-    let tokens = unit.source.tokens
-    var low = 0
-    var high = tokens.count
-    while low < high {
-      let middle = (low + high) / 2
-      if tokens[middle].end < offset { low = middle + 1 } else { high = middle }
-    }
-    guard low < tokens.count else { return false }
-    let token = tokens[low]
-    guard token.start < offset else { return false }
-    switch token.kind {
-    case .comment, .docComment:
-      if offset < token.end { return true }
-      return token.length >= 2 && unit.source.text[token.start + 1] == 0x2F
-    case .string:
-      if offset < token.end { return true }
-      let last = unit.source.text[token.end - 1]
-      return token.length < 2 || (last != 0x22 && last != 0x60 && last != 0x27)
-    default:
-      return false
     }
   }
 
@@ -338,21 +291,5 @@ extension GoModel {
     case .module(let moduleName): return project.modules[moduleName]?.displayName ?? ""
     default: return ""
     }
-  }
-}
-
-extension Unit {
-  /// Tokens' text as written, on one line.
-  func text(from start: Int, to end: Int) -> String {
-    guard start >= 0, end > start, end <= tokens.count else { return "" }
-    let from = tokens[start].start
-    let to = tokens[end - 1].end
-    return oneLine(String(decoding: UnsafeBufferPointer(start: source.text + from, count: to - from), as: UTF8.self))
-  }
-
-  func nameText(_ ref: DeclRef, in project: Project) -> String {
-    let holder = project.units[Int(ref.unit)]
-    let token = holder.decls[Int(ref.decl)].nameToken
-    return token >= 0 ? holder.string(Int(token)) : ""
   }
 }

@@ -201,6 +201,7 @@ extension Model {
     case .typeAlias: return "typealias"
     case .associatedType: return "associatedtype"
     case .macro: return "macro"
+    case .namespace: return "namespace"
     case .variable:
       let holder = unit(ref)
       var i = Int(item.nameToken) - 1
