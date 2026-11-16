@@ -48,6 +48,8 @@ func v57(_ name: String) -> Package.Dependency {
 /// - CodeSwiftModel: Swift's code model on CodeModel, built in layers only as far as a question needs:
 ///   definitions (exact, candidates or unknown), completions and references, without a compiler or an index
 ///   (`swift-model` measures it).
+/// - CodeGoModel: Go's code model on CodeModel: packages, the standard library and modules from source
+///   (`code-model` measures any language's model).
 /// - CodeKit: all of the above, plus what connects them (an editor for a
 ///   workspace's documents with language services, issues and breakpoints).
 ///
@@ -77,9 +79,11 @@ let package = Package(
     .library(name: "CodeServer", targets: ["CodeServer"]),
     .library(name: "CodeModel", targets: ["CodeModel"]),
     .library(name: "CodeSwiftModel", targets: ["CodeSwiftModel"]),
+    .library(name: "CodeGoModel", targets: ["CodeGoModel"]),
     .executable(name: "code-lsp", targets: ["code-lsp"]),
     .executable(name: "code-pretty", targets: ["code-pretty"]),
     .executable(name: "swift-model", targets: ["swift-model"]),
+    .executable(name: "code-model", targets: ["code-model"]),
   ],
   // SSHKit: remote actions over SSH, in-process (../SSH). ComponentKit: CodeActionsUI's sheets (../Component).
   dependencies: [v57("SSH"), v57("Component")],
@@ -106,6 +110,10 @@ let package = Package(
     .target(name: "CodeModel", dependencies: ["CodeScan"], swiftSettings: swiftSettings + [.swiftLanguageMode(.v5)]),
     .target(name: "CodeSwiftModel", dependencies: ["CodeScan", "CodeModel"], swiftSettings: swiftSettings + [.swiftLanguageMode(.v5)]),
     .executableTarget(name: "swift-model", dependencies: ["CodeSwiftModel"], swiftSettings: swiftSettings + [.swiftLanguageMode(.v5)]),
+    .target(name: "CodeGoModel", dependencies: ["CodeScan", "CodeModel"], swiftSettings: swiftSettings + [.swiftLanguageMode(.v5)]),
+    // Every language's model, by file extension or --language: the language-neutral swift-model.
+    .executableTarget(
+      name: "code-model", dependencies: ["CodeModel", "CodeSwiftModel", "CodeGoModel"], swiftSettings: swiftSettings + [.swiftLanguageMode(.v5)]),
     .target(name: "CodeMinimap", dependencies: ["CodeHighlighting"], swiftSettings: swiftSettings),
     .target(name: "CodeFormatting", swiftSettings: swiftSettings),
     .target(name: "CodeIcons", swiftSettings: swiftSettings),
@@ -117,6 +125,7 @@ let package = Package(
       dependencies: [
         "CodeHighlighting", "CodeWorkspace", "CodeEditor", "CodeActions", "CodeLSP", "CodeMinimap",
         "CodeFormatting", "CodeAutocompletion", "CodeIcons", "CodeProgress", "CodeFolders", "CodeScan", "CodePretty", "CodeSwiftModel",
+        "CodeGoModel",
       ],
       swiftSettings: swiftSettings),
 
@@ -129,6 +138,8 @@ let package = Package(
     .testTarget(
       name: "CodeSwiftModelTests", dependencies: ["CodeSwiftModel"],
       swiftSettings: swiftSettings + [.swiftLanguageMode(.v5)]),
+    .testTarget(
+      name: "CodeGoModelTests", dependencies: ["CodeGoModel"], swiftSettings: swiftSettings + [.swiftLanguageMode(.v5)]),
     .testTarget(
       name: "CodeWorkspaceTests", dependencies: ["CodeWorkspace"], swiftSettings: swiftSettings),
     .testTarget(name: "CodeEditorTests", dependencies: ["CodeEditor"], swiftSettings: swiftSettings),
