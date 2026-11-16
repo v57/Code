@@ -63,6 +63,27 @@ public final class Unit {
     return childMap[parent] ?? []
   }
 
+  /// The declarations around a token, outermost first, into local types and functions once a scan added them (other
+  /// local declarations are a body's own business).
+  package func chain(at token: Int32) -> [Int32] {
+    var result: [Int32] = []
+    var parent: Int32 = -1
+    while true {
+      var found: Int32?
+      for child in children(of: parent) {
+        let decl = decls[Int(child)]
+        if decl.first <= token, token < decl.end {
+          if decl.isLocal, !decl.kind.isNominal, decl.kind != .function { continue }
+          found = child
+          break
+        }
+      }
+      guard let found else { return result }
+      result.append(found)
+      parent = found
+    }
+  }
+
   /// The tokens that declare something: a click there answers itself.
   package func declaredSite(at token: Int, unitIndex: Int32) -> Site? {
     if let siteMap { return siteMap[Int32(token)] }

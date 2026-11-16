@@ -51,6 +51,8 @@ public struct Decl {
   /// What follows `where`, up to the body: the requirements, not yet read.
   package var whereStart: Int32 = -1
   package var whereEnd: Int32 = -1
+  /// Which of its initializer's values is this declaration's, from 1 (`a, b = f()`); 0 when the initializer is its own.
+  package var valueIndex: Int32 = 0
 
   package init(kind: DeclKind, name: Name, nameToken: Int32, first: Int32, parent: Int32) {
     self.kind = kind
@@ -96,6 +98,11 @@ public struct Import {
   package var moduleName: String
   package var isExported: Bool
   package var isTestable: Bool
+  /// The name the file gives the module (`import f "fmt"`, `import x as y`), 0 for its own; `aliasToken` is where.
+  package var alias: Name = 0
+  package var aliasToken: Int32 = -1
+  /// Where the import's path or module name is written.
+  package var token: Int32 = -1
 
   package init(module: Name, moduleName: String, isExported: Bool, isTestable: Bool) {
     self.module = module

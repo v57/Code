@@ -70,7 +70,6 @@ public final class Model {
   private var cycleBase = Int.max
   private var noBinding = 0
   private var depth = 0
-  private var byName: [Name: [DeclRef]]?
   public internal(set) var checkedAccesses = 0
   /// How many times a question had headers read for it.
   public internal(set) var clangLoads = 0
@@ -79,7 +78,6 @@ public final class Model {
   var tupleLabels: [Name: String]?
   /// What the last expected type could also have been, when overloads disagree: completion offers them all.
   var expectedAlternatives: [Ty] = []
-  var projectCounts: [Name: Int32]?
   var dynamicDepth = 0
 
   public init(project: Project) {
@@ -95,7 +93,6 @@ public final class Model {
     conditions.removeAll()
     clauseMemo.removeAll()
     phantoms.removeAll()
-    byName = nil
     topCache.removeAll()
   }
 
@@ -231,17 +228,7 @@ public final class Model {
   }
 
   private func membersNamed(_ member: Name, from unitIndex: Int32) -> [DeclRef] {
-    if byName == nil {
-      var map: [Name: [DeclRef]] = [:]
-      for u in 0..<project.projectUnits {
-        let unit = project.units[u]
-        for (index, decl) in unit.decls.enumerated() where decl.parent >= 0 && !decl.isLocal && decl.kind != .extensionDecl {
-          map[decl.name, default: []].append(DeclRef(unit: Int32(u), decl: Int32(index)))
-        }
-      }
-      byName = map
-    }
-    return (byName?[member] ?? []).filter { accessible($0, from: unitIndex) }
+    project.membersNamed(member).filter { accessible($0, from: unitIndex) }
   }
 
   // MARK: Scans

@@ -34,6 +34,10 @@ public final class Project {
   package var visibleCache: [Int32: [Name]] = [:]
   private var missing: Set<Name> = []
   private var focused: Int32?
+  /// The project's members by name (declared inside another declaration, not local, not extensions), for an answer
+  /// by name when a receiver's type couldn't be told. Built when first asked, dropped when a file's shape changes.
+  private var membersByName: [Name: [DeclRef]]?
+  package var cachedProjectCounts: [Name: Int32]?
   /// Called when any declaration changed: a table built from them is stale.
   package var onShapeChange: () -> Void = {}
 
@@ -163,6 +167,20 @@ public final class Project {
     return order
   }
 
+  package func membersNamed(_ member: Name) -> [DeclRef] {
+    if membersByName == nil {
+      var map: [Name: [DeclRef]] = [:]
+      for u in 0..<projectUnits {
+        let unit = units[u]
+        for (index, decl) in unit.decls.enumerated() where decl.parent >= 0 && !decl.isLocal && decl.kind != .extensionDecl {
+          map[decl.name, default: []].append(DeclRef(unit: Int32(u), decl: Int32(index)))
+        }
+      }
+      membersByName = map
+    }
+    return membersByName?[member] ?? []
+  }
+
   package func isTestable(_ moduleName: Name, from unit: Unit) -> Bool {
     unit.imports.contains { $0.isTestable && $0.module == moduleName }
   }
@@ -201,6 +219,7 @@ public final class Project {
     units[Int(index)] = new
     if new.shape == old.shape { return true }
     visibleCache.removeAll()
+    membersByName = nil
     if let module = modules[old.moduleName] {
       module.top = module.top.mapValues { $0.filter { $0.unit != index } }.filter { !$0.value.isEmpty }
       extensions = extensions.mapValues { $0.filter { $0.unit != index } }.filter { !$0.value.isEmpty }

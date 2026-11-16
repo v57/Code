@@ -27,21 +27,7 @@ private let attributeNames = [
 
 private let directiveNames = ["if", "elseif", "else", "endif", "available", "unavailable", "selector", "keyPath", "file", "fileID", "filePath", "line", "column", "function", "warning", "error", "sourceLocation", "dsohandle", "colorLiteral", "imageLiteral"]
 
-/// An entry before it's rendered: rendering reads tokens, and only what's returned gets that.
-private struct Hit {
-  var name: String
-  var match: Int32
-  var score: Int32
-  var ref: DeclRef?
-  var localToken: Int32 = -1
-  var kind: ModelCompletionItemKind?
-  var insert: String? = nil
-  var detail: String? = nil
-  var receiver: Ty? = nil
-  var needsUnwrap = false
-  /// An overload of the call the cursor opens: rendered as its arguments, the `(` already written.
-  var isArguments = false
-}
+typealias Hit = ModelCompletionHit
 
 extension Model {
   // MARK: Asking
@@ -781,43 +767,9 @@ extension Model {
 
   /// Best first: how well it fits what's typed, then where it's from, with names this file and project already use lifted.
   private func finish(_ hits: [Hit], context: ModelCompletionContext, state: AnswerState, prefix: String, replaceStart: Int, limit: Int, unitIndex: Int32) -> ModelCompletionList {
-    let unit = project.units[Int(unitIndex)]
-    let inFile = unit.nameCounts
-    let inProject = projectNameCounts()
-    var seen: Set<UInt64> = []
-    var ranked: [(score: Int64, hit: Hit)] = []
-    ranked.reserveCapacity(hits.count)
-    for hit in hits {
-      var signature = hashName(hit.name)
-      if let ref = hit.ref { signature = signatureKey(ref, name: hit.name) }
-      if hit.ref == nil, hit.kind == .keyword { signature &+= 1 }
-      guard seen.insert(signature).inserted else {
-        if let at = ranked.firstIndex(where: { $0.hit.name == hit.name && $0.score > Int64(hit.score) && (hit.ref.map { signatureKey($0, name: hit.name) } ?? 0) == ($0.hit.ref.map { signatureKey($0, name: hit.name) } ?? 0) }) {
-          ranked[at] = (Int64(hit.score), hit)
-        }
-        continue
-      }
-      ranked.append((Int64(hit.score), hit))
-    }
-    for index in ranked.indices {
-      let hit = ranked[index].hit
-      let hash = hashName(hit.name)
-      let here = Int64(min(inFile[hash] ?? 0, 16))
-      let there = Int64(min(inProject[hash] ?? 0, 4096))
-      // Each doubling of use is worth less than one tier of where it's from.
-      var lift = Int64(0)
-      if here > 0 { lift += 40 + 8 * Int64(log2(Double(here))) }
-      if there > 0 { lift += 6 * Int64(log2(Double(there + 1))) }
-      if hit.kind == .keyword { lift = min(lift, 20) }
-      ranked[index].score = Int64(hit.match) * 100_000 + (Int64(hit.score) - lift) * 16 + Int64(min(hit.name.utf8.count, 15))
-    }
-    let isIncomplete = ranked.count > limit
-    ranked.sort {
-      if $0.score != $1.score { return $0.score < $1.score }
-      return $0.hit.name < $1.hit.name
-    }
-    let items = ranked.prefix(limit).map { render($0.hit, unitIndex: unitIndex) }
-    return ModelCompletionList(context: context, state: state, prefix: prefix, replaceStart: replaceStart, items: items, isIncomplete: isIncomplete)
+    project.rankCompletions(
+      hits, context: context, state: state, prefix: prefix, replaceStart: replaceStart, limit: limit, in: project.units[Int(unitIndex)],
+      signature: { signatureKey($0, name: $1) }, render: { render($0, unitIndex: unitIndex) })
   }
 
   /// Overloads stay apart, the same declaration restated up a hierarchy doesn't.
@@ -931,16 +883,6 @@ extension Model {
     return text.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }.joined(separator: " ")
   }
 
-  /// Times each name is used across the project's files, once: what's common here is more likely next.
-  private func projectNameCounts() -> [Name: Int32] {
-    if let known = projectCounts { return known }
-    var counts: [Name: Int32] = [:]
-    for u in 0..<project.projectUnits {
-      for (key, value) in project.units[u].nameCounts { counts[key, default: 0] += value }
-    }
-    projectCounts = counts
-    return counts
-  }
 }
 
 struct TopEntry {

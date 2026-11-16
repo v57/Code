@@ -65,30 +65,8 @@ extension Model {
 
   /// A declaration as a part, at its name.
   func part(_ ref: DeclRef) -> SymbolPart? {
-    guard let at = location(of: .decl(ref)) else { return nil }
-    let item = decl(ref)
-    let holder = unit(ref)
-    let kind: SymbolPart.Kind
-    switch item.kind {
-    case .structure: kind = .structure
-    case .classType: kind = .classType
-    case .actor: kind = .actor
-    case .enumeration: kind = .enumeration
-    case .protocolType: kind = .protocolType
-    case .extensionDecl: kind = .extensionDecl
-    case .function: kind = .function
-    case .initializer: kind = .initializer
-    case .deinitializer: kind = .deinitializer
-    case .subscriptDecl: kind = .subscriptDecl
-    case .variable: kind = item.parent >= 0 && holder.decls[Int(item.parent)].kind.hasMembers ? .property : .variable
-    case .enumCase: kind = .enumCase
-    case .typeAlias: kind = .typeAlias
-    case .associatedType: kind = .associatedType
-    case .macro: kind = .macro
-    }
-    return SymbolPart(
-      kind: kind, name: displayName(ref), keyword: keyword(ref), path: at.path, line: at.line, character: at.character,
-      module: moduleName(of: holder), isSDK: isSDK(holder))
+    guard location(of: .decl(ref)) != nil else { return nil }
+    return project.part(ref, name: displayName(ref), keyword: keyword(ref))
   }
 
   /// A parent as shown: an extension stands for the type it extends.
@@ -117,13 +95,9 @@ extension Model {
     module.units.first.map { isSDK(project.units[Int($0)]) } ?? module.isSDK
   }
 
-  private func moduleName(of holder: Unit) -> String {
-    project.modules[holder.moduleName]?.publishedName ?? ""
-  }
+  private func moduleName(of holder: Unit) -> String { project.moduleName(of: holder) }
 
-  private func isSDK(_ holder: Unit) -> Bool {
-    holder.isInterface || !holder.headerLines.isEmpty || project.modules[holder.moduleName]?.isSDK == true
-  }
+  private func isSDK(_ holder: Unit) -> Bool { project.isSDK(holder) }
 
   /// A local or a parameter.
   private func localDetails(unitIndex: Int32, token: Int32) -> SymbolDetails? {
@@ -275,71 +249,20 @@ extension Model {
   private static let interfaceNoise = try! NSRegularExpression(
     pattern: #"\b__(shared|owned) |\b[A-Za-z_][A-Za-z0-9_]*::"#)
 
-  /// Whitespace runs with a line break in them become one space.
-  static func oneLine(_ text: String) -> String {
-    var result = ""
-    var pendingSpace = false
-    for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
-      let trimmed = line.trimmingCharacters(in: .whitespaces)
-      guard !trimmed.isEmpty else { continue }
-      if pendingSpace, let last = result.last, last != "(", last != "[", !trimmed.hasPrefix(")"), !trimmed.hasPrefix("]") {
-        result += " "
-      }
-      result += result.isEmpty ? trimmed : String(trimmed)
-      pendingSpace = true
-    }
-    return result
-  }
+  static func oneLine(_ text: String) -> String { CodeModel.oneLine(text) }
 
   /// The doc comment's first paragraph above a declaration (`///` lines or a `/** */` block).
   func documentation(_ ref: DeclRef) -> String? {
     let item = decl(ref)
     let holder = unit(ref)
     guard holder.headerLines.isEmpty, item.first >= 0, Int(item.first) < holder.tokens.count else { return nil }
-    let source = holder.source
-    var line = source.lines.line(of: holder.tokens[Int(item.first)].start) - 1
-    var lines: [String] = []
-    func text(of line: Int) -> String {
-      let start = source.lines.offset(line: line, character: 0, in: source.text)
-      var end = start
-      let bytes = source.bytes
-      while end < bytes.count, bytes[end] != 10 { end += 1 }
-      return String(decoding: UnsafeBufferPointer(rebasing: bytes[start..<end]), as: UTF8.self)
-        .trimmingCharacters(in: .whitespaces)
-    }
-    if line >= 0, text(of: line).hasSuffix("*/") {
-      while line >= 0 {
-        var current = text(of: line)
-        let opens = current.hasPrefix("/**")
-        if current.hasSuffix("*/") { current.removeLast(2) }
-        if opens { current.removeFirst(3) } else if current.hasPrefix("*") { current.removeFirst() }
-        lines.insert(current.trimmingCharacters(in: .whitespaces), at: 0)
-        if opens { break }
-        line -= 1
-      }
-    } else {
-      while line >= 0 {
-        let current = text(of: line)
-        guard current.hasPrefix("///") else { break }
-        lines.insert(String(current.dropFirst(3)).trimmingCharacters(in: .whitespaces), at: 0)
-        line -= 1
-      }
-    }
-    var paragraph: [String] = []
-    for line in lines {
-      if line.isEmpty || line.hasPrefix("- ") {
-        if paragraph.isEmpty { continue }
-        break
-      }
-      paragraph.append(line)
-    }
-    return paragraph.isEmpty ? nil : paragraph.joined(separator: " ")
+    return holder.documentation(above: Int(item.first), linePrefix: "///", blockOpen: "/**")
   }
 
   /// A type as Swift writes it; nil when part of it isn't known.
   func swiftType(_ ty: Ty) -> String? {
     switch ty {
-    case .unknown, .module, .dependent: return nil
+    case .unknown, .module, .dependent, .constructed: return nil
     case .nominal(let ref, let args):
       let item = decl(ref)
       let name = unit(ref).string(Int(item.nameToken))

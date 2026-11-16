@@ -10,25 +10,7 @@ extension Model {
   // MARK: Written types
 
   /// The declaration around a token, outermost first, descending into local types once the scan found them.
-  func chain(at token: Int32, unitIndex: Int32) -> [Int32] {
-    let unit = project.units[Int(unitIndex)]
-    var result: [Int32] = []
-    var parent: Int32 = -1
-    while true {
-      var found: Int32?
-      for child in unit.children(of: parent) {
-        let decl = unit.decls[Int(child)]
-        if decl.first <= token, token < decl.end {
-          if decl.isLocal, !decl.kind.isNominal, decl.kind != .function { continue }
-          found = child
-          break
-        }
-      }
-      guard let found else { return result }
-      result.append(found)
-      parent = found
-    }
-  }
+  func chain(at token: Int32, unitIndex: Int32) -> [Int32] { project.units[Int(unitIndex)].chain(at: token) }
 
   func parseType(unitIndex: Int32, start: Int32, end: Int32, scope: [Int32]) -> Ty {
     guard start >= 0, start < end else { return .unknown }
@@ -834,6 +816,7 @@ extension Model {
     case .selfType: return "Self"
     case .existential(let items): return "any " + items.map(describe).joined(separator: "&")
     case .dependent(let base, _): return describe(base) + ".?"
+    case .constructed(_, let args): return "constructed<" + args.map(describe).joined(separator: ",") + ">"
     }
   }
 }

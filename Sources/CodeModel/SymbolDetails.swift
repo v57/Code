@@ -57,3 +57,45 @@ public struct SymbolDetails: Hashable {
     self.type = type
   }
 }
+
+extension SymbolPart.Kind {
+  /// A declaration's kind as a part: a variable inside a type is a property.
+  package init(_ decl: Decl, in unit: Unit) {
+    switch decl.kind {
+    case .structure: self = .structure
+    case .classType: self = .classType
+    case .actor: self = .actor
+    case .enumeration: self = .enumeration
+    case .protocolType: self = .protocolType
+    case .extensionDecl: self = .extensionDecl
+    case .function: self = .function
+    case .initializer: self = .initializer
+    case .deinitializer: self = .deinitializer
+    case .subscriptDecl: self = .subscriptDecl
+    case .variable: self = decl.parent >= 0 && unit.decls[Int(decl.parent)].kind.hasMembers ? .property : .variable
+    case .enumCase: self = .enumCase
+    case .typeAlias: self = .typeAlias
+    case .associatedType: self = .associatedType
+    case .macro: self = .macro
+    }
+  }
+}
+
+extension Project {
+  /// The module a unit is in, as an import names it.
+  package func moduleName(of unit: Unit) -> String { modules[unit.moduleName]?.publishedName ?? "" }
+
+  /// Whether a unit is the SDK's (an interface, generated from headers, or a module read from the SDK).
+  package func isSDK(_ unit: Unit) -> Bool {
+    unit.isInterface || !unit.headerLines.isEmpty || modules[unit.moduleName]?.isSDK == true
+  }
+
+  /// A declaration as a part, at its name: `name` and `keyword` as the language writes them.
+  package func part(_ ref: DeclRef, name: String, keyword: String) -> SymbolPart? {
+    guard let at = location(of: .decl(ref)) else { return nil }
+    let holder = units[Int(ref.unit)]
+    return SymbolPart(
+      kind: SymbolPart.Kind(holder.decls[Int(ref.decl)], in: holder), name: name, keyword: keyword, path: at.path, line: at.line,
+      character: at.character, module: moduleName(of: holder), isSDK: isSDK(holder))
+  }
+}

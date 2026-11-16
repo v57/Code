@@ -1,3 +1,4 @@
+import CodeScan
 import Foundation
 
 /// Completion's answer: what could be typed at a position, ranked. The front end decides what's listed; the matching
@@ -116,4 +117,96 @@ public struct ModelCompletionList {
   }
   guard at == typed.count else { return nil }
   return onlyBoundaries ? 2 : 3
+}
+
+/// A completion candidate before it's rendered: rendering reads tokens, and only what's returned gets that.
+package struct ModelCompletionHit {
+  package var name: String
+  /// `matchClass` of what's typed against the name.
+  package var match: Int32
+  /// Where it's from, lower is nearer: a tier times 100, give or take.
+  package var score: Int32
+  package var ref: DeclRef?
+  package var localToken: Int32 = -1
+  package var kind: ModelCompletionItemKind?
+  package var insert: String? = nil
+  package var detail: String? = nil
+  package var receiver: Ty? = nil
+  package var needsUnwrap = false
+  /// An overload of the call the cursor opens: rendered as its arguments, the `(` already written.
+  package var isArguments = false
+
+  package init(
+    name: String, match: Int32, score: Int32, ref: DeclRef?, localToken: Int32 = -1, kind: ModelCompletionItemKind? = nil, insert: String? = nil,
+    detail: String? = nil, receiver: Ty? = nil, needsUnwrap: Bool = false, isArguments: Bool = false
+  ) {
+    self.name = name
+    self.match = match
+    self.score = score
+    self.ref = ref
+    self.localToken = localToken
+    self.kind = kind
+    self.insert = insert
+    self.detail = detail
+    self.receiver = receiver
+    self.needsUnwrap = needsUnwrap
+    self.isArguments = isArguments
+  }
+}
+
+extension Project {
+  /// Times each name is used across the project's files, read once: what's common here is more likely next.
+  package var projectNameCounts: [Name: Int32] {
+    if let known = cachedProjectCounts { return known }
+    var counts: [Name: Int32] = [:]
+    for u in 0..<projectUnits {
+      for (key, value) in units[u].nameCounts { counts[key, default: 0] += value }
+    }
+    cachedProjectCounts = counts
+    return counts
+  }
+
+  /// Completion's ranking, the same for every language: one entry per signature (`signature` keeps overloads apart),
+  /// then how well it matches, where it's from and how much the file and the project use the name.
+  package func rankCompletions(
+    _ hits: [ModelCompletionHit], context: ModelCompletionContext, state: AnswerState, prefix: String, replaceStart: Int, limit: Int, in unit: Unit,
+    signature: (DeclRef, String) -> UInt64, render: (ModelCompletionHit) -> ModelCompletionEntry
+  ) -> ModelCompletionList {
+    let inFile = unit.nameCounts
+    let inProject = projectNameCounts
+    var seen: Set<UInt64> = []
+    var ranked: [(score: Int64, hit: ModelCompletionHit)] = []
+    ranked.reserveCapacity(hits.count)
+    for hit in hits {
+      var key = hashName(hit.name)
+      if let ref = hit.ref { key = signature(ref, hit.name) }
+      if hit.ref == nil, hit.kind == .keyword { key &+= 1 }
+      guard seen.insert(key).inserted else {
+        if let at = ranked.firstIndex(where: { $0.hit.name == hit.name && $0.score > Int64(hit.score) && (hit.ref.map { signature($0, hit.name) } ?? 0) == ($0.hit.ref.map { signature($0, hit.name) } ?? 0) }) {
+          ranked[at] = (Int64(hit.score), hit)
+        }
+        continue
+      }
+      ranked.append((Int64(hit.score), hit))
+    }
+    for index in ranked.indices {
+      let hit = ranked[index].hit
+      let hash = hashName(hit.name)
+      let here = Int64(min(inFile[hash] ?? 0, 16))
+      let there = Int64(min(inProject[hash] ?? 0, 4096))
+      // Each doubling of use is worth less than one tier of where it's from.
+      var lift = Int64(0)
+      if here > 0 { lift += 40 + 8 * Int64(log2(Double(here))) }
+      if there > 0 { lift += 6 * Int64(log2(Double(there + 1))) }
+      if hit.kind == .keyword { lift = min(lift, 20) }
+      ranked[index].score = Int64(hit.match) * 100_000 + (Int64(hit.score) - lift) * 16 + Int64(min(hit.name.utf8.count, 15))
+    }
+    let isIncomplete = ranked.count > limit
+    ranked.sort {
+      if $0.score != $1.score { return $0.score < $1.score }
+      return $0.hit.name < $1.hit.name
+    }
+    let items = ranked.prefix(limit).map { render($0.hit) }
+    return ModelCompletionList(context: context, state: state, prefix: prefix, replaceStart: replaceStart, items: items, isIncomplete: isIncomplete)
+  }
 }
