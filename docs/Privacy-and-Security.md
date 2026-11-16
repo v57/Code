@@ -1,15 +1,18 @@
 # Privacy and Security
 
+What runs when you open a folder, how Code signs in to your Macs, and everything Code can contact over the network,
+and when.
+
 ## Trusting a folder
 
 A project's own files can contain code that runs when an editor opens them: a language server's build settings, a
-formatter installed in the project, or a package manifest that fetches packages. So the first time you open a folder
-that Code didn't create, Code asks **Trust the authors of “*folder*”?**
+formatter installed in the project, or a package manifest that fetches packages. So when you open a folder you
+haven't trusted, Code asks **Trust the authors of “*folder*”?**
 
 - **Trust Folder**: the folder's own code may run. Language servers read its build settings (for an Xcode project,
   Xcode reads them and fetches its packages), its formatters run when you save, and Swift reads the project.
 - **Don’t Trust**: the folder opens in **Restricted Mode**. You can read and edit every file, and nothing in the folder
-  runs on its own.
+  runs on its own. Code asks again the next time you open the folder.
 
 In Restricted Mode:
 
@@ -21,8 +24,8 @@ In Restricted Mode:
 
 The status bar shows **Restricted Mode** while the folder isn't trusted. Click it to be asked again.
 
-A folder inside a trusted folder is trusted too. Your answers are kept in Code's item in this Mac's keychain. They
-aren't synced to your other devices.
+A folder inside a trusted folder is trusted too. The folders you trust are kept in Code's item in this Mac's
+keychain. They aren't synced to your other devices.
 
 Trusting a folder doesn't make Build, Test or Run automatic: those still run only when you choose them, and they run
 the project's own commands.
@@ -66,6 +69,8 @@ Code contacts no server on its own. Here's everything it can contact, and when.
   which downloads the tool from its source.
 - **Export…** and **Upload to App Store**: send the app to Apple for notarization or to App Store Connect.
   **Check with Apple** in Notarization Settings asks Apple's notary service.
+- **The preview** of an app running on another machine: Code connects to v57's Remote on that machine to show the
+  app's window.
 - **Check for Updates…**: asks GitHub for Code's latest release, which shows GitHub your IP address. **Check for
   Updates Automatically** is off at first; when you turn it on, Code asks once a day.
 - On iPhone and iPad, opening a project, building and reading files: an SSH connection to your own Mac, directly or

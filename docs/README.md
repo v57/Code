@@ -1,33 +1,40 @@
 # Code user guide
 
-Code is a folder-based code editor for the Mac. You open a folder, browse it in the sidebar, edit files in tabs, and
-run, build, test and debug it from an Xcode-style toolbar, in any of the languages it knows. On iPhone and iPad, Code
-has no editor: it runs Build, Test and Clean on your own Macs over SSH and shows you the log, the issues and the files.
+Code is a folder-based code editor. You open a folder, browse it in the sidebar, edit files in tabs, and run, build,
+test and debug it from an Xcode-style toolbar, in any of the languages it knows. On iPhone and iPad, Code has no
+editor: it runs Build, Test and Clean on your own Macs over SSH and shows you the log, the issues and the files.
+
+<!-- platforms: macos ios linux windows -->
 
 ## Platforms
 
 - **Mac** (macOS 14 or later, Apple silicon): the full editor, with language servers, formatting, Run, Build, Test,
-  debugging with LLDB, and Install, Export and Upload for Xcode apps.
+  debugging with LLDB, the iOS Simulator in the preview, and Install, Export and Upload for Xcode apps. The Mac app is
+  a direct download from GitHub Releases.
 - **iPhone and iPad** (iOS 17 or later): lists the projects on your other devices and runs Build, Test and Clean there.
   You can read the project's files, but not edit them.
-- **Linux and Windows**: Code builds there from the same sources, but these builds are early and not released yet.
-  This guide describes the Mac, iPhone and iPad apps.
+- **Linux and Windows**: the desktop app also builds for Linux and Windows, from the same sources, and ships as a
+  download from GitHub Releases. It has the Mac app's windows, sidebar and toolbar, language servers, Run, Build, Test
+  and Clean, and debugging with the LLDB on your PATH. Its editor is simpler: no minimap, no completion list and no
+  **Editor** menu. It has no Install, Export or Upload, no iOS Simulator preview and no iCloud sync, and on Windows
+  the installed formatters don't run yet. This guide describes the Mac app; where Linux and Windows differ, it says so.
 
 ## Pages
 
-- [Getting Started](Getting-Started.md): open your first folder on the Mac, or your first project on iPhone and iPad.
+- [Getting Started](Getting-Started.md): install Code, open your first folder on the Mac, or your first project on
+  iPhone and iPad.
 - [Projects and Files](Projects-and-Files.md): the welcome window, the sidebar, hidden files, package dependencies,
   tabs and windows.
 - [Editing](Editing.md): the editor, completion, finding, jumping to definitions, Quick Help and the minimap.
 - [Languages and Formatting](Languages-and-Formatting.md): language servers, Code's own scanner and Swift model, and
   formatting on save.
-- [Run, Build and Test](Run-Build-and-Test.md): schemes, run destinations, the console, issues, breakpoints, and
-  Install, Export and Upload.
+- [Run, Build and Test](Run-Build-and-Test.md): schemes, Build From, run destinations, presets, the preview, the
+  console, issues, breakpoints, and Install, Export and Upload.
 - [iPhone and iPad](iPhone-and-iPad.md): build and test on your Mac from your iPhone or iPad.
 - [Settings](Settings.md): every pane in Code's settings.
 - [Privacy and Security](Privacy-and-Security.md): trusting a folder, Restricted Mode, sign-in to your Macs, and what
   Code sends over the network.
-- [Keyboard Shortcuts](Keyboard-Shortcuts.md): the Mac app's shortcuts.
+- [Keyboard Shortcuts](Keyboard-Shortcuts.md): every menu command that has keys.
 
 ## Works with other v57 apps
 

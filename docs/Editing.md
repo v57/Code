@@ -1,8 +1,15 @@
 # Editing
 
-This page is about the Mac app. On iPhone and iPad, files open read-only: see [iPhone and iPad](iPhone-and-iPad.md).
+Write code with Xcode-style editing, completion, find and replace, jumps to definitions and Quick Help.
 
-## The editor
+## On the Mac
+
+<!-- only: linux windows -->
+On Linux and Windows, the editor is simpler than the Mac's: it has no minimap, no completion list and no **Editor**
+menu. Find in Project, Open Quickly, Go to Line, Quick Help and breakpoints work as described here.
+<!-- /only -->
+
+### The editor
 
 Code colors code in about twenty languages, among them Swift, Objective-C, C, C++, Rust, Go, JavaScript, TypeScript,
 Python, Java, Kotlin, C#, Ruby, PHP, Dart, Scala, Lua, Haskell, PowerShell and shell scripts. It also colors JSON,
@@ -11,7 +18,7 @@ YAML, TOML, HTML and XML, CSS, SQL, Markdown, Makefiles and Dockerfiles.
 The editor shows line numbers and highlights the current line. The status bar under it shows **Line:** and
 **Col:**, and the size of the selection. Click it to go to a line.
 
-### Saving
+#### Saving
 
 You don't need to save. Code saves a file about a second after you stop typing, and right away when you switch tabs,
 close it, switch to another app or quit. It writes the file in its own encoding.
@@ -22,7 +29,7 @@ every open file. If a save fails, the status bar says **Couldn’t save** and wh
 
 When a file changes on disk, the editor shows the new text, and you can undo back to yours.
 
-### Typing helps
+#### Typing helps
 
 Code edits like Xcode's source editor:
 
@@ -45,7 +52,7 @@ outdent a selection.
 Turn **Close brackets and quotes**, **Trim trailing whitespace**, the tab width and **Insert spaces when pressing Tab**
 on or off in [Settings ▸ Editor](Settings.md#editor).
 
-### View options
+#### View options
 
 In the **View** menu:
 
@@ -58,7 +65,7 @@ In the **View** menu:
 Choose the theme (Xcode Light and Dark, or GitHub Light and Dark), the font and the size in
 [Settings ▸ Editor](Settings.md#editor).
 
-## Completion
+### Completion
 
 The completion list opens while you type a name, or after a "." in languages that use one.
 
@@ -72,19 +79,24 @@ In Swift, the "(" of a call lists every initializer or function it could mean (`
 - A function's arguments come in as placeholders. Press Tab and ⇧Tab, or **Editor ▸ Select Next Placeholder** (⌃/)
   and **Select Previous Placeholder** (⌃⇧/), to move between them. Click a placeholder to select it whole.
 
-Suggestions come from the language server, from Code's own Swift model for Swift, and from the file's words and the
-language's keywords. Turn off **Suggest completions** in Settings ▸ Editor to open the list only with ⌃Space.
+Suggestions come from the language server, from Code's own models for Swift and Go files (Code's scanner for other
+languages), and from the file's words and the language's keywords. Turn off **Suggest completions** in Settings ▸ Editor to open the list only with ⌃Space.
 
-## Find
+### Find and replace
 
 - Press ⌘F to open the find bar over the current file.
-- **Find in Project…** (⇧⌘F, or **View ▸ Show Find Navigator**, ⌘3) searches every file Open Quickly would list,
-  including unsaved changes. Choose **Containing**, **Matching Word** or **Regular Expression**, and **Ignoring Case**
-  or **Matching Case**. Results come in by file as they're found. Click one to open the file with the match selected.
-  Text you selected in the editor becomes the search.
-- **View ▸ Show Project Navigator** (⌘1) goes back to the files.
+- **Edit ▸ Find in Project…** (⇧⌘F, or **View ▸ Show Find Navigator**, ⌥⌘3) searches every file Open Quickly would
+  list, including unsaved changes. Type in the sidebar's **Find in Project** field. Choose **Containing**,
+  **Matching Word** or **Regular Expression**, and **Ignoring Case** or **Matching Case**. Results come in by file as
+  they're found. Click one to open the file with the match selected. Text you selected in the editor becomes the
+  search.
+- **Edit ▸ Find and Replace in Project…** (⌥⇧⌘F), or **Replace** in place of **Find** in the navigator, adds a
+  **Replace with** field; each match shows what it becomes. In a regular expression, `$1` stands for a group.
+  **Replace** changes the selected match, or every match in the selected file. **Replace All** asks first: files that
+  aren't open are changed on disk, where Undo can't reach them.
+- **View ▸ Show Project Navigator** (⌥⌘1) goes back to the files.
 
-## Move around
+### Move around
 
 - **Go ▸ Open Quickly…** (⌘O): before you type, it lists the files and projects you opened lately and your last
   search's results. Type part of a file's, a symbol's (a type, function, property or case, in every language) or a
@@ -95,28 +107,28 @@ language's keywords. Turn off **Suggest completions** in Settings ▸ Editor to 
   the selected result, ⌘Return the first one in the second group (a matching project, say).
 - **Go ▸ Go to Line…** (⌘L): type a line number, or `line:column`.
 - **Go ▸ Reveal in Sidebar** (⇧⌘J): shows the current file in the sidebar.
-- **Go ▸ Go Back** (⌃⌘←) and **Go Forward** (⌃⌘→), or the arrows above the editor, go through the places you've
+- **Go ▸ Go Back** (⌃⌘←) and **Go Forward** (⌃⌘→), or the arrows in the toolbar, go through the places you've
   been.
 - **View ▸ Hide Navigator** (⌘0) hides the sidebar, and **Show Navigator** brings it back.
 
-## Jump to a definition
+### Jump to a definition
 
 ⌘-click a name, or put the caret in it and choose **Go ▸ Jump to Definition** (⌃⌘J). Hold ⌘ over a name to see it
 underlined with its declaration.
 
-Code asks up to three sources at once: its own scanner (fast guesses, any language), its Swift model (Swift only,
-usually exact) and the language server. When the answer is sure and there's one place, Code jumps there. When it's a
+Code asks up to three sources at once: its own scanner (fast guesses, any language), its code model for Swift and Go
+(usually exact) and the language server. When the answer is sure and there's one place, Code jumps there. When it's a
 guess, or there are several places, a menu under the name lists them; it fills in as slower sources answer, without
 moving the rows you've already passed.
 
 [Languages and Formatting](Languages-and-Formatting.md#jumping-and-completion) explains how to turn each source on or
 off.
 
-## Quick Help
+### Quick Help
 
 ⌥-click a name, or choose **Go ▸ Show Quick Help** (⌃⇧⌘/), to see its declaration and documentation in a popover.
 
-## Issues in the editor
+### Issues in the editor
 
 Errors and warnings from builds and language servers show on their lines: the line is tinted and the message shows at
 its end. Click the message to see all of the line's messages. An issue that both the build and the language server
@@ -124,3 +136,8 @@ report counts once.
 
 Turn **Show issues in the editor** and **Show issue messages** on or off in Settings ▸ Editor. For the list of every
 issue, see [Run, Build and Test](Run-Build-and-Test.md#issues).
+
+## On iPhone and iPad
+
+Code on iPhone and iPad has no editor: files open read-only, highlighted for their language. See
+[iPhone and iPad](iPhone-and-iPad.md#files).

@@ -47,12 +47,13 @@ A folder in the project that the Mac doesn't let you read is skipped, and a bann
 
 ## Build, Test and Clean
 
-The project's title says what it's doing: **Ready**, **Reading the project…**, the current step while building, then
-**Build succeeded**, **Build failed** or **Build stopped**.
+The project's title says what it's doing: **Ready**, **Reading the project…**, the current step while an action
+runs, then how it ended, such as **Build succeeded**, **Test failed** and why, or **Clean stopped**.
 
 - **On iPhone**, the scheme and device are under the title, and **Build**, **Test** and **Clean** are in the bottom
   bar.
-- **On iPad**, Build, Test and Clean lead the top bar, and the scheme, device and **Files** button are on its right.
+- **On iPad**, Build, Test and Clean lead the top bar, and the scheme, the device and the folder button
+  (**Files on *Mac***) are on its right.
 
 Tap **Build**, **Test** or **Clean** to run it on the Mac. Tap **Stop** to end it there. The buttons are off while an
 action runs, or when the scheme can't do that action. Clean deletes the scheme's build products on the Mac.
@@ -66,6 +67,12 @@ back to the list on iPhone, or picking another project on iPad) closes the conne
   the Mac. Xcode schemes come from the project's scheme files.
 - Tap the device to pick another one under **Other Machines**. Each says whether it's reached over SSH or through your
   Hub; one that can't be reached is greyed out.
+
+### Presets
+
+The presets you saved in Code on a Mac with **Keep in Vault** show as cards above **Log** and **Issues**. Tap one to
+run it with its own choices. A Run preset for a device connected to the Mac can't start from here, and its card
+says so.
 
 ### Signing for Xcode projects
 

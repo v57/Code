@@ -1,6 +1,22 @@
 # Keyboard Shortcuts
 
-These are the Mac app's shortcuts. The iPhone and iPad app has none of its own.
+Every menu command in Code that has keys, by menu, and the keys that work inside Code's lists and sheets. The iPhone
+and iPad app has no shortcuts of its own.
+
+<!-- only: linux windows -->
+On Linux and Windows, the shortcuts written with ⌘ here use Ctrl: Ctrl+S for Save, Ctrl+Shift+O for Open Folder.
+The **Editor** menu and **File ▸ Close Window** are on the Mac only.
+<!-- /only -->
+
+## Code
+
+| Command | Shortcut |
+|---|---|
+| Settings… | ⌘, |
+
+<!-- only: linux -->
+On Linux, Settings is **Edit ▸ Preferences…**.
+<!-- /only -->
 
 ## File
 
@@ -8,7 +24,7 @@ These are the Mac app's shortcuts. The iPhone and iPad app has none of its own.
 |---|---|
 | New File… | ⌘N |
 | New Window | ⇧⌘N |
-| Open Folder… (⌘O in a window without a project) | ⇧⌘O |
+| Open Folder… | ⇧⌘O, or ⌘O in a window without a project |
 | Save | ⌘S |
 | Save All | ⌥⌘S |
 | Open in New Window | ⇧⌘D |
@@ -16,12 +32,20 @@ These are the Mac app's shortcuts. The iPhone and iPad app has none of its own.
 | Close Other Tabs | ⌥⌘W, or ⌥-click a tab's close button |
 | Close Window | ⇧⌘W |
 
-## Edit and Editor
+**New Folder…**, **Open Recent**, **Close All Tabs** and **Keep Tab Open** have no keys.
+
+## Edit
 
 | Command | Shortcut |
 |---|---|
 | Find in the file | ⌘F |
 | Find in Project… | ⇧⌘F |
+| Find and Replace in Project… | ⌥⇧⌘F |
+
+## Editor
+
+| Command | Shortcut |
+|---|---|
 | Toggle Comment | ⌘/ |
 | Indent | ⌘] |
 | Outdent | ⌘[ |
@@ -36,13 +60,14 @@ While the completion list is open: ↑ and ↓ choose, Return or Tab inserts, Es
 | Command | Shortcut |
 |---|---|
 | Show or Hide Navigator | ⌘0 |
-| Show Project Navigator | ⌘1 |
-| Show Find Navigator | ⌘3 |
-| Show Issues | ⌘5 |
-| Show or Hide Hidden Files (in Open Quickly: include them) | ⇧⌘. |
+| Show Project Navigator | ⌥⌘1 |
+| Show Find Navigator | ⌥⌘3 |
+| Hidden Files ▸ Show or Hide Hidden Files (while Open Quickly is open: Include or Leave Out Hidden Files) | ⇧⌘. |
 | Wrap Lines | ⌥Z |
 | Minimap | ⌃⇧⌘M |
 | Show or Hide Console | ⇧⌘Y |
+| Show or Hide Preview | ⌥⌘P |
+| Show Issues | ⌥⌘5 |
 | Zoom In | ⌘+ |
 | Zoom Out | ⌘- |
 | Actual Size | ⌃⌘0 |
@@ -52,7 +77,6 @@ While the completion list is open: ↑ and ↓ choose, Return or Tab inserts, Es
 | Command | Shortcut |
 |---|---|
 | Open Quickly… | ⌘O |
-| Open the first result of Open Quickly's second group | ⌘↩ |
 | Go to Line… | ⌘L |
 | Next Tab | ⇧⌘] |
 | Previous Tab | ⇧⌘[ |
@@ -61,6 +85,8 @@ While the completion list is open: ↑ and ↓ choose, Return or Tab inserts, Es
 | Show Quick Help | ⌃⇧⌘/, or ⌥-click |
 | Go Back | ⌃⌘← |
 | Go Forward | ⌃⌘→ |
+
+In Open Quickly: ↑ and ↓ choose, Return opens, ⌘Return opens the first result of the second group, and Esc closes it.
 
 ## Product
 
@@ -71,6 +97,10 @@ While the completion list is open: ↑ and ↓ choose, Return or Tab inserts, Es
 | Build | ⌘B |
 | Clean Build Folder | ⇧⌘K |
 | Stop | ⌘. |
+| Run Preset ▸ the first nine presets | ⌘1 to ⌘9 |
+
+**Install**, **Export…**, **Upload to App Store**, **Notarization Settings…**, **Save Preset…**, **Refresh Schemes**
+and **Refresh Run Destinations** have no keys.
 
 ## Debug
 
@@ -83,8 +113,9 @@ While the completion list is open: ↑ and ↓ choose, Return or Tab inserts, Es
 | Activate or Deactivate Breakpoints | ⌘Y |
 | Add or Remove Breakpoint at Current Line | ⌘\ |
 
-## Settings
+**Delete All Breakpoints** has no keys.
 
-| Command | Shortcut |
-|---|---|
-| Settings… | ⌘, |
+## Elsewhere
+
+- A run's card over the editor closes with Esc.
+- In a sheet, Return confirms and Esc cancels.

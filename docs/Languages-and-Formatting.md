@@ -1,9 +1,12 @@
 # Languages and Formatting
 
-This page is about the Mac app. Everything here is in **Settings ▸ Languages** and **Settings ▸ Formatting** (open
+Choose the language servers that give Code definitions, issues and completions, how Code answers jumps, and which
+formatters run when you save. Everything here is in **Settings ▸ Languages** and **Settings ▸ Formatting** (open
 settings with ⌘,).
 
-## Language servers
+## On the Mac
+
+### Language servers
 
 A language server gives Code a language's definitions, issues and completions. Code bundles none: you install each
 one from its official source, and Code finds it on your PATH.
@@ -21,19 +24,19 @@ languages it covers and where it's installed.
 
 A server runs for each project in the folder, so a folder with several projects gets one per project.
 
-### Code's built-in server
+#### Code's built-in server
 
-Code has its own language server for every language it colors. It runs inside Code and contacts nothing. It's used
-for a language that has no other server installed, or when the others are off, and it's the only server in a folder
-you haven't trusted (see [Privacy and Security](Privacy-and-Security.md#trusting-a-folder)).
+Code has its own language server for every language it colors, listed as **Code’s scanner**. It runs inside Code
+and contacts nothing. It's used for a language that has no other server installed, or when the others are off, and
+it's the only server in a folder you haven't trusted (see [Privacy and Security](Privacy-and-Security.md#trusting-a-folder)).
 
-### Swift in Xcode projects
+#### Swift in Xcode projects
 
 SourceKit-LSP doesn't read Xcode projects by itself. In a trusted folder, Code gives it the build settings of the
 Xcode scheme you picked in the toolbar, so files in Xcode targets get definitions and issues. Other modules resolve
 once the scheme has been built.
 
-## Jumping and completion
+### Jumping and completion
 
 When you jump to a definition or complete a name, Code asks up to three sources together. The fastest answer shows
 first and the slower ones update it. Turn a source off in **Settings ▸ Languages ▸ Jumping and completion** to save
@@ -46,7 +49,7 @@ memory and power:
   sure, and always in other languages. **Always** lets its answer decide each jump. **Never** stops asking it for
   definitions; it still reports issues and completes.
 
-## Formatting on save
+### Formatting on save
 
 When **Format when saving** is on in **Settings ▸ Formatting**, ⌘S formats the file before writing it. The change is
 one step you can undo, and only what changed is touched. Saving on its own (autosave) never formats.
@@ -64,6 +67,15 @@ For each formatter, under **Formatters**:
 **Code’s formatter** formats files no formatter above applies to, in any language. It's off at first. If its result
 would change the code's meaning, it leaves the file as it was.
 
+<!-- only: windows -->
+On Windows, the formatters listed under **Formatters** don't run yet.
+<!-- /only -->
+
 In a folder you haven't trusted, Code uses only formatters from your PATH, never one installed inside the project,
 and skips a formatter whose config is code, such as a JavaScript Prettier config. See
 [Privacy and Security](Privacy-and-Security.md#trusting-a-folder).
+
+## On iPhone and iPad
+
+Code on iPhone and iPad runs no language servers or formatters: it shows files read-only, highlighted for their
+language.
