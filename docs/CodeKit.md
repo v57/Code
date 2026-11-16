@@ -20,8 +20,8 @@ What it adds:
   Go's) and the language server together, and deciding when to jump and when to show a menu.
 
 CodeKit is not a separate library of features: everything it shows comes from the libraries it re-exports.
-[CodeScan](CodeScan.md), CodePretty, [CodeSwiftModel](CodeSwiftModel.md) and [CodeGoModel](CodeGoModel.md) are used
-inside but not re-exported; [CodeActionsUI](CodeActionsUI.md) and CodeServer are separate products. It links all of
+[CodeScan](CodeScan.md), CodePretty, [CodeSwiftModel](CodeSwiftModel.md), [CodeGoModel](CodeGoModel.md) and
+[CodeTypeScriptModel](CodeTypeScriptModel.md) are used inside but not re-exported; [CodeActionsUI](CodeActionsUI.md) and CodeServer are separate products. It links all of
 them, so take a single library when that is all you need.
 
 ## Platforms
@@ -222,5 +222,6 @@ the AppKit ones need a Mac. The last line checks that the libraries still build 
   `CodeEditorView` puts together.
 - [CodeActions](CodeActions.md), [CodeLSP](CodeLSP.md), [CodeFormatting](CodeFormatting.md): what `ProjectServices`
   runs.
-- [CodeScan](CodeScan.md), [CodeSwiftModel](CodeSwiftModel.md), [CodeGoModel](CodeGoModel.md): the fast tiers.
+- [CodeScan](CodeScan.md), [CodeSwiftModel](CodeSwiftModel.md), [CodeGoModel](CodeGoModel.md),
+  [CodeTypeScriptModel](CodeTypeScriptModel.md): the fast tiers.
 - [CodeFolders](CodeFolders.md): folder trust.

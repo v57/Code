@@ -12,7 +12,8 @@ compiler and no types:
   inside Code's own binary.
 
 They are lexical, and that is the line between them and real language servers: an answer is a ranked guess, never a
-resolved type. For Swift and Go, [CodeSwiftModel](CodeSwiftModel.md) and [CodeGoModel](CodeGoModel.md) answer with
+resolved type. For Swift, Go and TypeScript, [CodeSwiftModel](CodeSwiftModel.md), [CodeGoModel](CodeGoModel.md) and
+[CodeTypeScriptModel](CodeTypeScriptModel.md) answer with
 types read from source; for every language, a real server through [CodeLSP](CodeLSP.md) has the compiler's answer.
 
 ## Platforms
