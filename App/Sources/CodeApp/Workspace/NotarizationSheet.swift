@@ -8,12 +8,16 @@ import SwiftUI
 struct NotarizationSetupRequest: Identifiable {
   let id = UUID()
   var exportsWhenDone = false
+  /// The project the Export is for when no window shows it (the Projects list's Export…); else this window's.
+  var target: WindowModel?
 }
 
 /// What opened the Upload to App Store sheet: the scheme waiting for its build number.
 struct AppStoreUploadRequest: Identifiable {
   let id = UUID()
   let scheme: ActionScheme
+  /// The project it uploads when no window shows it (the Projects list's Upload to App Store); else this window's.
+  var target: WindowModel?
 }
 
 /// The notarytool keychain profile Export passes as `NOTARY_PROFILE`, saved
@@ -36,7 +40,7 @@ struct NotarizationSheet: View {
   var body: some View {
     NotarizationSetupView(profile: NotarySettings.profile, exportsWhenDone: request.exportsWhenDone) { profile in
       NotarySettings.profile = profile
-      if request.exportsWhenDone { model.perform(.export) }
+      if request.exportsWhenDone { (request.target ?? model).perform(.export) }
     }
   }
 }

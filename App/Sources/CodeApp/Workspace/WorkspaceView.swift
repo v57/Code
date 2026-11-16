@@ -67,7 +67,7 @@ struct WorkspaceView: View {
       NotarizationSheet(request: request)
     }
     .kitSheet(item: $model.appStoreUpload) { request in
-      AppStoreUploadView(scheme: request.scheme) { model.upload(request.scheme, buildNumber: $0) }
+      AppStoreUploadView(scheme: request.scheme) { (request.target ?? model).upload(request.scheme, buildNumber: $0) }
     }
     .kitConfirmation(
       "Move “\(model.trashCandidate?.lastPathComponent ?? "")” to the Trash?",

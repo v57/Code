@@ -32,6 +32,7 @@ struct ProjectsSection<FileTree: View, Accessory: View, Fallback: View>: View {
   @Environment(Workspace.self) private var workspace
   @Environment(WindowModel.self) private var model
   @Environment(\.vault) private var vault
+  @Environment(\.showToast) private var showToast
   @KitStorage("welcome.collapsedGroups") private var collapsedGroups = KitIDSet()
   /// The projects and groups removed from Code's lists (vault ids).
   @KitStorage(RemovedProjects.key) private var removed = KitIDSet()
@@ -74,6 +75,11 @@ struct ProjectsSection<FileTree: View, Accessory: View, Fallback: View>: View {
           .font(.caption2)
           .foregroundStyle(Hue.green.fill)
           .kitHelp("Running", meta: "Show the project to see or stop it")
+      } else if let folder = project.localURL, let failure = AppState.shared.backgroundFailure(folder) {
+        Image(systemName: "exclamationmark.triangle.fill")
+          .font(.caption2)
+          .foregroundStyle(Hue.red.fill)
+          .kitHelp("\(failure)", meta: "Show the project to see its log")
       }
     }
     .rowMenu { project in
@@ -81,7 +87,15 @@ struct ProjectsSection<FileTree: View, Accessory: View, Fallback: View>: View {
         Button("Stop", systemImage: "stop.fill") { AppState.shared.stopBackgroundProject(folder) }
           .kitMenuPreview("Stops what’s running in \(project.name).")
       }
+      if let folder = project.localURL, let failure = AppState.shared.backgroundFailure(folder) {
+        Button("Show Log", systemImage: "text.alignleft") { open(folder) }
+          .kitMenuPreview("\(failure) Shows \(project.name) here with its log.")
+        Button("Dismiss Failure", systemImage: "xmark") { AppState.shared.dismissBackgroundFailure(folder) }
+          .kitMenuPreview("Forgets the failure and its log.")
+      }
       if let folder = project.localURL {
+        ProjectQuickActions(project: project, folder: folder, host: model, vault: vault, showToast: showToast)
+        Divider()
         Button("Open in New Window", systemImage: "macwindow.badge.plus") { AppState.shared.open(folder) }
           .disabled(folder.standardizedFileURL == root)
           .kitMenuPreview(

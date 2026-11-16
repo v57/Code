@@ -39,6 +39,7 @@ public struct CodeApp: App {
         // Screenshots show every row the window has room for, never one still on its way.
         .kitLazyLoading(!ScreenshotDemo.isOn)
         .vaultHostKeyRequests()
+        .kitToasts()
         .componentKit()
     }
     .defaultSize(width: 1200, height: 800)

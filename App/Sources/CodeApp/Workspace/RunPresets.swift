@@ -54,11 +54,22 @@ import VaultKit
 
   /// Every preset in the bar's order.
   var items: [Item] {
-    var all = filePresets.enumerated().map { Item(preset: $1, place: .file($0), id: "file:" + $1.name) }
+    Self.items(file: filePresets, vault: vault, project: vaultProject, order: order)
+  }
+
+  /// The presets of a project no window shows, in its bar's order (the Projects list's menu): read from its file now.
+  static func items(in root: URL, vault: Vault?) -> [Item] {
+    items(
+      file: (try? RunPresetFile.read(in: root)) ?? [], vault: vault, project: vault?.project(atPath: root.path),
+      order: UserDefaults.standard.stringArray(forKey: "presets.order:" + root.path) ?? [])
+  }
+
+  private static func items(file: [RunPreset], vault: Vault?, project: VaultProject?, order: [String]) -> [Item] {
+    var all = file.enumerated().map { Item(preset: $1, place: .file($0), id: "file:" + $1.name) }
     // The same name twice in the file: the later one keeps its place by its index.
     var seen: Set<String> = []
     for index in all.indices where !seen.insert(all[index].id).inserted { all[index].id += "#\(index)" }
-    if let project = vaultProject, let vault {
+    if let project, let vault {
       all += vault.presets(of: project.id).compactMap { record in
         guard let action = ActionKind(rawValue: record.action) else { return nil }
         let preset = RunPreset(

@@ -363,6 +363,20 @@
         {
           model.workspace.tree.setExpanded(node, argument[argument.index(after: colon)...] != "off")
         }
+      case "quick":
+        // The Projects list's quick actions: quick:<run|install|export|upload|preset name>:<folder>.
+        guard let colon = argument.firstIndex(of: ":") else { break }
+        let name = String(argument[..<colon])
+        let folder = URL(fileURLWithPath: String(argument[argument.index(after: colon)...]), isDirectory: true)
+        let action: ProjectQuickAction? =
+          ActionKind(rawValue: name).map { .action($0) }
+          ?? (AppState.shared.liveModel(for: folder)?.presets.items ?? RunPresets.items(in: folder, vault: Vault.shared))
+          .first { $0.preset.name == name }.map { .preset($0) }
+        if let action {
+          AppState.shared.perform(action, in: folder, name: folder.lastPathComponent, host: model) {
+            AppState.shared.debugToasts.append($0)
+          }
+        }
       case "switchproject":
         // The sidebar's Projects card: switchproject:<folder> shows it in this window.
         model.switchProject(URL(fileURLWithPath: argument, isDirectory: true))
@@ -439,6 +453,9 @@
         }
         lines.append("running: \(actions.runningScheme?.name ?? "-") on \(actions.runningDestination?.name ?? "-") tag \(actions.runningTag ?? "-")")
         lines.append("history: back \(services.canGoBack) forward \(services.canGoForward)")
+        lines.append("background: \(AppState.shared.debugBackgroundSummary)")
+        lines.append("toasts: \(AppState.shared.debugToasts)")
+        lines.append("sheets: upload \(model.appStoreUpload.map { "\($0.scheme.name) for \($0.target?.workspace.name ?? "this")" } ?? "-") notarization \(model.notarizationSetup.map { $0.target?.workspace.name ?? "this" } ?? "-")")
         lines.append(
           "detached: "
             + model.workspace.detachedDocuments.map { document in

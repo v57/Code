@@ -64,6 +64,12 @@ import SwiftUI
   @ObservationIgnored var switchProject: (URL) -> Void = { AppState.shared.open($0) }
   /// The window switched to another project while an action runs: the services stay up (`AppState.keepInBackground`).
   @ObservationIgnored var isInBackground = false
+  /// A project no window shows, loaded for a quick action of the Projects list (`AppState.perform(_:in:…)`): an
+  /// action it starts keeps it in the background until the action ends.
+  @ObservationIgnored var keepsRunsInBackground = false
+  /// The window that asks this project's questions (Upload's build number, Export's notarization) while no window
+  /// shows it.
+  @ObservationIgnored weak var sheetHost: WindowModel?
   var sidebarSelection: URL?
   /// The navigator (sidebar) column, toggled with ⌘0.
   var isNavigatorVisible = true
@@ -119,7 +125,9 @@ import SwiftUI
       }
     }
     services.actions.addFinishHandler { [weak self] _, _ in
-      if let self, self.isInBackground { AppState.shared.backgroundProjectFinished(self) }
+      if let self, self.isInBackground, !self.services.actions.isRunning {
+        AppState.shared.backgroundProjectFinished(self)
+      }
     }
     SymbolMenuPanel.install(on: self)
   }
@@ -191,19 +199,28 @@ import SwiftUI
   /// and Upload for its build number.
   func perform(_ kind: ActionKind) {
     guard services.settings.actionsEnabled else { return }
+    // Without a window of its own, the window whose Projects list started it asks.
+    let host = keepsRunsInBackground || isInBackground ? sheetHost ?? self : self
+    let target = host === self ? nil : self
     if kind == .upload, let scheme = services.actions.selectedScheme {
-      appStoreUpload = AppStoreUploadRequest(scheme: scheme)
+      host.appStoreUpload = AppStoreUploadRequest(scheme: scheme, target: target)
       return
     }
     var environment: [String: String] = [:]
     if kind.needsNotarization {
       guard let profile = NotarySettings.profile else {
-        notarizationSetup = NotarizationSetupRequest(exportsWhenDone: true)
+        host.notarizationSetup = NotarizationSetupRequest(exportsWhenDone: true, target: target)
         return
       }
       environment["NOTARY_PROFILE"] = profile
     }
+    keepInBackgroundIfWindowless()
     services.actions.perform(kind, environment: environment)
+  }
+
+  /// A project loaded for a quick action stays up (in the background) once it starts one.
+  private func keepInBackgroundIfWindowless() {
+    if keepsRunsInBackground, !isInBackground { AppState.shared.keepInBackground(self) }
   }
 
   /// Save Preset…: the popover under the Run button, filled from the toolbar.
@@ -219,8 +236,16 @@ import SwiftUI
     presets.run(items[index])
   }
 
+  /// Runs a preset with its own choices (the Projects list's menu).
+  func run(_ item: RunPresets.Item) {
+    guard services.settings.actionsEnabled else { return }
+    keepInBackgroundIfWindowless()
+    presets.run(item)
+  }
+
   /// Starts the Upload the sheet asked about.
   func upload(_ scheme: ActionScheme, buildNumber: String) {
+    keepInBackgroundIfWindowless()
     services.actions.perform(
       .upload, scheme: scheme, destination: services.actions.selectedDestination,
       environment: [AppStoreUpload.buildNumberVariable: buildNumber])
