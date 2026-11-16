@@ -132,6 +132,27 @@ import Testing
     )
     #expect(xcode.xcodeArguments == "-derivedDataPath \(derived) -project App.xcodeproj -scheme App")
 
+    // Install's, Export's and Upload's archives as the detector writes them: through xcodebuild-release (quoted when
+    // its path has a space) and plain xcodebuild alike, never xcodebuild -exportArchive.
+    let base = "xcodebuild -workspace 'App Local.xcworkspace' -scheme App"
+    let distribution = ActionScheme(
+      name: "App", toolchain: .xcode, directory: app,
+      commands: XcodeDetector.distributionCommands(base, scheme: "App", mac: true).merging([
+        .lint: "if [ -x '/Apps/My Code.app/xcodebuild-release' ]; then '/Apps/My Code.app/xcodebuild-release' -project App.xcodeproj archive; fi"
+      ]) { $1 },
+      xcodeContainer: "App Local.xcworkspace"
+    ).inBuildFolders(folders)
+    for kind in [ActionKind.install, .export, .upload, .lint] {
+      let command = try #require(distribution.commands[kind])
+      let builds = command.components(separatedBy: " -workspace 'App Local.xcworkspace' ").count
+        + command.components(separatedBy: " -project App.xcodeproj ").count - 2
+      #expect(builds > 0)
+      #expect(command.components(separatedBy: "-derivedDataPath \(derived) -").count - 1 == builds, "\(kind)")
+      #expect(!command.contains("-derivedDataPath \(derived) -exportArchive"))
+    }
+    #expect(
+      XcodeDetector.distributionCommands(base, scheme: "App", mac: true)[.export]?.contains("xcodebuild-release") == true)
+
     let cargo = ActionScheme(
       name: "cli", toolchain: .cargo, directory: app,
       commands: [.build: "cargo build -p cli --bin cli", .lint: "cargo clippy"], executable: "target/debug/cli"

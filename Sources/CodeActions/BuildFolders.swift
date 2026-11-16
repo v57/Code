@@ -187,11 +187,7 @@ extension ActionScheme {
     case .xcode:
       guard let path = folders.instance(.xcode, for: directory)?.path else { return self }
       scheme.derivedDataPath = path
-      let flag = "xcodebuild -derivedDataPath \(shellQuote(path)) "
-      scheme.commands = commands.mapValues {
-        $0.replacingOccurrences(of: "xcodebuild -project ", with: flag + "-project ")
-          .replacingOccurrences(of: "xcodebuild -workspace ", with: flag + "-workspace ")
-      }
+      scheme.commands = commands.mapValues { Self.xcodeCommand($0, derivedDataPath: path) }
     case .swiftPM:
       guard let path = folders.instance(.swiftpm, for: directory)?.path else { return self }
       scheme.commands = commands.mapValues { Self.swiftCommand($0, scratchPath: path) }
@@ -205,4 +201,15 @@ extension ActionScheme {
     }
     return scheme
   }
+
+  /// `command` with `-derivedDataPath` before each `-project`/`-workspace` given to xcodebuild, also through
+  /// `xcodebuild-release` (Install's and Export's archive, `ReleaseTools.linked`), quoted or not.
+  static func xcodeCommand(_ command: String, derivedDataPath path: String) -> String {
+    let template = NSRegularExpression.escapedTemplate(for: "-derivedDataPath \(shellQuote(path)) ")
+    return xcodeContainerFlag.stringByReplacingMatches(
+      in: command, range: NSRange(command.startIndex..., in: command), withTemplate: "$1 \(template)$2 ")
+  }
+
+  private static let xcodeContainerFlag = try! NSRegularExpression(
+    pattern: #"(\bxcodebuild(?:-release)?['"]?) (-project|-workspace) "#)
 }
