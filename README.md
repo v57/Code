@@ -80,6 +80,11 @@ Libraries
                        (offline); definitions, completions, references and
                        details (`code-model` measures any language's model;
                        numbers in ../Demos/CodeModelBench/go)
+    CodeTypeScriptModel  a TypeScript and JavaScript code model on CodeModel
+                       from source: tsconfig paths, node_modules' types and
+                       TypeScript's lib files (never downloaded); definitions,
+                       completions, references and details (numbers in
+                       ../Demos/CodeModelBench/ts)
     CodeKit            re-exports them all; CodeEditorView(document:) edits a
                        workspace document (autosave, reload, ⌘S trimming,
                        minimap, issues, breakpoints); ProjectServices connects

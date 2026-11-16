@@ -1,6 +1,7 @@
 import CodeGoModel
 import CodeModel
 import CodeSwiftModel
+import CodeTypeScriptModel
 import Foundation
 
 #if os(Windows)
@@ -17,10 +18,10 @@ import Foundation
 // code-model files --root <dir> [--language go]: every file it reads, with its module
 //
 // The language: --language (a name or an extension), else the file named by --at or the queries, else the root's
-// manifest (go.mod, Package.swift).
+// manifest (go.mod, Package.swift, tsconfig.json).
 
 /// Every language with a model. A new front end adds itself here and in CodeKit's `CodeTiers.languages`.
-let languages: [ModelLanguage] = [.swift, .go]
+let languages: [ModelLanguage] = [.swift, .go, .typeScript]
 
 func option(_ flag: String) -> String? {
   guard let at = CommandLine.arguments.firstIndex(of: flag), at + 1 < CommandLine.arguments.count else { return nil }
