@@ -76,9 +76,11 @@ tests.
 | [CodeServer](CodeScan.md#codeserver) | A language server for every language (`code-lsp`) | macOS, Windows, Linux | `import CodeServer` |
 | [CodeModel](CodeSwiftModel.md#codemodel-the-core) | The language-neutral core of a code model: declarations, files, modules, answers | macOS, iOS, Linux, Windows | `import CodeModel` |
 | [CodeSwiftModel](CodeSwiftModel.md) | A Swift code model from source: definitions, completions, references | macOS; Linux, Windows, iOS without the SDK | `import CodeSwiftModel` |
+| [CodeGoModel](CodeGoModel.md) | A Go code model from source: definitions, completions, references | macOS, Linux, Windows; iOS without GOROOT | `import CodeGoModel` |
 
-The package also builds three tools: `code-lsp` (CodeServer's server on standard input and output), `code-pretty`
-(CodePretty over files and folders) and `swift-model` (measures CodeSwiftModel on a project). Android is not supported
+The package also builds four tools: `code-lsp` (CodeServer's server on standard input and output), `code-pretty`
+(CodePretty over files and folders), `swift-model` (measures CodeSwiftModel on a project) and `code-model` (measures
+any language's model, Swift's or Go's, chosen by the files or `--language`). Android is not supported
 yet by any library.
 
 Run every test with `swift test` at the repository root.

@@ -40,15 +40,23 @@ front end on it. The core has:
 - `Ty`, `Answer`, `Finding`, `SymbolDetails`, completion's list and entry types (`ModelCompletionList`; `Model…` so
   they don't clash with CodeAutocompletion's) and its matching of what's typed (`matchClass`);
 - places, locations and the reference search (a name filter over the project's files, each hit resolved by the front
-  end).
+  end);
+- what more than one language turned out to need: completion's ranking (`rankCompletions`, given the front end's hits
+  as `ModelCompletionHit`s), members by name across the project (`membersNamed`, for candidates when a receiver's type
+  can't be told), a token's chain of enclosing declarations (`Unit.chain`), the doc comment above a declaration
+  (`Unit.documentation`, with the language's line and block prefixes) and `SymbolPart`s for declarations and modules;
+- `LanguageModel`, what every model answers (answer, references, complete, details, place), and `ModelLanguage`, a
+  language's file extensions, manifests and how to make its model: CodeKit's model tier and the `code-model` tool ask
+  any language through them (`ModelLanguage.swift`, `ModelLanguage.go`).
 
 A front end gives it two objects: a `LanguageSyntax` (its lexer profile, a parser that fills a unit's tables and returns
 its shape, and how a condition of conditional compilation reads) and a `ProjectLayout` (its source files, a file's
 module, where a module an import names is found, the modules every file sees). Swift's are `SwiftSyntax` and
-`SwiftLayout` (a package's manifest, sibling packages, the SDK's interfaces and Clang headers). The resolver, member
-tables, completion contexts and symbol details stay in CodeSwiftModel: they follow Swift's rules (conditional
-conformances, raw values, `@dynamicMemberLookup`, argument labels) and get shared hooks once a second language shows
-which parts are really alike.
+`SwiftLayout` (a package's manifest, sibling packages, the SDK's interfaces and Clang headers); Go's are in
+[CodeGoModel](CodeGoModel.md). The resolver, member tables, completion contexts and the type of an expression stay in
+each front end: Swift's follow its rules (conditional conformances, raw values, `@dynamicMemberLookup`, argument
+labels), Go's its own (method sets through embedding, package-qualified names, build constraints), and the two shared
+too little of them to move.
 
 ## Getting started
 

@@ -75,6 +75,11 @@ Libraries
                        completions, references; the SDK's interfaces and
                        Clang headers read when asked (`swift-model`
                        measures it; numbers in ../Demos/SwiftModel)
+    CodeGoModel        a Go code model on CodeModel from source: modules from
+                       go.mod, build constraints, GOROOT and the module cache
+                       (offline); definitions, completions, references and
+                       details (`code-model` measures any language's model;
+                       numbers in ../Demos/CodeModelBench/go)
     CodeKit            re-exports them all; CodeEditorView(document:) edits a
                        workspace document (autosave, reload, ⌘S trimming,
                        minimap, issues, breakpoints); ProjectServices connects
