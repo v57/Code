@@ -1,22 +1,8 @@
+import CodeModel
 import CodeScan
 import Foundation
 
-/// Types are read from their tokens when someone asks, then kept. `unknown` absorbs: nothing on it is answered or reported.
-indirect enum Ty: Hashable {
-  case unknown
-  case module(Name)
-  case nominal(DeclRef, [Ty])
-  case meta(Ty)
-  case tuple([Ty], [Name])
-  case function([Ty], Ty)
-  case optional(Ty)
-  case param(Name, DeclRef?)
-  case selfType
-  case existential([Ty])
-  /// `S.Element`, of a parameter that isn't known yet: not the receiver's `Element`.
-  case dependent(Ty, Name)
-}
-
+/// Swift's types, read from their tokens when someone asks (`Ty`, the core's), then kept.
 extension Model {
   func unit(_ ref: DeclRef) -> Unit { project.units[Int(ref.unit)] }
   func decl(_ ref: DeclRef) -> Decl { project.units[Int(ref.unit)].decls[Int(ref.decl)] }
@@ -306,7 +292,7 @@ extension Model {
       for g in 0..<Int(owner.genericCount) where unit.generics[Int(owner.genericStart) + g].name == typeName {
         return .param(typeName, ref)
       }
-      if let scan = unit.scans[index], let found = scan.local(named: typeName, at: token), case .declaration(let local) = scan.locals[Int(found)].kind,
+      if let facts = unit.scans[index], case let scan = unsafeDowncast(facts, to: BodyScan.self), let found = scan.local(named: typeName, at: token), case .declaration(let local) = scan.locals[Int(found)].kind,
         unit.decls[Int(local)].kind.isType
       {
         return typeOfTypeDecl(DeclRef(unit: unitIndex, decl: local), args: args)

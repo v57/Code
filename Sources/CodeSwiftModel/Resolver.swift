@@ -1,3 +1,4 @@
+import CodeModel
 import CodeScan
 import Foundation
 
@@ -8,15 +9,6 @@ let contextualWords: Set<Name> = Set(
     "optional", "override", "dynamic", "mutating", "nonmutating", "indirect", "convenience", "async", "await", "actor", "package", "default",
     "precedence", "associativity", "assignment", "didSet", "willSet", "of", "macro", "consuming", "borrowing", "each", "isolated",
   ].map(hashName))
-
-public enum AnswerState: String { case exact, candidates, unknown }
-
-public struct Answer {
-  public var state: AnswerState
-  public var sites: [Site]
-  /// Candidates only because they have the right name, as the receiver's type couldn't be told.
-  public var byNameOnly = false
-}
 
 /// A step of a chain: what's named, then what happens to its value.
 enum Head {
@@ -256,7 +248,7 @@ public final class Model {
 
   func scan(unitIndex: Int32, owner: Int32) -> BodyScan {
     let unit = project.units[Int(unitIndex)]
-    if let known = unit.scans[owner] { return known }
+    if let known = unit.scans[owner] { return unsafeDowncast(known, to: BodyScan.self) }
     let scan = BodyScan(unit: unit, owner: owner)
     unit.scans[owner] = scan
     return scan
@@ -610,7 +602,7 @@ public final class Model {
   /// With a limit, only what comes before it: code being typed, where what follows isn't part of the chain. That isn't kept.
   func evaluate(unitIndex: Int32, start: Int32, limit: Int32? = nil) -> ChainResult {
     let unit = project.units[Int(unitIndex)]
-    if limit == nil, let known = unit.chains[start] { return known }
+    if limit == nil, let known = unit.chains[start] { return unsafeDowncast(known, to: ChainResult.self) }
     let id = key(unitIndex, start) ^ (limit.map { UInt64(UInt32(bitPattern: $0)) << 1 | 1 } ?? 0)
     let result = ChainResult()
     if depth >= 48 { cycleBase = 0 }
@@ -2234,74 +2226,11 @@ public final class Model {
   }
 
   /// A declaration's place: `path` relative to the root, or `sdk:<module>.swiftinterface`.
-  public func place(of site: Site) -> (path: String, line: Int)? {
-    switch site {
-    case .decl(let ref):
-      let holder = unit(ref)
-      return placeOf(holder, token: Int(decl(ref).nameToken))
-    case .local(let unit, let token), .generic(let unit, let token):
-      return placeOf(project.units[Int(unit)], token: Int(token))
-    case .module(let moduleName):
-      return ("sdk:" + (project.modules[moduleName]?.publishedName ?? "?") + ".swiftinterface", 1)
-    }
-  }
+  public func place(of site: Site) -> (path: String, line: Int)? { project.place(of: site) }
 
-  /// Where a site is on disk, for an editor to open: a file in the project, a `.swiftinterface` in the SDK, or the header
-  /// a Clang declaration was read from. Line and character from 0, the character in UTF-16 units; `name` is what's
-  /// declared there. Nil for a module.
+  /// Where a site is on disk, for an editor to open (`Project.location(of:)`).
   public func location(of site: Site) -> (path: String, line: Int, character: Int, name: String, preview: String)? {
-    let holder: Unit
-    let token: Int
-    switch site {
-    case .decl(let ref):
-      holder = unit(ref)
-      token = Int(decl(ref).nameToken)
-    case .local(let unitIndex, let index), .generic(let unitIndex, let index):
-      holder = project.units[Int(unitIndex)]
-      token = Int(index)
-    case .module:
-      return nil
-    }
-    guard token >= 0, token < holder.tokens.count else { return nil }
-    let start = holder.tokens[token].start
-    let end = holder.tokens[token].end
-    let bytes = holder.source.bytes
-    let name = String(decoding: UnsafeBufferPointer(rebasing: bytes[start..<end]), as: UTF8.self)
-    let line = holder.source.lines.line(of: start)
-    let lineStart = holder.source.lines.offset(line: line, character: 0, in: holder.source.text)
-    var lineEnd = lineStart
-    while lineEnd < bytes.count, bytes[lineEnd] != 10 { lineEnd += 1 }
-    // The declaration's line as Swift, also for a header's (its generated Swift reads better than the C).
-    let preview = String(
-      String(decoding: UnsafeBufferPointer(rebasing: bytes[lineStart..<lineEnd]), as: UTF8.self)
-        .trimmingCharacters(in: .whitespaces).prefix(160))
-    if !holder.headerLines.isEmpty {
-      guard line < holder.headerLines.count else { return nil }
-      let entry = holder.headerLines[line]
-      return (holder.headerFiles[Int(entry.header)], max(0, Int(entry.line) - 1), 0, name, preview)
-    }
-    let character = String(decoding: UnsafeBufferPointer(rebasing: bytes[lineStart..<start]), as: UTF8.self).utf16.count
-    return (holder.path, line, character, name, preview)
-  }
-
-  private func placeOf(_ unit: Unit, token: Int) -> (path: String, line: Int)? {
-    guard token >= 0, token < unit.tokens.count else { return nil }
-    let line = unit.source.lines.line(of: unit.tokens[token].start) + 1
-    if !unit.headerLines.isEmpty, line - 1 < unit.headerLines.count {
-      // The real header's line, named with its module first as the scorer reads it.
-      let entry = unit.headerLines[line - 1]
-      let moduleName = project.modules[unit.moduleName]?.publishedName ?? "?"
-      let file = URL(fileURLWithPath: unit.headerFiles[Int(entry.header)]).lastPathComponent
-      return ("sdk:" + moduleName + "." + file, Int(entry.line))
-    }
-    if unit.isInterface {
-      let moduleName = project.modules[unit.moduleName]?.publishedName ?? "?"
-      return ("sdk:" + moduleName + ".swiftinterface", line)
-    }
-    let root = project.root
-    if unit.path.hasPrefix(root + "/") { return (String(unit.path.dropFirst(root.count + 1)), line) }
-    // Outside the root, as the reference writes it.
-    return ("sdk:" + URL(fileURLWithPath: unit.path).lastPathComponent, line)
+    project.location(of: site)
   }
 
   /// A name filter over the project's files, then each hit resolved: a reference is only what lands on the target.
@@ -2316,7 +2245,8 @@ public final class Model {
     case .local(let unit, let token), .generic(let unit, let token):
       searched = project.units[Int(unit)].hash(Int(token))
       // `oldValue` is reached through its accessor's token, which has another name.
-      for scan in project.units[Int(unit)].scans.values {
+      for facts in project.units[Int(unit)].scans.values {
+        let scan = unsafeDowncast(facts, to: BodyScan.self)
         if let index = scan.byToken[token] { searched = scan.locals[Int(index)].name }
       }
       restrict = unit
@@ -2324,8 +2254,6 @@ public final class Model {
       return []
     }
     guard let searched else { return [] }
-    var seen = Set<String>()
-    var result: [(String, Int)] = []
     // `Foo()` is a reference to Foo, and to its init: an init is searched by the type's name too.
     var names: Set<Name> = [searched]
     for target in targets {
@@ -2334,37 +2262,11 @@ public final class Model {
         if decl(ref).kind.isNominal { names.insert(Word.initName) }
       }
     }
-    for u in 0..<project.projectUnits {
-      if let restrict, restrict != Int32(u) { continue }
-      let unit = project.units[u]
-      for (index, token) in unit.tokens.enumerated() {
-        switch token.kind {
-        case .identifier, .keyword, .declarationKeyword:
-          guard names.contains(hashName(unit.source.text + token.start, token.length)) else { continue }
-        case .attribute, .directive:
-          // `@Test`, `#expect`: the name past its sign.
-          guard token.length > 1, names.contains(hashName(unit.source.text + token.start + 1, token.length - 1)) else { continue }
-        default:
-          continue
-        }
-        let found = self.answer(unitIndex: Int32(u), token: index)
-        guard found.state != .unknown, !found.byNameOnly, found.sites.contains(where: targets.contains) else { continue }
-        guard let place = placeOf(unit, token: index) else { continue }
-        if seen.insert("\(place.path):\(place.line)").inserted { result.append((place.path, place.line)) }
-      }
-    }
-    return result
+    return project.references(named: names, in: restrict, landingOn: targets) { self.answer(unitIndex: $0, token: $1) }
   }
 }
 
 // MARK: Errors
-
-public struct Finding {
-  public var path: String
-  public var line: Int
-  public var word: String
-  public var message: String
-}
 
 extension Model {
   /// A nominal whose every member is known: all its parents read, and nothing that makes members up.
@@ -2459,18 +2361,5 @@ extension Model {
     var all: [Finding] = []
     for index in 0..<project.projectUnits { all.append(contentsOf: findings(path: project.units[index].path)) }
     return all
-  }
-}
-
-extension Unit {
-  /// Local declarations join `decls` as bodies get scanned, so the site map can go stale for them.
-  func declaredSiteFresh(at token: Int, unitIndex: Int32) -> Site? {
-    for index in decls.indices.reversed() {
-      if !decls[index].isLocal, decls[index].parent < 0 { break }
-      if decls[index].nameToken == Int32(token), decls[index].kind != .extensionDecl {
-        return .decl(DeclRef(unit: unitIndex, decl: Int32(index)))
-      }
-    }
-    return nil
   }
 }

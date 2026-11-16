@@ -136,7 +136,7 @@
     }
 
     /// A Swift model's item. On an optional receiver it also writes the `?` before the dot.
-    static func item(_ entry: SwiftCompletionEntry, context: CompletionContext) -> CompletionItem {
+    static func item(_ entry: ModelCompletionEntry, context: CompletionContext) -> CompletionItem {
       var edits: [CompletionEdit] = []
       let dot = context.wordRange.location - 1
       if entry.needsUnwrap, dot >= 0, dot < context.text.length, context.text.character(at: dot) == 0x2E {

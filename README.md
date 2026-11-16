@@ -61,7 +61,13 @@ Libraries
                        same resource (CPU, disk, network, remote); dynamic
                        stages that end early never make the bar jump; units
                        counted against earlier runs (neutral, no dependencies)
-    CodeSwiftModel     a Swift code model from source text plus CodeScan's
+    CodeModel          the language-neutral core of a code model: a file's
+                       declarations as tables, token navigation and
+                       conditional compilation, the project's modules and
+                       what each file sees, types, answers, places and
+                       references; a language plugs in its parser and
+                       project layout (neutral)
+    CodeSwiftModel     a Swift code model on CodeModel from source text plus CodeScan's
                        tokens, built in layers only as far as a question
                        needs: definitions (exact, candidates or unknown),
                        completions, references; the SDK's interfaces and

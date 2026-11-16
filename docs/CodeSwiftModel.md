@@ -27,6 +27,29 @@ Inside, the model is built in layers, each only as far as a question needs (name
 - **Layer 4** (`BodyScan.swift`): the names a body introduces and where each is visible, read once when a position
   inside it asks, and dropped with the file.
 
+### CodeModel, the core
+
+What isn't Swift lives in its own library, `CodeModel`, which CodeSwiftModel re-exports; another language's model is a
+front end on it. The core has:
+
+- the declaration tables (`Decl`, `Param`, `Import`, `DeclRef`, `Site`) and `Unit`, a file's tokens without comments
+  with its navigation (`skipBalanced`, `matchingOpen`, `hash`, `isToken`) and the branches of conditional compilation
+  (`#if`, `#elseif`, `#else`, a focus inside a branch that's left out);
+- `Project`, the registry: modules, their top-level declarations and extensions, what each file sees in order, edits
+  (`update`, which keeps what's built when a file's shape holds) and loading a module an import names;
+- `Ty`, `Answer`, `Finding`, `SymbolDetails`, completion's list and entry types (`ModelCompletionList`; `Model…` so
+  they don't clash with CodeAutocompletion's) and its matching of what's typed (`matchClass`);
+- places, locations and the reference search (a name filter over the project's files, each hit resolved by the front
+  end).
+
+A front end gives it two objects: a `LanguageSyntax` (its lexer profile, a parser that fills a unit's tables and returns
+its shape, and how a condition of conditional compilation reads) and a `ProjectLayout` (its source files, a file's
+module, where a module an import names is found, the modules every file sees). Swift's are `SwiftSyntax` and
+`SwiftLayout` (a package's manifest, sibling packages, the SDK's interfaces and Clang headers). The resolver, member
+tables, completion contexts and symbol details stay in CodeSwiftModel: they follow Swift's rules (conditional
+conformances, raw values, `@dynamicMemberLookup`, argument labels) and get shared hooks once a second language shows
+which parts are really alike.
+
 ## Getting started
 
 ```swift

@@ -71,7 +71,7 @@
       await swiftModel.definitions(path: url.standardizedFileURL.path, text: text, line: line, column: column)
     }
 
-    func modelCompletions(url: URL, text: String, line: Int, column: Int) async -> SwiftCompletionList? {
+    func modelCompletions(url: URL, text: String, line: Int, column: Int) async -> ModelCompletionList? {
       await swiftModel.completions(path: url.standardizedFileURL.path, text: text, line: line, column: column)
     }
 
@@ -380,7 +380,7 @@
       }
     }
 
-    func completions(path: String, text: String, line: Int, column: Int) async -> SwiftCompletionList? {
+    func completions(path: String, text: String, line: Int, column: Int) async -> ModelCompletionList? {
       await withCheckedContinuation { continuation in
         queue.async { [self] in
           guard let model = prepare(path: path, text: text) else { return continuation.resume(returning: nil) }

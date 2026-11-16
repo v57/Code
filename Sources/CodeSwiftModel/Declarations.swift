@@ -1,11 +1,71 @@
+import CodeModel
 import CodeScan
 import Foundation
 
-/// Layer 1: a file's declarations, read from its tokens. Types stay token ranges until someone asks, and bodies stay
-/// a pair of tokens. Nothing here points at anything outside the file, so a file's declarations never change once made.
-public typealias Name = UInt64
+/// Swift's reading of a file: its declarations into the core's tables, and its `#if` conditions.
+final class SwiftSyntax: LanguageSyntax {
+  static let shared = SwiftSyntax()
+  let profile = LexProfile.profile(forLanguage: "swift")!
+  let parametersHaveLabels = true
 
-@inline(__always) func name(_ text: String) -> Name { hashName(text) }
+  func parse(_ unit: Unit) -> UInt64 {
+    var parser = DeclParser(unit: unit)
+    parser.parseFile()
+    return parser.shape
+  }
+
+  // `#if` conditions, for this Mac's Debug build. A compiler or feature check is true, as the toolchain is the newest.
+  func evaluateCondition(_ unit: Unit, _ i: inout Int) -> Bool {
+    var value = conditionAnd(unit, &i)
+    while unit.isToken(i, "||") {
+      i += 1
+      let next = conditionAnd(unit, &i)
+      value = value || next
+    }
+    return value
+  }
+
+  private func conditionAnd(_ unit: Unit, _ i: inout Int) -> Bool {
+    var value = conditionUnary(unit, &i)
+    while unit.isToken(i, "&&") {
+      i += 1
+      let next = conditionUnary(unit, &i)
+      value = value && next
+    }
+    return value
+  }
+
+  private func conditionUnary(_ unit: Unit, _ i: inout Int) -> Bool {
+    if unit.isToken(i, "!") {
+      i += 1
+      return !conditionUnary(unit, &i)
+    }
+    if unit.isByte(i, 0x28) {
+      i += 1
+      let value = evaluateCondition(unit, &i)
+      if unit.isByte(i, 0x29) { i += 1 }
+      return value
+    }
+    guard i < unit.tokens.count else { return false }
+    let word = unit.string(i)
+    i += 1
+    guard unit.isByte(i, 0x28) else {
+      if word == "DEBUG" || word == "true" || word.hasPrefix("$") { return true }
+      return false
+    }
+    let close = unit.skipBalanced(i)
+    let argument = i + 1 < close - 1 ? unit.string(i + 1) : ""
+    i = close
+    switch word {
+    case "os": return argument == "macOS"
+    case "arch": return argument == "arm64"
+    case "targetEnvironment": return false
+    case "canImport": return !["UIKit", "WinSDK", "Glibc", "Musl", "Android", "Bionic", "WASILibc", "GTK", "CGTK", "WatchKit", "TVUIKit"].contains(argument)
+    case "compiler", "swift", "hasFeature", "hasAttribute": return true
+    default: return false
+    }
+  }
+}
 
 enum Word {
   static let underscore = name("_"), selfValue = name("self"), selfType = name("Self"), superValue = name("super")
@@ -17,157 +77,10 @@ enum Word {
   static let keyPaths: Set<Name> = [name("KeyPath"), name("WritableKeyPath"), name("ReferenceWritableKeyPath")]
 }
 
-public enum DeclKind: UInt8 {
-  case structure, classType, actor, enumeration, protocolType, extensionDecl
-  case function, initializer, deinitializer, subscriptDecl, variable, enumCase, typeAlias, associatedType, macro
-  var isNominal: Bool { self == .structure || self == .classType || self == .actor || self == .enumeration || self == .protocolType }
-  var isType: Bool { isNominal || self == .typeAlias || self == .associatedType }
-  var isAccessorHolder: Bool { self == .variable || self == .subscriptDecl }
-  var isCallable: Bool { self == .function || self == .initializer || self == .subscriptDecl || self == .macro }
-  var hasMembers: Bool { isNominal || self == .extensionDecl }
-}
-
-public enum Access: UInt8, Comparable {
-  case isPrivate, filePrivate, inherited, package, isPublic
-  public static func < (a: Access, b: Access) -> Bool { a.rawValue < b.rawValue }
-}
-
-public struct Decl {
-  var kind: DeclKind
-  var access: Access = .inherited
-  var isStatic = false
-  var isLocal = false
-  /// `init?`.
-  var isFailable = false
-  var name: Name
-  var nameToken: Int32
-  var first: Int32
-  var end: Int32 = 0
-  var parent: Int32
-  var bodyOpen: Int32 = -1
-  var bodyClose: Int32 = -1
-  /// The return type, a variable's type, what an alias names, or what an extension extends: tokens, not yet read.
-  var typeStart: Int32 = -1
-  var typeEnd: Int32 = -1
-  var initStart: Int32 = -1
-  var initEnd: Int32 = -1
-  var paramStart: Int32 = 0
-  var paramCount: Int32 = 0
-  var genericStart: Int32 = 0
-  var genericCount: Int32 = 0
-  var inheritStart: Int32 = 0
-  var inheritCount: Int32 = 0
-  /// What follows `where`, up to the body: the requirements, not yet read.
-  var whereStart: Int32 = -1
-  var whereEnd: Int32 = -1
-}
-
-public struct Param {
-  var label: Name
-  var local: Name
-  var nameToken: Int32
-  var typeStart: Int32
-  var typeEnd: Int32
-  var hasDefault: Bool
-  var variadic: Bool
-}
-
-struct Generic {
-  var name: Name
-  var token: Int32
-}
-
-public struct Import {
-  var module: Name
-  var moduleName: String
-  var isExported: Bool
-  var isTestable: Bool
-}
-
-/// One file: its text, tokens without comments, and declarations.
-public final class Unit {
-  public let path: String
-  public let source: SourceFile
-  public internal(set) var moduleName: Name = 0
-  public internal(set) var isInterface = false
-  public internal(set) var tokens: [Token] = []
-  public internal(set) var decls: [Decl] = []
-  var params: [Param] = []
-  var generics: [Generic] = []
-  var ranges: [(start: Int32, end: Int32)] = []
-  public internal(set) var imports: [Import] = []
-  /// For a unit generated from Clang headers: where each of its lines came from.
-  var headerLines: [(header: Int32, line: Int32)] = []
-  var headerFiles: [String] = []
-  /// A hash of everything but body text: when it holds, an edit can't have changed what other files see.
-  public internal(set) var shape: UInt64 = 0
-  /// Layer 4, per body and only once asked for: what a position needs, dropped with the file.
-  var scans: [Int32: BodyScan] = [:]
-  var chains: [Int32: ChainResult] = [:]
-  var cachedNameCounts: [Name: Int32]?
-  /// Where someone is working in a branch of `#if` that's not active here: that branch is read instead.
-  private(set) var focusOffset: Int?
-  private var focusToken = -1
-  private var childMap: [Int32: [Int32]] = [:]
-  private var childCount = -1
-  private var siteMap: [Int32: Site]?
-
-  public init(path: String, source: SourceFile, isInterface: Bool = false, focusOffset: Int? = nil) {
-    self.path = path
-    self.source = source
-    self.isInterface = isInterface
-    self.focusOffset = focusOffset
-    var kept = [Token]()
-    kept.reserveCapacity(source.tokens.count)
-    for token in source.tokens where token.kind != .comment && token.kind != .docComment { kept.append(token) }
-    tokens = kept
-    if let focusOffset {
-      var low = 0
-      var high = tokens.count
-      while low < high {
-        let middle = (low + high) / 2
-        if tokens[middle].end <= focusOffset { low = middle + 1 } else { high = middle }
-      }
-      focusToken = low
-    }
-    var parser = DeclParser(unit: self)
-    parser.parseFile()
-    shape = parser.shape
-  }
-
-  func children(of parent: Int32) -> [Int32] {
-    if childCount != decls.count {
-      childMap.removeAll(keepingCapacity: true)
-      for index in decls.indices { childMap[decls[index].parent, default: []].append(Int32(index)) }
-      childCount = decls.count
-    }
-    return childMap[parent] ?? []
-  }
-
-  /// The tokens that declare something: a click there answers itself.
-  func declaredSite(at token: Int, unitIndex: Int32) -> Site? {
-    if let siteMap { return siteMap[Int32(token)] }
-    var map: [Int32: Site] = [:]
-    for index in decls.indices {
-      let decl = decls[index]
-      if decl.kind != .extensionDecl { map[decl.nameToken] = .decl(DeclRef(unit: unitIndex, decl: Int32(index))) }
-      for g in 0..<Int(decl.genericCount) {
-        let generic = generics[Int(decl.genericStart) + g]
-        map[generic.token] = .generic(unit: unitIndex, token: generic.token)
-      }
-      for p in 0..<Int(decl.paramCount) where decl.kind != .enumCase {
-        let param = params[Int(decl.paramStart) + p]
-        map[param.nameToken] = .local(unit: unitIndex, token: param.nameToken)
-        // `_ name` and `label name`: the first word is the same parameter's.
-        if param.nameToken > 0, param.typeStart > param.nameToken, tokens[Int(param.nameToken) - 1].kind == .identifier || tokens[Int(param.nameToken) - 1].kind == .keyword,
-          !isByte(Int(param.nameToken) - 1, 0x3A)
-        {
-          map[param.nameToken - 1] = .local(unit: unitIndex, token: param.nameToken)
-        }
-      }
-    }
-    siteMap = map
-    return map[Int32(token)]
+extension Unit {
+  /// A Swift file's unit.
+  convenience init(path: String, source: SourceFile, isInterface: Bool = false, focusOffset: Int? = nil) {
+    self.init(path: path, source: source, syntax: SwiftSyntax.shared, isInterface: isInterface, focusOffset: focusOffset)
   }
 
   /// Past an attribute. `@SwiftUICore::ViewBuilder` and `@SwiftUI.ViewBuilder` go on past the name, and `@convention(c)`
@@ -179,294 +92,12 @@ public final class Unit {
     return i
   }
 
-  /// No space between this token and the one before.
-  func touchesPrevious(_ i: Int) -> Bool {
-    guard i > 0, i < tokens.count else { return false }
-    return tokens[i - 1].start + tokens[i - 1].length == tokens[i].start
-  }
-
   /// `>.` of `Dictionary<Key, Value>.Keys`, lexed as one operator: closers, then the dot of a member type.
   func isGluedDot(_ i: Int) -> Bool {
     guard i >= 0, i < tokens.count, tokens[i].kind == .punctuation, tokens[i].length >= 2 else { return false }
     let token = tokens[i]
     for k in 0..<(token.length - 1) where source.text[token.start + k] != 0x3E { return false }
     return source.text[token.start + token.length - 1] == 0x2E
-  }
-
-  @inline(__always) func hash(_ i: Int) -> Name {
-    let token = tokens[i]
-    return hashName(source.text + token.start, token.length)
-  }
-
-  func string(_ i: Int) -> String { source.string(tokens[i]) }
-
-  @inline(__always) func isByte(_ i: Int, _ byte: UInt8) -> Bool {
-    guard i >= 0, i < tokens.count else { return false }
-    let token = tokens[i]
-    return token.length == 1 && source.text[token.start] == byte
-  }
-
-  @inline(__always) func isToken(_ i: Int, _ text: StaticString) -> Bool {
-    guard i >= 0, i < tokens.count else { return false }
-    let token = tokens[i]
-    return token.length == text.utf8CodeUnitCount && memcmp(source.text + token.start, text.utf8Start, token.length) == 0
-  }
-
-  /// Whether a line break separates a token from the one before it.
-  func startsLine(_ i: Int) -> Bool {
-    guard i > 0, i < tokens.count else { return true }
-    let from = tokens[i - 1].end
-    let to = tokens[i].start
-    return to > from && memchr(source.text + from, 0x0A, to - from) != nil
-  }
-
-  /// The token after a bracket's match, `#if` regions not taken skipped, so that a split brace counts once. A `}` closes
-  /// what's left open inside it, as code being typed has `foo(a: b.` with no `)`, and a `)` with no `(` to close is ignored.
-  func skipBalanced(_ open: Int) -> Int {
-    // One bit per level, set for a brace: past 64 levels it's counting alone.
-    var braces: UInt64 = 0
-    var depth = 0
-    var i = open
-    let count = tokens.count
-    while i < count {
-      switch tokens[i].kind {
-      case .open, .interpolationOpen:
-        braces = braces << 1 | (source.text[tokens[i].start] == 0x7B ? 1 : 0)
-        depth += 1
-      case .close, .interpolationClose:
-        if tokens[i].kind == .close, depth <= 64 {
-          if source.text[tokens[i].start] == 0x7D {
-            // A `}` over parentheses left open: they end here. When the first of them is what was asked about, the `}` isn't its.
-            while depth > 0, braces & 1 == 0 {
-              braces >>= 1
-              depth -= 1
-              if depth == 0 { return i }
-            }
-          } else if braces & 1 == 1 {
-            // A `)` over a brace: the brace was left open if there's a `(` further out, or else the `)` is stray.
-            let run = (~braces).trailingZeroBitCount
-            if run >= depth {
-              i += 1
-              continue
-            }
-            braces >>= UInt64(run)
-            depth -= run
-          }
-        }
-        braces >>= 1
-        depth -= 1
-        if depth <= 0 { return i + 1 }
-      case .directive:
-        i = takeDirective(i)
-        continue
-      default:
-        break
-      }
-      i += 1
-    }
-    return count
-  }
-
-  /// The open bracket of the close at `close`, walking back, with what's left open inside skipped as above.
-  func matchingOpen(_ close: Int) -> Int? {
-    var braces: UInt64 = 0
-    var depth = 0
-    var i = close
-    while i >= 0 {
-      switch tokens[i].kind {
-      case .close, .interpolationClose:
-        braces = braces << 1 | (tokens[i].kind == .close && source.text[tokens[i].start] == 0x7D ? 1 : 0)
-        depth += 1
-      case .open, .interpolationOpen:
-        // A `(` under a `}` was never closed.
-        if tokens[i].kind == .open, depth <= 64, braces & 1 == 1, source.text[tokens[i].start] != 0x7B { break }
-        braces >>= 1
-        depth -= 1
-        if depth == 0 { return i }
-      default: break
-      }
-      i -= 1
-    }
-    return nil
-  }
-
-  /// Steps over a directive: into a branch that's taken, past those that aren't.
-  func takeDirective(_ at: Int) -> Int {
-    takeDirective(at, focused: true)
-  }
-
-  private func takeDirective(_ at: Int, focused: Bool) -> Int {
-    if isToken(at, "#if") || isToken(at, "#elseif") {
-      if isToken(at, "#elseif") { return skipToEndif(at + 1) }
-      if focused, focusToken > at, let branch = focusedBranch(at) { return branch }
-      var i = at + 1
-      let taken = evaluateCondition(&i)
-      if taken { return i }
-      return skipToBranch(i)
-    }
-    if isToken(at, "#else") { return skipToEndif(at + 1) }
-    return at + 1
-  }
-
-  /// The start of the branch of the `#if` at `at` that the focus is in, if it's in one.
-  private func focusedBranch(_ at: Int) -> Int? {
-    var i = at + 1
-    var depth = 0
-    var branch = at
-    while i < tokens.count, i <= focusToken {
-      if tokens[i].kind == .directive {
-        if isToken(i, "#if") {
-          depth += 1
-        } else if isToken(i, "#endif") {
-          if depth == 0 { return nil }
-          depth -= 1
-        } else if depth == 0, isToken(i, "#else") || isToken(i, "#elseif") {
-          branch = i
-        }
-      }
-      i += 1
-    }
-    // It has to be inside, before its `#endif`.
-    var end = i
-    depth = 0
-    var closed = false
-    while end < tokens.count {
-      if tokens[end].kind == .directive {
-        if isToken(end, "#if") {
-          depth += 1
-        } else if isToken(end, "#endif") {
-          if depth == 0 {
-            closed = true
-            break
-          }
-          depth -= 1
-        }
-      }
-      end += 1
-    }
-    guard closed else { return nil }
-    var start = branch + 1
-    if !isToken(branch, "#else") { _ = evaluateCondition(&start) }
-    return start
-  }
-
-  /// Whether an offset is in code `#if` leaves out here: it would have no declarations, and no answers.
-  func isLeftOut(offset: Int) -> Bool {
-    var i = 0
-    while i < tokens.count {
-      if tokens[i].start >= offset { return false }
-      guard tokens[i].kind == .directive else {
-        i += 1
-        continue
-      }
-      let next = takeDirective(i, focused: false)
-      if next > i + 1, next >= tokens.count || offset < tokens[next].start {
-        // In what was stepped over, unless that's the condition of a branch that's taken.
-        var condition = i + 1
-        if isToken(i, "#if") {
-          let taken = evaluateCondition(&condition)
-          if taken { return false }
-        }
-        return offset >= tokens[i].end
-      }
-      i = max(next, i + 1)
-    }
-    return false
-  }
-
-  /// From a branch not taken, to the next that may be.
-  private func skipToBranch(_ from: Int) -> Int {
-    var i = from
-    var depth = 0
-    while i < tokens.count {
-      if tokens[i].kind == .directive {
-        if isToken(i, "#if") {
-          depth += 1
-        } else if isToken(i, "#endif") {
-          if depth == 0 { return i + 1 }
-          depth -= 1
-        } else if depth == 0, isToken(i, "#else") {
-          return i + 1
-        } else if depth == 0, isToken(i, "#elseif") {
-          var j = i + 1
-          if evaluateCondition(&j) { return j }
-          i = j
-          continue
-        }
-      }
-      i += 1
-    }
-    return i
-  }
-
-  /// A taken branch ended: past its `#endif`.
-  private func skipToEndif(_ from: Int) -> Int {
-    var i = from
-    var depth = 0
-    while i < tokens.count {
-      if tokens[i].kind == .directive {
-        if isToken(i, "#if") {
-          depth += 1
-        } else if isToken(i, "#endif") {
-          if depth == 0 { return i + 1 }
-          depth -= 1
-        }
-      }
-      i += 1
-    }
-    return i
-  }
-
-  // `#if` conditions, for this Mac's Debug build. A compiler or feature check is true, as the toolchain is the newest.
-  func evaluateCondition(_ i: inout Int) -> Bool {
-    var value = conditionAnd(&i)
-    while isToken(i, "||") {
-      i += 1
-      let next = conditionAnd(&i)
-      value = value || next
-    }
-    return value
-  }
-
-  private func conditionAnd(_ i: inout Int) -> Bool {
-    var value = conditionUnary(&i)
-    while isToken(i, "&&") {
-      i += 1
-      let next = conditionUnary(&i)
-      value = value && next
-    }
-    return value
-  }
-
-  private func conditionUnary(_ i: inout Int) -> Bool {
-    if isToken(i, "!") {
-      i += 1
-      return !conditionUnary(&i)
-    }
-    if isByte(i, 0x28) {
-      i += 1
-      let value = evaluateCondition(&i)
-      if isByte(i, 0x29) { i += 1 }
-      return value
-    }
-    guard i < tokens.count else { return false }
-    let word = string(i)
-    i += 1
-    guard isByte(i, 0x28) else {
-      if word == "DEBUG" || word == "true" || word.hasPrefix("$") { return true }
-      return false
-    }
-    let close = skipBalanced(i)
-    let argument = i + 1 < close - 1 ? string(i + 1) : ""
-    i = close
-    switch word {
-    case "os": return argument == "macOS"
-    case "arch": return argument == "arm64"
-    case "targetEnvironment": return false
-    case "canImport": return !["UIKit", "WinSDK", "Glibc", "Musl", "Android", "Bionic", "WASILibc", "GTK", "CGTK", "WatchKit", "TVUIKit"].contains(argument)
-    case "compiler", "swift", "hasFeature", "hasAttribute": return true
-    default: return false
-    }
   }
 }
 

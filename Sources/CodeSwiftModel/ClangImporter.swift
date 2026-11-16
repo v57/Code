@@ -1,3 +1,4 @@
+import CodeModel
 import Foundation
 
 /// Clang modules, read the way Swift would see them: a module's headers and API notes become generated Swift

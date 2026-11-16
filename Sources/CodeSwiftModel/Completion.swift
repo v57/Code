@@ -1,61 +1,9 @@
+import CodeModel
 import CodeScan
 import Foundation
 
 /// Completion: what could be typed at a position, read from the same layers as definitions. It works on the text being
 /// edited (`Project.update`), which usually doesn't parse, so nothing here looks past the cursor.
-public enum SwiftCompletionContext: String {
-  /// After `a.`: what `a` has.
-  case member
-  /// After a lone `.`: what the surroundings ask for has.
-  case implicitMember
-  /// A name on its own: locals, the enclosing types' members, what the file's imports declare.
-  case scope
-  /// Where only a type goes.
-  case type
-  case moduleName
-  case attribute
-  case directive
-  /// In a comment or string, or where a new name is being declared.
-  case none
-}
-
-/// The values are the Language Server Protocol's `SwiftCompletionItemKind`s.
-public enum SwiftCompletionItemKind: Int {
-  case method = 2, function, constructor, field, variable, classType, interface, module, property
-  case enumeration = 13, keyword, enumMember = 20, structure = 22, typeParameter = 25
-}
-
-public struct SwiftCompletionEntry {
-  /// The name alone: what's matched against what's typed.
-  public var name: String
-  /// `name(label: Type)`.
-  public var label: String
-  /// A return or value type, as written.
-  public var detail: String
-  /// The module it's declared in, empty for a local or keyword.
-  public var module: String
-  public var kind: SwiftCompletionItemKind
-  /// Plain, or with LSP placeholders when `isSnippet`.
-  public var insertText: String
-  public var isSnippet: Bool
-  public var isDeprecated: Bool
-  /// On an optional receiver: accepting this has to write `?.`.
-  public var needsUnwrap: Bool
-  /// One of the overloads a call could mean, right after its `(`: `insertText` is its arguments alone.
-  public var isArguments = false
-}
-
-public struct SwiftCompletionList {
-  public var context: SwiftCompletionContext
-  /// How much is known about what's listed: `exact` when the receiver or scope is, `unknown` when these are names only.
-  public var state: AnswerState
-  public var prefix: String
-  /// Where the text being replaced starts, in UTF-8 bytes.
-  public var replaceStart: Int
-  public var items: [SwiftCompletionEntry]
-  /// More matched than `limit`.
-  public var isIncomplete: Bool
-}
 
 private let expressionKeywords = [
   "self", "Self", "super", "nil", "true", "false", "try", "await", "if", "switch", "let", "var", "return", "guard", "for", "while", "repeat", "do", "defer",
@@ -79,43 +27,6 @@ private let attributeNames = [
 
 private let directiveNames = ["if", "elseif", "else", "endif", "available", "unavailable", "selector", "keyPath", "file", "fileID", "filePath", "line", "column", "function", "warning", "error", "sourceLocation", "dsohandle", "colorLiteral", "imageLiteral"]
 
-/// How well typed text fits a name, best first; nil when it doesn't. Case matters only for telling them apart.
-private func matchClass(_ typed: [UInt8], _ candidate: Substring.UTF8View) -> Int32? {
-  if typed.isEmpty { return 0 }
-  var exact = true
-  var i = 0
-  var isPrefix = true
-  for byte in candidate {
-    if i == typed.count { break }
-    let a = byte
-    let b = typed[i]
-    if a != b { exact = false }
-    if a | 0x20 != b | 0x20 {
-      isPrefix = false
-      break
-    }
-    i += 1
-  }
-  if isPrefix, i == typed.count { return exact ? 0 : 1 }
-  // In order, each typed byte at a word's start: `tV` fits `tableView`.
-  var at = 0
-  var previous: UInt8 = 0x5F
-  var onlyBoundaries = true
-  var first = true
-  for byte in candidate {
-    guard at < typed.count else { break }
-    if byte | 0x20 == typed[at] | 0x20 {
-      let isBoundary = first || previous == 0x5F || (byte >= 0x41 && byte <= 0x5A && !(previous >= 0x41 && previous <= 0x5A))
-      if !isBoundary { onlyBoundaries = false }
-      at += 1
-    }
-    previous = byte
-    first = false
-  }
-  guard at == typed.count else { return nil }
-  return onlyBoundaries ? 2 : 3
-}
-
 /// An entry before it's rendered: rendering reads tokens, and only what's returned gets that.
 private struct Hit {
   var name: String
@@ -123,7 +34,7 @@ private struct Hit {
   var score: Int32
   var ref: DeclRef?
   var localToken: Int32 = -1
-  var kind: SwiftCompletionItemKind?
+  var kind: ModelCompletionItemKind?
   var insert: String? = nil
   var detail: String? = nil
   var receiver: Ty? = nil
@@ -135,15 +46,15 @@ private struct Hit {
 extension Model {
   // MARK: Asking
 
-  public func complete(path: String, line: Int, character: Int, limit: Int = 200) -> SwiftCompletionList {
-    guard let unitIndex = project.unitByPath[path] else { return SwiftCompletionList(context: .none, state: .unknown, prefix: "", replaceStart: 0, items: [], isIncomplete: false) }
+  public func complete(path: String, line: Int, character: Int, limit: Int = 200) -> ModelCompletionList {
+    guard let unitIndex = project.unitByPath[path] else { return ModelCompletionList(context: .none, state: .unknown, prefix: "", replaceStart: 0, items: [], isIncomplete: false) }
     let unit = project.units[Int(unitIndex)]
     let offset = unit.source.lines.offset(line: line, character: character, in: unit.source.text)
     project.focus(unitIndex: unitIndex, offset: offset)
     return complete(unitIndex: unitIndex, offset: offset, limit: limit)
   }
 
-  func complete(unitIndex: Int32, offset: Int, limit: Int) -> SwiftCompletionList {
+  func complete(unitIndex: Int32, offset: Int, limit: Int) -> ModelCompletionList {
     // Headers wait as they do for definitions: only until something asked of them.
     var found = completeFromLoaded(unitIndex: unitIndex, offset: offset, limit: limit)
     while needsHeaders(found), project.loadClang(visibleFrom: [unitIndex]) {
@@ -154,14 +65,14 @@ extension Model {
     return found.list
   }
 
-  private func needsHeaders(_ found: (list: SwiftCompletionList, sdkAsked: Bool)) -> Bool {
+  private func needsHeaders(_ found: (list: ModelCompletionList, sdkAsked: Bool)) -> Bool {
     found.sdkAsked || found.list.state == .unknown
   }
 
-  private func completeFromLoaded(unitIndex: Int32, offset: Int, limit: Int) -> (list: SwiftCompletionList, sdkAsked: Bool) {
+  private func completeFromLoaded(unitIndex: Int32, offset: Int, limit: Int) -> (list: ModelCompletionList, sdkAsked: Bool) {
     let unit = project.units[Int(unitIndex)]
-    func nothing(_ prefix: String, _ start: Int) -> (SwiftCompletionList, Bool) {
-      (SwiftCompletionList(context: .none, state: .exact, prefix: prefix, replaceStart: start, items: [], isIncomplete: false), false)
+    func nothing(_ prefix: String, _ start: Int) -> (ModelCompletionList, Bool) {
+      (ModelCompletionList(context: .none, state: .exact, prefix: prefix, replaceStart: start, items: [], isIncomplete: false), false)
     }
     if isInCommentOrString(unit, offset) { return nothing("", offset) }
     // The first token that doesn't end before the cursor.
@@ -326,7 +237,7 @@ extension Model {
 
   // MARK: Members
 
-  private func memberCompletion(unitIndex: Int32, dot: Int, prefix: String, replaceStart: Int, limit: Int) -> (list: SwiftCompletionList, sdkAsked: Bool) {
+  private func memberCompletion(unitIndex: Int32, dot: Int, prefix: String, replaceStart: Int, limit: Int) -> (list: ModelCompletionList, sdkAsked: Bool) {
     let unit = project.units[Int(unitIndex)]
     let typed = Array(prefix.utf8)
     prepareScans(unitIndex: unitIndex, token: Int32(dot))
@@ -334,7 +245,7 @@ extension Model {
     var hits: [Hit] = []
     var known = false
     var sdkAsked = false
-    var context = SwiftCompletionContext.member
+    var context = ModelCompletionContext.member
     var expected: Ty?
     if start == dot {
       context = .implicitMember
@@ -492,7 +403,7 @@ extension Model {
   private func collectSynthesized(of ref: DeclRef, isStaticSide: Bool, typed: [UInt8], tier: Int32, unwrap: Bool, unitIndex: Int32, into hits: inout [Hit]) {
     let item = decl(ref)
     let owner = unit(ref)
-    func add(_ text: String, kind: SwiftCompletionItemKind, insert: String? = nil, detail: String = "") {
+    func add(_ text: String, kind: ModelCompletionItemKind, insert: String? = nil, detail: String = "") {
       guard let match = matchClass(typed, text.utf8[...]), !hits.contains(where: { $0.name == text }) else { return }
       hits.append(Hit(name: text, match: match, score: tier * 100, ref: nil, kind: kind, insert: insert, detail: detail, needsUnwrap: unwrap))
     }
@@ -601,7 +512,7 @@ extension Model {
           guard seenLocal.insert(local.name).inserted else { continue }
           let text = unit.string(Int(local.token))
           guard text != "_", let match = matchClass(typed, text.utf8[...]) else { continue }
-          var kind = SwiftCompletionItemKind.variable
+          var kind = ModelCompletionItemKind.variable
           var ref: DeclRef?
           if case .declaration(let index) = local.kind {
             ref = DeclRef(unit: unitIndex, decl: index)
@@ -869,7 +780,7 @@ extension Model {
   // MARK: Ranking and rendering
 
   /// Best first: how well it fits what's typed, then where it's from, with names this file and project already use lifted.
-  private func finish(_ hits: [Hit], context: SwiftCompletionContext, state: AnswerState, prefix: String, replaceStart: Int, limit: Int, unitIndex: Int32) -> SwiftCompletionList {
+  private func finish(_ hits: [Hit], context: ModelCompletionContext, state: AnswerState, prefix: String, replaceStart: Int, limit: Int, unitIndex: Int32) -> ModelCompletionList {
     let unit = project.units[Int(unitIndex)]
     let inFile = unit.nameCounts
     let inProject = projectNameCounts()
@@ -906,7 +817,7 @@ extension Model {
       return $0.hit.name < $1.hit.name
     }
     let items = ranked.prefix(limit).map { render($0.hit, unitIndex: unitIndex) }
-    return SwiftCompletionList(context: context, state: state, prefix: prefix, replaceStart: replaceStart, items: items, isIncomplete: isIncomplete)
+    return ModelCompletionList(context: context, state: state, prefix: prefix, replaceStart: replaceStart, items: items, isIncomplete: isIncomplete)
   }
 
   /// Overloads stay apart, the same declaration restated up a hierarchy doesn't.
@@ -928,7 +839,7 @@ extension Model {
     return key
   }
 
-  private func itemKind(of ref: DeclRef) -> SwiftCompletionItemKind {
+  private func itemKind(of ref: DeclRef) -> ModelCompletionItemKind {
     let item = decl(ref)
     switch item.kind {
     case .structure: return .structure
@@ -945,12 +856,12 @@ extension Model {
     }
   }
 
-  private func render(_ hit: Hit, unitIndex: Int32) -> SwiftCompletionEntry {
+  private func render(_ hit: Hit, unitIndex: Int32) -> ModelCompletionEntry {
     guard let ref = hit.ref else {
       var detail = hit.detail ?? ""
       if hit.localToken >= 0 { detail = localDetail(unitIndex: unitIndex, token: hit.localToken) }
       let insert = hit.insert ?? hit.name
-      return SwiftCompletionEntry(name: hit.name, label: hit.insert?.trimmingCharacters(in: .whitespaces) ?? hit.name, detail: detail, module: "", kind: hit.kind ?? .variable, insertText: insert, isSnippet: false, isDeprecated: false, needsUnwrap: false)
+      return ModelCompletionEntry(name: hit.name, label: hit.insert?.trimmingCharacters(in: .whitespaces) ?? hit.name, detail: detail, module: "", kind: hit.kind ?? .variable, insertText: insert, isSnippet: false, isDeprecated: false, needsUnwrap: false)
     }
     let item = decl(ref)
     let owner = unit(ref)
@@ -989,7 +900,7 @@ extension Model {
     }
     var moduleText = ""
     if let module = project.modules[owner.moduleName] { moduleText = module.publishedName }
-    return SwiftCompletionEntry(name: hit.name, label: label, detail: detail, module: moduleText, kind: itemKind(of: ref), insertText: insert, isSnippet: slot > 1, isDeprecated: isDeprecated(ref), needsUnwrap: hit.needsUnwrap, isArguments: hit.isArguments)
+    return ModelCompletionEntry(name: hit.name, label: label, detail: detail, module: moduleText, kind: itemKind(of: ref), insertText: insert, isSnippet: slot > 1, isDeprecated: isDeprecated(ref), needsUnwrap: hit.needsUnwrap, isArguments: hit.isArguments)
   }
 
   private func localDetail(unitIndex: Int32, token: Int32) -> String {
@@ -1036,15 +947,4 @@ struct TopEntry {
   var name: String
   var ref: DeclRef
   var isType: Bool
-}
-
-extension Unit {
-  /// Times each identifier is used in this file, read when completion first asks.
-  var nameCounts: [Name: Int32] {
-    if let known = cachedNameCounts { return known }
-    var counts: [Name: Int32] = [:]
-    for i in tokens.indices where tokens[i].kind == .identifier { counts[hash(i), default: 0] += 1 }
-    cachedNameCounts = counts
-    return counts
-  }
 }

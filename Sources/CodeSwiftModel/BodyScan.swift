@@ -1,3 +1,4 @@
+import CodeModel
 import CodeScan
 import Foundation
 
@@ -35,7 +36,9 @@ struct SwitchInfo {
   var subjectEnd: Int32
 }
 
-final class BodyScan {
+final class BodyScan: BodyFacts {
+  func dropTypes() { types.removeAll() }
+
   var locals: [Local] = []
   var byName: [Name: [Int32]] = [:]
   var byToken: [Int32: Int32] = [:]

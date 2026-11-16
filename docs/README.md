@@ -74,6 +74,7 @@ tests.
 | [CodeScan](CodeScan.md) | A scanner for every language, declarations and a workspace index without a compiler | macOS, iOS, Linux, Windows | `import CodeScan` |
 | [CodePretty](CodeScan.md#codepretty) | A formatter for every language that refuses any change to tokens | macOS, iOS, Linux, Windows | `import CodePretty` |
 | [CodeServer](CodeScan.md#codeserver) | A language server for every language (`code-lsp`) | macOS, Windows, Linux | `import CodeServer` |
+| [CodeModel](CodeSwiftModel.md#codemodel-the-core) | The language-neutral core of a code model: declarations, files, modules, answers | macOS, iOS, Linux, Windows | `import CodeModel` |
 | [CodeSwiftModel](CodeSwiftModel.md) | A Swift code model from source: definitions, completions, references | macOS; Linux, Windows, iOS without the SDK | `import CodeSwiftModel` |
 
 The package also builds three tools: `code-lsp` (CodeServer's server on standard input and output), `code-pretty`

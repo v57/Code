@@ -74,6 +74,11 @@ case "query":
       if let place = model.place(of: site) { definitions.append([place.path, place.line]) }
     }
     var entry: [String: Any] = ["state": answer.state.rawValue, "definitions": definitions, "ms": answerTime]
+    if CommandLine.arguments.contains("--details") {
+      // Everything the symbol menu shows, to compare two builds' answers in full.
+      entry["details"] = answer.state == .unknown ? [] : answer.sites.prefix(30).compactMap { model.details(of: $0) }.map { String(describing: $0) }
+      entry["locations"] = answer.sites.prefix(30).compactMap { model.location(of: $0) }.map { "\($0.path):\($0.line):\($0.character) \($0.name) | \($0.preview)" }
+    }
     if withReferences {
       let startReferences = DispatchTime.now()
       entry["references"] = model.references(of: answer).map { [$0.path, $0.line] as [Any] }
@@ -123,8 +128,14 @@ case "complete-bench":
     project.update(path: full, text: text)
     let updated = milliseconds(since: start)
     let found = model.complete(path: full, line: line, character: character, limit: limit)
-    answers[key] = ["context": found.context.rawValue, "state": found.state.rawValue, "names": found.items.map(\.name), "incomplete": found.isIncomplete,
+    var answer: [String: Any] = ["context": found.context.rawValue, "state": found.state.rawValue, "names": found.items.map(\.name), "incomplete": found.isIncomplete,
       "updateMs": updated, "ms": milliseconds(since: start)]
+    if CommandLine.arguments.contains("--full") {
+      answer["items"] = found.items.map { "\($0.label) | \($0.detail) | \($0.module) | \($0.kind.rawValue) | \($0.insertText) | \($0.isSnippet) \($0.isDeprecated) \($0.needsUnwrap)" }
+      answer["prefix"] = found.prefix
+      answer["replaceStart"] = found.replaceStart
+    }
+    answers[key] = answer
     if let original = originals[full] { project.update(path: full, text: original) }
   }
   let output = try JSONSerialization.data(withJSONObject: answers, options: [.sortedKeys])

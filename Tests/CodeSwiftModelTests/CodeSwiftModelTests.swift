@@ -692,7 +692,7 @@ private let bench = URL(fileURLWithPath: #filePath).deletingLastPathComponent().
 
 /// What's offered where a name is being typed: the text is cut at `@@`, as the question's position.
 @Suite struct Completion {
-  private func names(_ text: String, extra: [String: String] = [:], useSDK: Bool = false) throws -> (list: SwiftCompletionList, names: [String]) {
+  private func names(_ text: String, extra: [String: String] = [:], useSDK: Bool = false) throws -> (list: ModelCompletionList, names: [String]) {
     var files = extra
     files["Sources/App/A.swift"] = text.replacingOccurrences(of: "@@", with: "@@cursor")
     let package = try Package(files, useSDK: useSDK)
