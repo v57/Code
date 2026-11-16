@@ -4,22 +4,23 @@
 
 CodeSwiftModel is a model of a Swift project built from its source text and [CodeScan](CodeScan.md)'s tokens, without a
 compiler or an index. It answers where a name is defined (exact, a few candidates, or unknown), what can be completed
-at a position, and where a definition is referenced, in milliseconds. It reads the SDK's Swift interfaces and, when a
-lookup needs them, Clang modules' headers.
+at a position, where a definition is referenced, and what a symbol is, in milliseconds. It reads the SDK's Swift
+interfaces and, when a lookup needs them, Clang modules' headers.
 
 It is not a compiler: it doesn't type-check, it says when it isn't sure, and its answers are only as good as what it
-can read. It is the middle of the three tiers Code asks when jumping to a definition or completing
-(CodeKit's `DefinitionTier`):
+can read. It is the middle of the three tiers Code asks when jumping to a definition or completing (CodeKit's
+`DefinitionTier`):
 
 1. `scanner`: CodeScan, for every language. Tokens only, in microseconds, never sure.
-2. `model`: this library, for Swift. Types read from source, in milliseconds, exact or candidates.
+2. `model`: a language's model (this library for Swift, [CodeGoModel](CodeGoModel.md) for Go). Types read from
+   source, in milliseconds, exact or candidates.
 3. `server`: the language server (SourceKit-LSP), the compiler's answer, slowest. By default Code asks it only when the
    model isn't sure.
 
 Inside, the model is built in layers, each only as far as a question needs (named so in the source):
 
-- **Layer 1** (`Declarations.swift`): a file's declarations, read from its tokens. Types stay token ranges and bodies
-  stay a pair of tokens until asked for. Nothing points outside the file.
+- **Layer 1** (declarations, `Declarations.swift`): a file's declarations, read from its tokens. Types stay token
+  ranges and bodies stay a pair of tokens until asked for. Nothing points outside the file.
 - **Layer 2** (`Project.swift`): which files make which module, what each file can see, and everything else only when
   an import asks for it. Clang modules are read the way Swift sees them, as generated Swift declarations
   (`ClangImporter.swift`), only when a lookup misses.
@@ -27,36 +28,17 @@ Inside, the model is built in layers, each only as far as a question needs (name
 - **Layer 4** (`BodyScan.swift`): the names a body introduces and where each is visible, read once when a position
   inside it asks, and dropped with the file.
 
-### CodeModel, the core
+## Platforms
 
-What isn't Swift lives in its own library, `CodeModel`, which CodeSwiftModel re-exports; another language's model is a
-front end on it. The core has:
+<!-- platforms: macos ios=partial linux=partial windows=partial -->
 
-- the declaration tables (`Decl`, `Param`, `Import`, `DeclRef`, `Site`) and `Unit`, a file's tokens without comments
-  with its navigation (`skipBalanced`, `matchingOpen`, `hash`, `isToken`) and the branches of conditional compilation
-  (`#if`, `#elseif`, `#else`, a focus inside a branch that's left out);
-- `Project`, the registry: modules, their top-level declarations and extensions, what each file sees in order, edits
-  (`update`, which keeps what's built when a file's shape holds) and loading a module an import names;
-- `Ty`, `Answer`, `Finding`, `SymbolDetails`, completion's list and entry types (`ModelCompletionList`; `Model…` so
-  they don't clash with CodeAutocompletion's) and its matching of what's typed (`matchClass`);
-- places, locations and the reference search (a name filter over the project's files, each hit resolved by the front
-  end);
-- what more than one language turned out to need: completion's ranking (`rankCompletions`, given the front end's hits
-  as `ModelCompletionHit`s), members by name across the project (`membersNamed`, for candidates when a receiver's type
-  can't be told), a token's chain of enclosing declarations (`Unit.chain`), the doc comment above a declaration
-  (`Unit.documentation`, with the language's line and block prefixes) and `SymbolPart`s for declarations and modules;
-- `LanguageModel`, what every model answers (answer, references, complete, details, place), and `ModelLanguage`, a
-  language's file extensions, manifests and how to make its model: CodeKit's model tier and the `code-model` tool ask
-  any language through them (`ModelLanguage.swift`, `ModelLanguage.go`).
-
-A front end gives it two objects: a `LanguageSyntax` (its lexer profile, a parser that fills a unit's tables and returns
-its shape, and how a condition of conditional compilation reads) and a `ProjectLayout` (its source files, a file's
-module, where a module an import names is found, the modules every file sees). Swift's are `SwiftSyntax` and
-`SwiftLayout` (a package's manifest, sibling packages, the SDK's interfaces and Clang headers); Go's are in
-[CodeGoModel](CodeGoModel.md). The resolver, member tables, completion contexts and the type of an expression stay in
-each front end: Swift's follow its rules (conditional conformances, raw values, `@dynamicMemberLookup`, argument
-labels), Go's its own (method sets through embedding, package-qualified names, build constraints), and the two shared
-too little of them to move.
+- **macOS**: everything. The SDK's interfaces and Clang modules come from `xcrun --show-sdk-path`, and the manifest
+  from `swift package dump-package`.
+- **Linux, Windows**: the project's own files. The SDK lookup runs `/usr/bin/xcrun`, a Mac tool, so there is no SDK.
+  The manifest is read with `/usr/bin/env swift package dump-package`; where that can't run, the targets are the usual
+  folders.
+- **iOS (iPadOS)**: builds; reads only the project's files (no SDK, no manifest).
+- **Android**: not yet.
 
 ## Getting started
 
@@ -66,8 +48,9 @@ too little of them to move.
 .product(name: "CodeSwiftModel", package: "Code"),
 ```
 
-The target builds in Swift 5 language mode: the model's tables are plain classes used from one thread at a time.
-Give it its own serial queue, as Code does, and never touch it from two threads.
+CodeSwiftModel re-exports [CodeModel](#codemodel-the-core), whose types its API returns. The target builds in Swift 5
+language mode: the model's tables are plain classes used from one thread at a time. Give it its own serial queue, as
+Code does, and never touch it from two threads.
 
 ```swift
 import CodeSwiftModel
@@ -96,40 +79,125 @@ print(list.context, list.items.map(\.label))
 
 ## Main API
 
-- `Project(root:useSDK:useClang:runsManifest:)`: loads the project's Swift files. `useSDK` reads the SDK's Swift
-  interfaces, `useClang` lets lookups read Clang headers, `runsManifest` lets it evaluate `Package.swift` for the
-  targets (only in a folder the person trusts; without it, the targets are the usual folders). `update(path:text:)`
-  takes a file's new text; `generatedInterface(of:)` shows a module as the model sees it; `projectUnits`,
-  `loadedBytes`, `manifestMilliseconds`.
-- `Model(project:)`:
-  - `answer(path:line:character:)`: an `Answer` with `state` (`AnswerState`: `exact`, `candidates`, `unknown`),
-    `sites` and `byNameOnly` (candidates only by name, as the receiver's type couldn't be told).
-  - `location(of:)` (path, line, character, name and a preview line) and `place(of:)`.
-  - `references(of:)`: where an answer's definitions are used.
-  - `complete(path:line:character:limit:)`: a `SwiftCompletionList` with its `context` (`SwiftCompletionContext`:
-    member, implicit member, scope, type, module name, attribute, directive, none), `state`, `prefix`,
-    `replaceStart`, `items` (`SwiftCompletionEntry`: name, label, detail, module, kind, insert text, snippet,
-    deprecated, needs unwrap) and `isIncomplete`. The names start with `Swift` so they don't clash with
-    [CodeAutocompletion](CodeAutocompletion.md)'s.
-  - `explain(path:line:character:)`: the chain at a position, step by step, for reading a miss.
-  - `findings(path:)` and `allFindings()`: what can be said for sure is wrong (`Finding`): a member that a fully known
-    type doesn't have, or can't show from where it's used.
-- `Site` (a declaration, a local, a generic parameter or a module), `DeclRef`, `Unit` (one parsed file).
+### Loading a project
 
-The `swift-model` tool measures the model on a real project:
+`Project(root:useSDK:useClang:runsManifest:)` loads the project's Swift files. `useSDK` reads the SDK's Swift
+interfaces, `useClang` lets lookups read Clang headers, `runsManifest` lets it evaluate `Package.swift` for the
+targets (only in a folder the person trusts; without it, the targets are the usual folders). All three default to
+true.
 
-```bash
-swift run swift-model bench --root ~/Projects/MyApp --file Sources/App/Model.swift [--no-sdk]
-swift run swift-model query --root ~/Projects/MyApp --queries reference.json --out answers.json
+```swift
+let project = Project(root: root, useSDK: false, useClang: false, runsManifest: false)  // the project's files only
+let held = project.update(path: file, text: editedText)  // true: what other files see didn't change
+print(project.projectUnits, project.loadedBytes, project.manifestMilliseconds)
+print(project.generatedInterface(of: "Darwin") ?? "")  // a Clang module as the model reads it
 ```
 
-## Platform notes
+- `update(path:text:)`: takes a file's new text; returns whether its shape held, so only its own body answers go.
+- `units` (one `Unit` per file read, the SDK's included), `projectUnits`, `loadedBytes`, `manifestMilliseconds`,
+  `root`.
 
-- **macOS**: everything. The SDK's interfaces and Clang modules come from `xcrun --show-sdk-path`.
-- **Linux, Windows**: the project's own files; the SDK lookup runs `/usr/bin/xcrun` and finds nothing there. Reading
-  the manifest needs `swift` on the PATH.
-- **iOS (iPadOS)**: builds; reads only the project's files (no SDK, no manifest).
-- **Android**: not yet.
+### Definitions and references
+
+`Model(project:)` answers questions; it is a `LanguageModel`.
+
+```swift
+let found = model.answer(path: file, line: 12, character: 8)
+if found.state != .unknown, !found.byNameOnly {
+  for use in model.references(of: found) { print(use.path, use.line) }  // 1-based, relative to the root
+}
+print(model.explain(path: file, line: 12, character: 8))  // the chain, step by step, for reading a miss
+```
+
+- `answer(path:line:character:)`: an `Answer` with `state` (`AnswerState`: `exact`, `candidates`, `unknown`),
+  `sites` and `byNameOnly` (candidates only by name, as the receiver's type couldn't be told).
+- `location(of:)` (path, line, character, name and a preview line) and `place(of:)`.
+- `references(of:)` and `referenceCount(of:)` (nil when the answer is a guess).
+- `explain(path:line:character:)`: the chain at a position, step by step.
+- `clangLoads` (how many questions had headers read for them), `checkedAccesses`.
+
+### Completion
+
+```swift
+let list = model.complete(path: file, line: 12, character: 8, limit: 50)
+if list.context == .member {
+  for item in list.items { print(item.label, item.detail, item.isSnippet ? item.insertText : item.name) }
+}
+```
+
+`complete(path:line:character:limit:)` returns a `ModelCompletionList` with its `context` (`ModelCompletionContext`:
+`member`, `implicitMember`, `scope`, `type`, `moduleName`, `attribute`, `directive`, `none`), `state`, `prefix`,
+`replaceStart` (in UTF-8 bytes), `items` and `isIncomplete`. Each `ModelCompletionEntry` has `name`, `label`, `detail`,
+`module`, `kind` (`ModelCompletionItemKind`, LSP's values), `insertText`, `isSnippet`, `isDeprecated`, `needsUnwrap`
+and `isArguments`. The names start with `Model` so they don't clash with [CodeAutocompletion](CodeAutocompletion.md)'s.
+
+### Symbol details and findings
+
+```swift
+let (_, details) = model.details(path: file, line: 12, character: 8)
+for detail in details { print(detail.declaration, detail.documentation ?? "", detail.parents.map(\.name)) }
+for finding in model.findings(path: file) { print(finding.line, finding.word, finding.message) }
+```
+
+- `details(path:line:character:)` and `details(of:)`: `SymbolDetails` (`symbol`, `declaration`, `documentation`,
+  `parents`, `type`), each part a `SymbolPart` (`kind`, `name`, `keyword`, `path`, `line`, `character`, `module`,
+  `isSDK`).
+- `findings(path:)` and `allFindings()`: what can be said for sure is wrong (`Finding`: `path`, `line`, `word`,
+  `message`): a member that a fully known type doesn't have, or can't show from where it's used.
+- `ModelLanguage.swift`: `.swift` files, read again when a `Package.swift` changes; its `make` builds a `Model` and
+  evaluates the manifest only in a trusted folder.
+
+### The swift-model tool
+
+`swift-model` measures the model on a real project (`--no-sdk`, `--no-clang` leave those out):
+
+```bash
+swift run swift-model bench --root ~/Projects/MyApp --at Sources/App/Model.swift:12:8
+swift run swift-model query --root ~/Projects/MyApp --queries reference.json --out answers.json
+swift run swift-model explain --root ~/Projects/MyApp --at Sources/App/Model.swift:12:8
+```
+
+It also has `check`, `complete`, `complete-bench` and `interface --module <name>`. `code-model` asks any language's
+model the same way ([CodeGoModel](CodeGoModel.md)).
+
+## CodeModel, the core
+
+What isn't Swift lives in its own library, `CodeModel` (`.product(name: "CodeModel", package: "Code")`), which
+CodeSwiftModel and CodeGoModel re-export. Its public part is what the models' API returns and what an editor asks any
+language through:
+
+- `LanguageModel`: what every model answers (`answer`, `references(of:)`, `complete`, `details`, `referenceCount`,
+  `allFindings`, `place(of:)`, `location(of:)`), with a `project`. Not thread-safe: one serial queue per model.
+- `ModelLanguage(name:extensions:manifests:make:)`: a language's file extensions, manifests and how to make its model
+  for a folder (`make(root, trusted)`); `handles(_:)`. CodeKit's model tier and the `code-model` tool list
+  `ModelLanguage.swift` and `ModelLanguage.go`.
+- `Project` (`root`, `units`, `projectUnits`, `loadedBytes`, `update(path:text:)`), `Unit` (one file: `path`,
+  `source`, `tokens` without comments, `decls`, `imports`, `shape`), the declaration tables (`Decl`, `Param`, `Import`,
+  `DeclRef`, `DeclKind`, `Access`, `Name`) and `Site` (a declaration, a local, a generic parameter or a module).
+- `Answer`, `AnswerState`, `Finding`, `SymbolDetails`, `SymbolPart`, and completion's `ModelCompletionList`,
+  `ModelCompletionEntry`, `ModelCompletionContext` and `ModelCompletionItemKind`.
+
+```swift
+import CodeModel
+import CodeGoModel
+import CodeSwiftModel
+
+let languages: [ModelLanguage] = [.swift, .go]
+func model(for file: String, root: String, trusted: Bool) -> (any LanguageModel)? {
+  languages.first { $0.handles(file) }?.make(root, trusted)
+}
+```
+
+A front end gives the core two objects: a `LanguageSyntax` (its lexer profile, a parser that fills a unit's tables and
+returns its shape, and how a condition of conditional compilation reads) and a `ProjectLayout` (its source files, a
+file's module, where a module an import names is found, the modules every file sees). These, and the rest of what
+front ends share (`Ty`, `Module`, a unit's token navigation and conditional branches, completion's ranking with
+`ModelCompletionHit`, `membersNamed`, `Unit.chain`, doc comments above a declaration), are `package` declarations: a
+new language's model is a target in this package. Swift's front end is `SwiftSyntax` and `SwiftLayout` (a package's
+manifest, sibling packages, the SDK's interfaces and Clang headers); Go's is in [CodeGoModel](CodeGoModel.md). The
+resolver, member tables, completion contexts and the type of an expression stay in each front end: Swift's follow its
+rules (conditional conformances, raw values, `@dynamicMemberLookup`, argument labels), Go's its own (method sets
+through embedding, package-qualified names, build constraints).
 
 ## Testing
 
@@ -138,5 +206,12 @@ swift test --filter CodeSwiftModelTests
 ```
 
 The tests write small projects to a temporary folder, with `@@` marking the positions they ask about, and run
-without the SDK unless a test asks for it. `swift-model bench` and `query` compare a change
-against a real project.
+without the SDK unless a test asks for it. `swift-model bench` and `query` compare a change against a real project.
+
+## Related
+
+- [CodeScan](CodeScan.md): the tokens and scanner the model reads, and the tier before it.
+- [CodeGoModel](CodeGoModel.md): Go's model on the same core.
+- [CodeKit](CodeKit.md): the definition tiers that ask the model, on its own queue.
+- [CodeLSP](CodeLSP.md): SourceKit-LSP, the tier after it.
+- [CodeAutocompletion](CodeAutocompletion.md): the completion list the model's items fill in Code.

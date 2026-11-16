@@ -8,11 +8,21 @@ Dockerfile), detects a file's language from its name, extension or `#!` line, sc
 syntax categories, keeps an incremental highlighter for an editor buffer, matches brackets, and maps tokens to colors
 with color schemes and editor themes.
 
-It has no dependencies and no UI. It does not parse: tokens come from comment, string and keyword rules, so a type
-name is "a capitalized identifier", not a resolved type. For declarations and definitions, see [CodeScan](CodeScan.md)
-and [CodeSwiftModel](CodeSwiftModel.md). For an editor view, see [CodeEditor](CodeEditor.md).
+CodeHighlighting is not a parser. Tokens come from comment, string and keyword rules, so a type name is "a
+capitalized identifier", not a resolved type. For declarations and definitions, see [CodeScan](CodeScan.md) and
+[CodeSwiftModel](CodeSwiftModel.md). It has no dependencies and no UI; for an editor view, see
+[CodeEditor](CodeEditor.md).
 
 v57's Git colors its diffs with it, Markdown its fenced code blocks, and Database its query editors.
+
+## Platforms
+
+<!-- platforms: macos ios linux windows -->
+
+Plain Foundation code that builds everywhere the package does; Code's Linux and Windows builds use it. Only
+`CodeColorScheme.systemAware` (the property without arguments) reads the appearance through AppKit or UIKit; on Linux
+and Windows it returns the light scheme, so pass `isDark` with `systemAware(isDark:)` there. Android: not yet (the
+package has no Android setup).
 
 ## Getting started
 
@@ -41,7 +51,52 @@ for token in tokens {
 }
 ```
 
-Incremental highlighting, for an editor:
+## Main API
+
+### Find a language
+
+- `LanguageCatalog.all` (also `CodeHighlighter.all`): every `LanguageSpec`, programming languages first, then formats.
+- `CodeHighlighter.spec(forLanguage:)`: a spec by name or alias, as a fence info string gives it ("swift",
+  "c++", "swift linenums", "language-swift"); nil when unsupported.
+- `Language.detect(url:firstLine:)` and `Language.detect(shebang:)`: a file's language from its name, extension or
+  `#!` line (`#!/usr/bin/env python3`); nil for plain text.
+- `LanguageSpec`: one language's rules: `name`, `aliases`, `lineComments`, `blockComments`, `strings` (`StringDelim`),
+  `keywords`, `declKeywords` (the kind the following name gets), directives and attributes, `lineRules` and
+  `inlineRules` (`SyntaxRule`, regular expressions for formats such as Markdown headings or YAML keys).
+
+```swift
+let spec = Language.detect(url: URL(fileURLWithPath: "deploy"), firstLine: "#!/bin/zsh")  // Shell
+let sql = CodeHighlighter.spec(forLanguage: "sql")?.keywords
+```
+
+### Scan text
+
+- `CodeHighlighter.tokens(in:language:)`: all tokens of a text, UTF-16 ranges; empty for an unknown language.
+- `CodeScanner(code:spec:)` with `scan()`, or `CodeScanner(spec:)` with `scanLine(_:at:state:)`, which scans one line
+  from a `LineState` (`normal`, inside a `blockComment`, or a `multilineString`) and returns its tokens and the state
+  the next line starts in.
+- `CodeToken`: a `range` and a `kind`.
+- `SyntaxKind`: Xcode's theme categories (`plainText`, `comment`, `prose`, `keyword`, `string`, `number`, `link`,
+  `preprocessor`, `attribute`, `typeDeclaration`, `memberDeclaration`, `projectType`, `projectMember`, `otherType`,
+  `otherMember`). The scanner never emits the `project…` kinds; they need project knowledge.
+
+```swift
+if let swift = CodeHighlighter.spec(forLanguage: "swift") {
+  let line = CodeScanner(spec: swift).scanLine("/* open", at: 0, state: .normal)
+  print(line.end)  // .blockComment(…): the next line starts inside the comment
+}
+```
+
+### Highlight an editor buffer
+
+- `SyntaxHighlighter(text:spec:)`: scans a whole buffer and keeps each line's start state and tokens.
+  `init(text:spec:scanningLines:)` scans only the first lines; the rest is `pending`.
+- `edit(range:replacementLength:in:budget:)`: after an edit, rescans the touched lines and the following lines until
+  one starts in the state it had. Returns the rescanned lines. With a `budget`, it stops early and leaves the rest in
+  `pending`; `continuePending(in:budget:)` picks it up later.
+- `tokens(ofLine:)`, `allTokens`, `startState(ofLine:)`, `lines` (a `LineIndex`), `spec`.
+- `LineIndex`: line starts of a text, with `count`, `line(containing:)`, `range(ofLine:)`,
+  `contentRange(ofLine:in:)` and `apply(edit:replacementLength:in:)`.
 
 ```swift
 import CodeHighlighting
@@ -58,53 +113,31 @@ if let spec = Language.detect(url: URL(fileURLWithPath: "main.swift")) {
 }
 ```
 
-## Main API
+### Match brackets
 
-Languages
+`Delimiters.match(at:in:lines:highlighter:)`, `opener(for:before:in:lines:highlighter:)` and
+`balance(of:in:lines:highlighter:)` match `()`, `[]` and `{}`, skipping strings and comments when given a highlighter;
+`isLiteral(at:lines:highlighter:)`, `Delimiters.pairs`, `openers` and `searchLimit` (500,000 UTF-16 units).
 
-- `LanguageCatalog.all` (also `CodeHighlighter.all`): every `LanguageSpec`, programming languages first, then formats.
-- `LanguageSpec`: one language's rules: `name`, `aliases`, comments, `strings` (`StringDelim`), `keywords`,
-  `declKeywords` (the kind the following name gets), directives, attributes, `lineRules` and `inlineRules`
-  (`SyntaxRule`, regular expressions for formats such as Markdown headings or YAML keys).
-- `CodeHighlighter.spec(forLanguage:)`: a spec by name or alias, as a fence info string gives it ("swift",
-  "c++", "language-swift").
-- `Language.detect(url:firstLine:)` and `Language.detect(shebang:)`: a file's language from its name, extension or
-  `#!` line; nil for plain text.
+```swift
+let source = "f(a, [b])" as NSString
+let close = Delimiters.match(at: 1, in: source, lines: LineIndex(source), highlighter: nil)  // 8
+```
 
-Scanning
-
-- `CodeHighlighter.tokens(in:language:)`: all tokens of a text, UTF-16 ranges.
-- `CodeScanner`: the scanner behind it; `scanLine(_:at:state:)` scans one line from a `LineState` (inside a block
-  comment or multi-line string, or normal).
-- `CodeToken`: a range and a `SyntaxKind`.
-- `SyntaxKind`: Xcode's theme categories (`plainText`, `comment`, `prose`, `keyword`, `string`, `number`, `link`,
-  `preprocessor`, `attribute`, `typeDeclaration`, `memberDeclaration`, `projectType`, `projectMember`, `otherType`,
-  `otherMember`). The scanner never emits the `project…` kinds; they need project knowledge.
-
-Incremental
-
-- `SyntaxHighlighter(text:spec:)`: scans a whole buffer and keeps each line's start state and tokens.
-  `init(text:spec:scanningLines:)` scans only the first lines; the rest is `pending`.
-- `edit(range:replacementLength:in:budget:)`: after an edit, rescans the touched lines and the following lines until
-  one starts in the state it had. Returns the rescanned lines. With a `budget`, it stops early and leaves the rest in
-  `pending`; `continuePending(in:budget:)` picks it up later.
-- `tokens(ofLine:)`, `allTokens`, `startState(ofLine:)`, `lines` (a `LineIndex`).
-- `LineIndex`: line starts of a text, with `line(containing:)`, `range(ofLine:)` and
-  `apply(edit:replacementLength:in:)`.
-
-Brackets
-
-- `Delimiters.match(...)`, `opener(...)`, `balance(...)`: matching `()`, `[]` and `{}`, skipping strings and comments
-  when given a highlighter; `Delimiters.pairs` and `openers`.
-
-Colors
+### Colors and themes
 
 - `CodeColorScheme`: one `0xRRGGBB` value per kind; `color(for:)`. `githubLight`, `githubDark`, and
-  `systemAware(isDark:)` (Xcode's colors). The scheme stays platform-neutral; convert to `NSColor` or `UIColor` where
-  you draw.
-- `EditorTheme`: a scheme plus background, current line, gutter, selection and cursor colors, per-kind fonts and line
-  spacing. `xcodeLight`, `xcodeDark`, `githubLight`, `githubDark`, `all`, `families`, `resolve(_:isDark:)` (a theme or
-  family id under an appearance) and `systemAware(isDark:)`.
+  `systemAware(isDark:)` (GitHub Dark or GitHub Light). The scheme stays platform-neutral; convert to `NSColor` or
+  `UIColor` where you draw.
+- `EditorTheme`: a scheme (`syntax`) plus `background`, `currentLine`, `gutterText`, `gutterCurrentText`, `selection`
+  and `cursor` colors, per-kind `fonts` and `lineSpacing`. `xcodeLight`, `xcodeDark`, `githubLight`, `githubDark`,
+  `all`, `families` (`xcode`, `github`), `resolve(_:isDark:)` (a theme or family id under an appearance; unknown ids
+  fall back to Xcode's) and `systemAware(isDark:)` (Xcode's themes).
+
+```swift
+let theme = EditorTheme.resolve("github", isDark: true)  // githubDark
+let keywordColor = theme.syntax.color(for: .keyword)
+```
 
 ## Adding a language
 
@@ -125,12 +158,6 @@ Colors
 Changing `Language`, `SyntaxHighlighter`, `CodeHighlighter`, `CodeColorScheme`, `EditorTheme` or `SyntaxKind` affects
 v57's Git, Markdown and Database, which build against this API.
 
-## Platform notes
-
-- **macOS, iOS (iPadOS)**: supported. `CodeColorScheme` imports AppKit or UIKit only for color conversion helpers.
-- **Linux, Windows**: platform-neutral Foundation code; Code's Linux and Windows builds use it.
-- **Android**: not yet (the package has no Android setup).
-
 ## Testing
 
 ```bash
@@ -140,3 +167,11 @@ swift test --filter CodeScanTests      # after changing a language's spec
 
 The tests cover every language's tokens, the formats, and incremental edits against a full rescan. The library offers
 no fakes; `SyntaxHighlighter` and `CodeHighlighter` are pure values you can call in your own tests.
+
+## Related
+
+- [CodeEditor](CodeEditor.md): the Mac editor view that draws these tokens.
+- [CodeScan](CodeScan.md): a faster scanner compiled from this catalog, with declarations and an index.
+- [CodeMinimap](CodeMinimap.md) and [CodeWorkspace](CodeWorkspace.md): use `SyntaxKind`, `EditorTheme` and
+  `Language.detect`.
+- [CodeIcons](CodeIcons.md): file icons for the same languages.
