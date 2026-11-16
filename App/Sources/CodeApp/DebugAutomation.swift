@@ -275,10 +275,21 @@
         document?.textView?.performFindPanelAction(item)
       case "insert": document?.textView?.insertText(argument, replacementRange: document!.textView!.selectedRange())
       case "preview":
-        // preview:on|off, the pane beside the editor; preview:home|lock press the simulator's buttons,
-        // preview:tap:<x>,<y> touches it (0…1 of its screen), preview:shot:<path> writes its picture.
+        // preview:on|off, the card over the editor's corner; preview:min|open fold it into its capsule and back,
+        // preview:window|attach move it to its own window and back, preview:width:<points> sizes a simulator's
+        // picture, preview:corner:<bottomTrailing|bottomLeading|topTrailing|topLeading> moves it; preview:home|lock
+        // press the simulator's buttons, preview:tap:<x>,<y> touches it (0…1 of its screen), preview:shot:<path>
+        // writes its picture.
         switch argument {
         case "off": model.preview.setVisible(false)
+        case "min": model.preview.isMinimized = true
+        case "open": model.preview.isMinimized = false
+        case "window": model.detachPreview()
+        case "attach": model.attachPreview()
+        case _ where argument.hasPrefix("width:"):
+          if let width = Double(argument.dropFirst(6)) { model.preview.width = CGFloat(width) }
+        case _ where argument.hasPrefix("corner:"):
+          if let corner = KitPreviewCorner(rawValue: String(argument.dropFirst(7))) { model.preview.corner = corner }
         case "home": model.preview.screen?.press(.home)
         case "lock": model.preview.screen?.press(.lock)
         case _ where argument.hasPrefix("tap:"):

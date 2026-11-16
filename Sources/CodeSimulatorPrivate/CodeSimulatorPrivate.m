@@ -118,6 +118,13 @@ static id CSPSend(id target, const char *selector) {
   return ((NSUInteger (*)(id, SEL))objc_msgSend)(_device, sel) == 3;
 }
 
+- (double)screenScale {
+  id type = CSPSend(_device, "deviceType");
+  SEL sel = sel_registerName("mainScreenScale");
+  if (![type respondsToSelector:sel]) return 0;
+  return ((float (*)(id, SEL))objc_msgSend)(type, sel);
+}
+
 - (IOSurfaceRef)surface {
   return _surface;
 }

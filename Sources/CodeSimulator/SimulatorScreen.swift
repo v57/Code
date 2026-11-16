@@ -49,6 +49,13 @@ import UniformTypeIdentifiers
   public private(set) var name = ""
   /// The framebuffer's size in pixels, portrait as the device is built.
   public private(set) var pixelSize = CGSize.zero
+  /// Pixels per point of the device's screen.
+  public private(set) var pixelsPerPoint: CGFloat = 3
+  /// The screen as shown (turned as the device is held), in the device's points: its real size on a display.
+  public var pointSize: CGSize {
+    let size = CGSize(width: pixelSize.width / pixelsPerPoint, height: pixelSize.height / pixelsPerPoint)
+    return quarterTurns % 2 == 1 ? CGSize(width: size.height, height: size.width) : size
+  }
   /// Quarter turns clockwise the picture is shown at: 0 portrait, 1 landscape right…
   public private(set) var quarterTurns = 0
   /// Frames drawn in the last second.
@@ -99,6 +106,7 @@ import UniformTypeIdentifiers
         simulator.displayChangedHandler = { [weak self] in self?.displayChanged() }
         self.simulator = simulator
         name = simulator.name
+        if simulator.screenScale >= 1 { pixelsPerPoint = simulator.screenScale }
       } catch {
         state = .unavailable(error.localizedDescription)
         return

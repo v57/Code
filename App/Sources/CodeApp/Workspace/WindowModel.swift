@@ -35,7 +35,7 @@ import SwiftUI
   @ObservationIgnored private var consoleWindow: WindowReference?
   /// The run the console was last asked to show (a process card's Open in Console); it scrolls there.
   private(set) var consoleFocus: ConsoleFocus?
-  /// The preview pane beside the editor: the running app (`PreviewPane`).
+  /// The preview: the running app floating over the editor's corner, or in its own window (`PreviewOverlay`).
   let preview = PreviewModel()
   /// A Debug build's command for the editor's process stack (`DebugAutomation`'s `stack:`).
   var processStackDebug: ProcessStackDebug?
@@ -136,9 +136,31 @@ import SwiftUI
 
   // MARK: - Preview
 
-  /// The toolbar's Preview button and ⌥⌘P: shows or hides the pane beside the editor.
+  /// The toolbar's Preview button and ⌥⌘P: shows or hides the preview. A minimized one opens instead, and one in
+  /// its own window comes forward.
   func togglePreview() {
-    withKitAnimation(.kitSlow) { preview.setVisible(!preview.isVisible) }
+    if preview.isVisible, preview.isDetached, preview.window?.isFrontmost == false {
+      preview.window?.bringToFront()
+    } else if preview.isVisible, preview.isMinimized {
+      withKitAnimation { preview.isMinimized = false }
+    } else {
+      withKitAnimation { preview.setVisible(!preview.isVisible) }
+    }
+  }
+
+  /// Moves the preview into a window of its own (`PreviewWindow`).
+  func detachPreview() {
+    preview.isMinimized = false
+    if preview.isDetached {
+      preview.window?.bringToFront()
+    } else {
+      AppState.shared.openWindow?(id: PreviewWindow.id, value: workspace.root)
+    }
+  }
+
+  /// Puts the preview back over the editor, closing its window.
+  func attachPreview() {
+    preview.window?.close()
   }
 
   // MARK: - Console
@@ -224,7 +246,12 @@ import SwiftUI
       environment["NOTARY_PROFILE"] = profile
     }
     keepInBackgroundIfWindowless()
-    // The pane shows the simulator itself, so Run leaves Simulator.app closed.
+    // Run brings the preview along when there will be a picture: as a capsule, out of the way until it is wanted.
+    if kind == .run, !preview.isVisible, PreviewTarget.current(services.actions).hasPicture {
+      preview.isMinimized = true
+      withKitAnimation { preview.setVisible(true) }
+    }
+    // The preview shows the simulator itself, so Run leaves Simulator.app closed.
     if preview.isVisible, case .simulator = PreviewTarget.current(services.actions) {
       environment[ActionPlanner.simulatorShownInAppVariable] = "1"
     }

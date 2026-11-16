@@ -1,9 +1,10 @@
 import CodeKit
 import CodeSimulator
+import ComponentKit
 import Foundation
 import Observation
 
-/// What the preview pane shows, from what the toolbar has picked.
+/// What the preview shows, from what the toolbar has picked.
 enum PreviewTarget: Equatable {
   /// An iOS Simulator on this Mac, read straight from it (CodeSimulator).
   case simulator(RunDestination)
@@ -23,20 +24,77 @@ enum PreviewTarget: Equatable {
     if let reason = SimulatorScreen.unavailableReason { return .noSimulators(reason) }
     return .simulator(destination)
   }
+
+  /// Whether there is a running app to picture: the preview then shows by itself when Run starts.
+  var hasPicture: Bool {
+    switch self {
+    case .simulator, .machine: true
+    case .noSimulators, .none: false
+    }
+  }
 }
 
-/// The window's preview pane: whether it shows, and the simulator it follows while it does.
+/// The window's preview: the running app floating over the editor's corner (`PreviewOverlay`), as a card, a capsule
+/// when minimized, or in a window of its own. Where it sits and how large it is are the user's, kept between
+/// launches.
 @MainActor @Observable final class PreviewModel {
-  /// The pane beside the editor (⌥⌘P, the toolbar's Preview button).
+  /// The preview shows (⌥⌘P, the toolbar's Preview button), in whichever form.
   private(set) var isVisible = false
+  /// Folded into a capsule in its corner.
+  var isMinimized = false
+  /// In a window of its own (`PreviewWindow`) instead of over the editor.
+  private(set) var isDetached = false
+  /// That window, while it is open.
+  @ObservationIgnored var window: WindowReference?
+  /// The window opens at the device's real size (real size was asked for where the editor is too short for it).
+  @ObservationIgnored var opensAtRealSize = false
+
+  /// The editor's corner the card sits in.
+  var corner: KitPreviewCorner = KitPreviewCorner(rawValue: UserDefaults.standard.string(forKey: Keys.corner) ?? "")
+    ?? .bottomTrailing
+  {
+    didSet { UserDefaults.standard.set(corner.rawValue, forKey: Keys.corner) }
+  }
+  /// A simulator's picture: its width in this display's points (its height follows its shape).
+  var width: CGFloat = {
+    let saved = UserDefaults.standard.double(forKey: Keys.width)
+    return saved >= PreviewModel.minimumWidth ? saved : PreviewModel.defaultWidth
+  }()
+  {
+    didSet { UserDefaults.standard.set(Double(width), forKey: Keys.width) }
+  }
+  /// The width real size came from, to go back to.
+  var widthBeforeRealSize: CGFloat?
+
+  static let defaultWidth: CGFloat = 221
+  static let minimumWidth: CGFloat = 120
+
+  private enum Keys {
+    static let corner = "preview.corner"
+    static let width = "preview.width"
+  }
+
   #if os(macOS)
-    /// The simulator the pane follows, kept while the pane shows it.
+    /// The simulator the preview follows, kept while it shows.
     private(set) var screen: SimulatorScreen?
   #endif
 
   func setVisible(_ isVisible: Bool) {
     self.isVisible = isVisible
-    if !isVisible { follow(nil) }
+    if !isVisible {
+      follow(nil)
+      window?.close()
+    }
+  }
+
+  func windowDidOpen(_ window: WindowReference) {
+    self.window = window
+    isDetached = true
+  }
+
+  func windowDidClose() {
+    window = nil
+    isDetached = false
   }
 
   /// Follows the simulator with this identifier (nil: none), dropping the one before.
@@ -52,11 +110,14 @@ enum PreviewTarget: Equatable {
   /// A line for Debug automation's dump.
   var debugDescription: String {
     guard isVisible else { return "hidden" }
+    var parts = [isDetached ? "window" : isMinimized ? "minimized" : "card", corner.rawValue, "width \(Int(width))"]
     #if os(macOS)
       if let screen {
-        return "simulator \(screen.name) \(screen.state) \(Int(screen.pixelSize.width))x\(Int(screen.pixelSize.height)) \(screen.framesPerSecond) fps"
+        parts.append(
+          "simulator \(screen.name) \(screen.state) \(Int(screen.pixelSize.width))x\(Int(screen.pixelSize.height)) @\(Int(screen.pixelsPerPoint))x \(screen.framesPerSecond) fps"
+        )
       }
     #endif
-    return "visible"
+    return parts.joined(separator: " ")
   }
 }

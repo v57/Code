@@ -206,6 +206,27 @@ struct WorkspaceWindow: View {
     #endif
   }
 
+  /// Whether the window is the one the user is in.
+  var isFrontmost: Bool {
+    #if os(macOS)
+      window?.isKeyWindow ?? false
+    #else
+      true
+    #endif
+  }
+
+  /// Resizes the window around its content, keeping its top left corner where it is.
+  func setContentSize(_ size: CGSize) {
+    #if os(macOS)
+      guard let window else { return }
+      let top = window.frame.maxY
+      // The title bar lies over the content view here: its height comes on top of what the content asks for.
+      let titleBar = (window.contentView?.frame.height ?? 0) - window.contentLayoutRect.height
+      window.setContentSize(CGSize(width: size.width, height: size.height + max(titleBar, 0)))
+      window.setFrameTopLeftPoint(CGPoint(x: window.frame.minX, y: top))
+    #endif
+  }
+
   /// Closes the window (off the Mac a detached editor closes itself once its document is gone).
   func close() {
     #if os(macOS)

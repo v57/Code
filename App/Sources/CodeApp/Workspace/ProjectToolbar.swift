@@ -265,7 +265,7 @@ private struct SchemeTools: View {
         .kitHelp("Choose where to run")
       }
       ToolGroup(iconOnly: true) {
-        Button("Preview", systemImage: "rectangle.righthalf.inset.filled") { model.togglePreview() }
+        Button("Preview", systemImage: "rectangle.inset.bottomright.filled") { model.togglePreview() }
           .kitToolOn(model.preview.isVisible)
           .kitHelp(model.preview.isVisible ? "Hide Preview" : "Show Preview", shortcut: "⌥⌘P")
       }

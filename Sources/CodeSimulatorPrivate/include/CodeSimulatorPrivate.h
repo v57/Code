@@ -38,6 +38,9 @@ typedef NS_ENUM(NSInteger, CSPButton) {
 @property(nonatomic, readonly) NSString *stateDescription;
 @property(nonatomic, readonly) BOOL isBooted;
 
+/// Pixels per point of the device's main screen (3 on most iPhones, 2 on iPads), or 0 when it can't be asked.
+@property(nonatomic, readonly) double screenScale;
+
 /// Finds the main display and starts following it. NO while the device has none (not booted yet): call again.
 - (BOOL)attachDisplay;
 /// Stops following the display and closes the input session.

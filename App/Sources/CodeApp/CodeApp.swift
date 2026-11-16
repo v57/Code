@@ -56,6 +56,11 @@ public struct CodeApp: App {
     .windowToolbarStyle(.unifiedCompact)
 
     // A project's console in a window of its own (the console's Open in Window).
+    WindowGroup(id: PreviewWindow.id, for: URL.self) { $root in
+      if let root { PreviewWindow(root: root).componentKit() }
+    }
+    .defaultSize(width: 340, height: 720)
+    .windowResizability(.contentMinSize)
     WindowGroup(id: ConsoleWindow.id, for: URL.self) { $root in
       if let root { ConsoleWindow(root: root).componentKit() }
     }
