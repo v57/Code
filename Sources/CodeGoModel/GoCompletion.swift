@@ -39,6 +39,14 @@ extension GoModel {
     }
     var at = low
     if anchor == nil, low < unit.tokens.count, unit.tokens[low].end <= offset { at = low + 1 }
+    // `x.|.y`, a name deleted between two dots: they lex as one `..`.
+    var splitDot = false
+    if anchor == nil, low < unit.tokens.count, unit.tokens[low].kind == .punctuation, unit.tokens[low].length == 2,
+      unit.tokens[low].start + 1 == offset, unit.source.text[unit.tokens[low].start] == 0x2E, unit.source.text[unit.tokens[low].start + 1] == 0x2E
+    {
+      at = low + 1
+      splitDot = true
+    }
     let replaceStart = anchor.map { unit.tokens[$0].start } ?? offset
     var prefix = ""
     if let anchor {
@@ -56,7 +64,7 @@ extension GoModel {
     if before >= 0, unit.isToken(before, "func") || unit.isToken(before, "type") || unit.isToken(before, "var") || unit.isToken(before, "const") || unit.isToken(before, "package") {
       return nothing(prefix, replaceStart)
     }
-    if before >= 0, unit.isByte(before, 0x2E) {
+    if before >= 0, unit.isByte(before, 0x2E) || splitDot {
       let operand = operandType(unitIndex: unitIndex, dot: before)
       var hits: [ModelCompletionHit] = []
       switch operand {
@@ -166,7 +174,7 @@ extension GoModel {
     let unit = project.units[Int(unitIndex)]
     var hits: [ModelCompletionHit] = []
     if let body = body(unitIndex: unitIndex, token: Int32(token)) {
-      for index in body.visible(at: Int32(token)) {
+      for index in body.visible(at: Int32(token), beforeToken: true) {
         let local = body.locals[Int(index)]
         let text = unit.string(Int(local.token))
         guard let match = matchClass(typed, text.utf8[...]) else { continue }
@@ -205,7 +213,9 @@ extension GoModel {
         let text = self.unit(ref).string(Int(decl(ref).nameToken))
         // builtin.go's stand-ins (`Type`, `IntegerType`) aren't Go's.
         if text.first?.isUppercase == true { continue }
-        if let match = matchClass(typed, text.utf8[...]) { hits.append(ModelCompletionHit(name: text, match: match, score: 300, ref: ref)) }
+        // nil, true and false are written as often as a local.
+        let isValue = decl(ref).name == GoWord.nilWord || decl(ref).name == GoWord.trueWord || decl(ref).name == GoWord.falseWord
+        if let match = matchClass(typed, text.utf8[...]) { hits.append(ModelCompletionHit(name: text, match: match, score: isValue ? 50 : 300, ref: ref)) }
       }
     }
     for word in statementKeywords {

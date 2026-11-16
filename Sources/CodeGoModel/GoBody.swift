@@ -115,12 +115,14 @@ final class GoBody: BodyFacts {
   }
 
   /// Every local visible at a token, innermost first.
-  func visible(at token: Int32) -> [Int32] {
+  /// The locals visible at a token, innermost first. `beforeToken`: the place is just before it (a caret before a
+  /// block's `}` is still in the block).
+  func visible(at token: Int32, beforeToken: Bool = false) -> [Int32] {
     var seen = Set<Name>()
     var result: [Int32] = []
     for index in locals.indices.reversed() {
       let local = locals[index]
-      guard local.scopeStart <= token, token < local.scopeEnd else { continue }
+      guard local.scopeStart <= token, token < local.scopeEnd || (beforeToken && token == local.scopeEnd) else { continue }
       if case .label = local.kind { continue }
       if seen.insert(local.name).inserted { result.append(Int32(index)) }
     }
