@@ -50,10 +50,20 @@ func v57(_ name: String) -> Package.Dependency {
 ///   (`swift-model` measures it).
 /// - CodeGoModel: Go's code model on CodeModel: packages, the standard library and modules from source
 ///   (`code-model` measures any language's model).
+/// - CodeSimulator: a booted iOS Simulator's screen and input from Xcode's own frameworks (CoreSimulator and
+///   SimulatorKit, private, loaded at run time), with the SwiftUI view that shows it (macOS; empty elsewhere).
 /// - CodeKit: all of the above, plus what connects them (an editor for a
 ///   workspace's documents with language services, issues and breakpoints).
 ///
 /// The apps are the package in App/ (App/Package.swift), so the libraries carry none of their dependencies.
+/// CodeSimulatorPrivate is Objective-C over Xcode's simulator frameworks, macOS only (an empty stub elsewhere, since
+/// SwiftPM builds every target on every platform).
+#if os(Windows) || os(Linux)
+let simulatorPrivateExcludes = ["CodeSimulatorPrivate.m"]
+#else
+let simulatorPrivateExcludes = ["Stub.c"]
+#endif
+
 let package = Package(
   name: "Code",
   platforms: [
@@ -80,6 +90,7 @@ let package = Package(
     .library(name: "CodeModel", targets: ["CodeModel"]),
     .library(name: "CodeSwiftModel", targets: ["CodeSwiftModel"]),
     .library(name: "CodeGoModel", targets: ["CodeGoModel"]),
+    .library(name: "CodeSimulator", targets: ["CodeSimulator"]),
     .executable(name: "code-lsp", targets: ["code-lsp"]),
     .executable(name: "code-pretty", targets: ["code-pretty"]),
     .executable(name: "swift-model", targets: ["swift-model"]),
@@ -114,6 +125,11 @@ let package = Package(
     // Every language's model, by file extension or --language: the language-neutral swift-model.
     .executableTarget(
       name: "code-model", dependencies: ["CodeModel", "CodeSwiftModel", "CodeGoModel"], swiftSettings: swiftSettings + [.swiftLanguageMode(.v5)]),
+    .target(name: "CodeSimulatorPrivate", exclude: simulatorPrivateExcludes),
+    .target(
+      name: "CodeSimulator",
+      dependencies: [.target(name: "CodeSimulatorPrivate", condition: .when(platforms: [.macOS]))],
+      swiftSettings: swiftSettings),
     .target(name: "CodeMinimap", dependencies: ["CodeHighlighting"], swiftSettings: swiftSettings),
     .target(name: "CodeFormatting", swiftSettings: swiftSettings),
     .target(name: "CodeIcons", swiftSettings: swiftSettings),
@@ -143,6 +159,7 @@ let package = Package(
     .testTarget(
       name: "CodeWorkspaceTests", dependencies: ["CodeWorkspace"], swiftSettings: swiftSettings),
     .testTarget(name: "CodeEditorTests", dependencies: ["CodeEditor"], swiftSettings: swiftSettings),
+    .testTarget(name: "CodeSimulatorTests", dependencies: ["CodeSimulator"], swiftSettings: swiftSettings),
     .testTarget(name: "CodeKitTests", dependencies: ["CodeKit"], swiftSettings: swiftSettings),
     .testTarget(
       name: "CodeActionsTests", dependencies: ["CodeActions"], swiftSettings: swiftSettings),
@@ -161,7 +178,8 @@ let package = Package(
 // Off Apple platforms SwiftUI, CryptoKit and os are v57/SwiftUI's, and SwiftUIPortability adds the Foundation APIs
 // swift-corelibs-foundation lacks.
 package.dependencies += [v57("SwiftUI")]
-for target in package.targets where target.type == .regular || target.type == .executable {
+for target in package.targets
+where (target.type == .regular || target.type == .executable) && target.name != "CodeSimulatorPrivate" {
   target.dependencies += [
     .product(name: "SwiftUIPortability", package: "SwiftUI"), .product(name: "os", package: "SwiftUI"),
     .product(name: "CryptoKit", package: "SwiftUI"),
