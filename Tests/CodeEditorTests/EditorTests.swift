@@ -105,5 +105,29 @@
       view.insertNewline(nil)
       #expect(view.string == "a\r\n\r\nb")
     }
+
+    /// The text view leaves the pointer to a view floating over it (the preview's card, a process card): its
+    /// tracking area reports moves there too, and it used to set the I-beam on each.
+    @Test func thePointerBelongsToWhatIsOnTop() throws {
+      let view = makeEditor("let x = 1\n")
+      let window = NSWindow(
+        contentRect: NSRect(x: 0, y: 0, width: 600, height: 300), styleMask: [.titled], backing: .buffered,
+        defer: true)
+      window.isReleasedWhenClosed = false
+      window.contentView?.addSubview(view)
+      let card = NSView(frame: NSRect(x: 400, y: 0, width: 200, height: 150))
+      window.contentView?.addSubview(card)
+      func moved(to point: NSPoint) throws -> NSEvent {
+        try #require(
+          NSEvent.mouseEvent(
+            with: .mouseMoved, location: point, modifierFlags: [], timestamp: 0, windowNumber: window.windowNumber,
+            context: nil, eventNumber: 0, clickCount: 0, pressure: 0))
+      }
+      #expect(view.isUnderPointer(try moved(to: NSPoint(x: 100, y: 200))))
+      #expect(!view.isUnderPointer(try moved(to: NSPoint(x: 500, y: 60))))
+      // Once the card is gone the place is the text's again.
+      card.removeFromSuperview()
+      #expect(view.isUnderPointer(try moved(to: NSPoint(x: 500, y: 60))))
+    }
   }
 #endif

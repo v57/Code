@@ -32,8 +32,27 @@
     }
 
     public override func mouseMoved(with event: NSEvent) {
+      // A tracking area reports moves over the text's whole visible area, also where something floats over it (the
+      // preview's card, a process card). The text view's own handling sets the I-beam on every move, which took the
+      // pointer from whatever is on top (a resize pointer showed for a moment at a border, then the I-beam again).
+      guard isUnderPointer(event) else {
+        if !commandHover.isPinned { endCommandHover() }
+        return
+      }
       super.mouseMoved(with: event)
       updateCommandHover(at: convert(event.locationInWindow, from: nil), flags: event.modifierFlags)
+    }
+
+    public override func cursorUpdate(with event: NSEvent) {
+      guard isUnderPointer(event) else { return }
+      super.cursorUpdate(with: event)
+    }
+
+    /// Whether the pointer is over the text itself: the window's hit test lands in this view, not in a view over it.
+    func isUnderPointer(_ event: NSEvent) -> Bool {
+      guard let window, let content = window.contentView, let frame = content.superview else { return true }
+      guard let hit = frame.hitTest(event.locationInWindow) else { return false }
+      return hit === self || hit.isDescendant(of: self) || isDescendant(of: hit) && hit is NSClipView
     }
 
     public override func flagsChanged(with event: NSEvent) {
