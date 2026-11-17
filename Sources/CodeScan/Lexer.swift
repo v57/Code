@@ -61,12 +61,15 @@ public final class LexProfile: @unchecked Sendable {
     var multiline = false
     var nested = false
     var interpolation: Int = -1
+    /// The escape byte doesn't hide the interpolation's opener (a raw f-string).
+    var rawCode = false
   }
 
   struct CompiledInterpolation {
     var open: [UInt8]
     var close: UInt8
     var doubledIsLiteral: Bool
+    var formatSpec = false
   }
 
   let cls: UnsafeMutablePointer<UInt8>
@@ -132,7 +135,7 @@ public final class LexProfile: @unchecked Sendable {
 
     // Openers: comments, then strings, longest first per first byte.
     let compiled = rules.interpolations.map {
-      CompiledInterpolation(open: Array($0.open.utf8), close: $0.close, doubledIsLiteral: $0.doubledIsLiteral)
+      CompiledInterpolation(open: Array($0.open.utf8), close: $0.close, doubledIsLiteral: $0.doubledIsLiteral, formatSpec: $0.formatSpec)
     }
     interpolations = compiled
     var table = [[Opener]](repeating: [], count: 256)
@@ -149,16 +152,18 @@ public final class LexProfile: @unchecked Sendable {
       if rules.swiftRawStrings, delim.open.hasPrefix("#") { continue }
       if rules.rustRawStrings, delim.open.hasPrefix("r") { continue }
       var interpolation = -1
+      var rawCode = false
       for (index, rule) in rules.interpolations.enumerated() where escaped != 0 || rule.open.utf8.first != 0x5C {
         if rule.strings.isEmpty ? escaped != 0 : rule.strings.contains(delim.open) {
           interpolation = index
+          rawCode = rule.rawStrings.contains(delim.open)
           break
         }
       }
       add(
         Opener(
           kind: .string, open: Array(delim.open.utf8), close: Array(delim.close.utf8), escape: escaped,
-          multiline: delim.multiline || rules.multilineStrings, interpolation: interpolation))
+          multiline: delim.multiline || rules.multilineStrings, interpolation: interpolation, rawCode: rawCode))
     }
     if rules.swiftRawStrings { add(Opener(kind: .swiftRaw, open: [0x23])) }
     if rules.rustRawStrings {
@@ -411,6 +416,30 @@ public func scan(
       count &+= 1
       i &+= 1
     case ByteClass.colon:
+      if let frame = frames.top, frame.depth == 0, t[i &+ 1] != 0x3D,
+        case let code = profile.openers[Int(frame.firstByte)][Int(frame.opener)].interpolation, code >= 0, profile.interpolations[code].formatSpec
+      {
+        // A format spec: text up to the close, a `{…}` in it nesting.
+        out[count] = Token(.punctuation, i, i &+ 1)
+        count &+= 1
+        var j = i &+ 1
+        var nested = 0
+        while j < n, t[j] != 0x0A {
+          if t[j] == 0x7B {
+            nested &+= 1
+          } else if t[j] == frame.closer {
+            if nested == 0 { break }
+            nested &-= 1
+          }
+          j &+= 1
+        }
+        if j > i &+ 1 {
+          out[count] = Token(.string, i &+ 1, j)
+          count &+= 1
+        }
+        i = j
+        continue
+      }
       let j = t[i &+ 1] == 0x3A ? i &+ 2 : i &+ 1
       out[count] = Token(.punctuation, i, j)
       count &+= 1
@@ -474,6 +503,11 @@ private struct InterpolationFrames {
   mutating func pop() -> Frame {
     count &-= 1
     return with(count) { $0 }
+  }
+
+  /// The innermost interpolation's frame.
+  var top: Frame? {
+    mutating get { count > 0 ? with(count &- 1) { $0 } : nil }
   }
 
   mutating func push(_ frame: Frame) -> Bool {
@@ -801,7 +835,9 @@ private func continueString(
       }
     }
     // An escape that is also the closing quote (C#'s @"…": "" is a quote) escapes only when doubled.
-    if c == escape, escape != 0, c != closeByte || (i &+ 1 < n && t[i &+ 1] == escape) || !matches(t, i, close) {
+    if c == escape, escape != 0, c != closeByte || (i &+ 1 < n && t[i &+ 1] == escape) || !matches(t, i, close),
+      !(entry.rawCode && i &+ 1 < n && t[i &+ 1] == codeByte)
+    {
       i &+= 2
       continue
     }

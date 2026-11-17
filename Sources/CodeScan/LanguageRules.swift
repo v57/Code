@@ -46,6 +46,10 @@ public struct LanguageRules: Sendable {
     public var doubledIsLiteral = false
     /// For strings opened by these markers only; empty means every string but the raw ones.
     public var strings: Set<String> = []
+    /// Raw ones among `strings` (Python's `rf"…"`): the escape byte keeps a quote in, but code still opens after it.
+    public var rawStrings: Set<String> = []
+    /// A `:` outside brackets in the code starts a format spec, text up to the close (Python's `{x:#x}`).
+    public var formatSpec = false
   }
 
   public var blocks = Blocks.braces
@@ -161,7 +165,8 @@ public struct LanguageRules: Sendable {
       $0.extraStrings = fStrings(["f", "F", "rf", "fr"])
       $0.interpolations = [
         Interpolation(
-          open: "{", close: 0x7D, doubledIsLiteral: true, strings: Set(fStrings(["f", "F", "rf", "fr"]).map(\.open)))
+          open: "{", close: 0x7D, doubledIsLiteral: true, strings: Set(fStrings(["f", "F", "rf", "fr"]).map(\.open)),
+          rawStrings: Set(fStrings(["rf", "fr"]).map(\.open)), formatSpec: true)
       ]
       $0.trailingCommas = .allowed
       $0.colonHugsLeft = true

@@ -55,6 +55,23 @@ private func names(_ text: String, _ language: String) -> [String] {
     #expect(tokens.filter { $0.1 == .string }.count == 3)
   }
 
+  /// In a raw f-string a backslash keeps a quote in but doesn't hide code: `\{{` is a backslash and a brace.
+  @Test func pythonRawFStrings() {
+    let tokens = kinds(#"p = rf'\s{name}\{{x' + 'y'"#, "Python")
+    #expect(tokens.contains { $0.0 == "name" && $0.1 == .identifier })
+    #expect(tokens.last?.0 == "'y'")
+    #expect(kinds(#"p = rf'a\'b' + c"#, "Python").last?.0 == "c")
+  }
+
+  /// A format spec is text: `#` in it starts no comment.
+  @Test func pythonFormatSpecs() {
+    let tokens = kinds(#"s = f'{handle:#x} {d["k"]!r:>{width}}' + rest"#, "Python")
+    #expect(tokens.contains { $0.0 == "handle" && $0.1 == .identifier })
+    #expect(tokens.contains { $0.0 == "#x" && $0.1 == .string })
+    #expect(!tokens.contains { $0.1 == .comment })
+    #expect(tokens.last?.0 == "rest")
+  }
+
   @Test func interpolationsNestPastTheirRoom() {
     for (language, open, close) in [("swift", "\"\\(", ")\""), ("javascript", "`${", "}`"), ("typescript", "`${", "}`")] {
       for depth in [7, 8, 9, 400] {
