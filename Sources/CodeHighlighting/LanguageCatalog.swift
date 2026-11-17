@@ -156,7 +156,8 @@ public enum LanguageCatalog {
 
   static let shell = LanguageSpec(
     name: "Shell", aliases: ["sh", "shell", "bash", "zsh", "ksh", "fish"], lineComments: ["#"],
-    strings: [StringDelim(open: "\""), StringDelim(open: "'")],
+    // `'…'` has no escapes; `$'…'` (ANSI-C quoting) has.
+    strings: [StringDelim(open: "\""), StringDelim(open: "'", escape: nil), StringDelim(open: "$'", close: "'")],
     keywords: [
       "if", "then", "else", "elif", "fi", "for", "while", "until", "do", "done", "case", "esac",
       "in", "function", "select", "time", "coproc", "return", "break", "continue", "local",
@@ -341,7 +342,12 @@ public enum LanguageCatalog {
 
   static let powershell = LanguageSpec(
     name: "PowerShell", aliases: ["powershell", "ps1", "posh", "pwsh"], lineComments: ["#"],
-    strings: [StringDelim(open: "\""), StringDelim(open: "'")],
+    blockComments: [("<#", "#>")],
+    // Here-strings (`@" … "@`, `@' … '@`); the backtick escapes in `"…"`, and a quote doubled is one in `'…'`.
+    strings: [
+      StringDelim(open: "@\"", close: "\"@", escape: nil, multiline: true), StringDelim(open: "@'", close: "'@", escape: nil, multiline: true),
+      StringDelim(open: "\"", escape: "`"), StringDelim(open: "'", escape: "'"),
+    ],
     keywords: [
       "begin", "break", "catch", "class", "continue", "data", "define", "do", "dynamicparam",
       "else", "elseif", "end", "enum", "exit", "filter", "finally", "for", "foreach", "from",

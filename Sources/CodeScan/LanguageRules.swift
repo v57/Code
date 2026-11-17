@@ -102,6 +102,9 @@ public struct LanguageRules: Sendable {
   public var cppRawStrings = false
   /// `$` ends an identifier, so `$name` and `name` are one name (Shell, Makefile, PHP, Ruby).
   public var dollarIsPunctuation = false
+  /// This byte escapes the next one in code too, as a string of the two (Shell's `\'`, PowerShell's `` `" ``); a line
+  /// break after it stays a line break. 0 for none.
+  public var codeEscape: UInt8 = 0
   /// Identifier bytes besides letters, digits and `_` (`-` in CSS).
   public var extraIdentifierBytes = ""
   /// Bytes that may end an identifier, once, when no `=` follows (Ruby's `empty?` and `save!`; `a!=b` is `a != b`).
@@ -265,6 +268,7 @@ public struct LanguageRules: Sendable {
       $0.trailingCommas = .allowed
     },
     "Shell": LanguageRules {
+      $0.codeEscape = 0x5C
       $0.blocks = .indentation
       $0.bareFunctions = true
       $0.assignmentDeclares = true
@@ -373,6 +377,7 @@ public struct LanguageRules: Sendable {
       $0.colonJoinsOperators = true
     },
     "PowerShell": LanguageRules {
+      $0.codeEscape = 0x60
       $0.layout = .lines
       $0.parameters = .nameLast
       $0.assignmentDeclares = true
@@ -380,7 +385,7 @@ public struct LanguageRules: Sendable {
       $0.dollarIsPunctuation = true
       $0.multilineStrings = true
       $0.extraIdentifierBytes = "-"
-      $0.interpolations = [Interpolation(open: "$(", close: 0x29, strings: ["\""])]
+      $0.interpolations = [Interpolation(open: "$(", close: 0x29, strings: ["\"", "@\""])]
       $0.newlineEndsStatements = true
       $0.reportsBrackets = false
     },

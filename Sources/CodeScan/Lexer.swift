@@ -84,6 +84,7 @@ public final class LexProfile: @unchecked Sendable {
   let atWords: Bool
   let rustAttributes: Bool
   let commentsNeedWordStart: Bool
+  let codeEscape: UInt8
   let hereDocuments: Bool
   let hereDocumentsCloseLoosely: Bool
   let inlineMarkup: Bool
@@ -217,6 +218,7 @@ public final class LexProfile: @unchecked Sendable {
     backtickIdentifiers = rules.backtickIdentifiers
     if backtickIdentifiers { cls[0x60] = ByteClass.opener }
     commentsNeedWordStart = rules.commentsNeedWordStart || spec.lineCommentsAtLineStartOnly
+    codeEscape = rules.codeEscape
     sigilNames = rules.sigilNames
     if sigilNames {
       cls[0x40] = ByteClass.opener
@@ -395,6 +397,13 @@ public func scan(
   while i < n {
     let c = t[i]
     var kind = cls[Int(c)]
+    if c == profile.codeEscape, c != 0, i &+ 1 < n, t[i &+ 1] != 0x0A, t[i &+ 1] != 0x0D {
+      // An escaped byte in code (`\'`, `\$`): a quoted character, no string's start or expansion.
+      out[count] = Token(.string, i, i &+ 2)
+      count &+= 1
+      i &+= 2
+      continue
+    }
     if kind == ByteClass.opener {
       if let (end, added) = opener(t, n, i, profile, out, count, &frames, &hereDocument) {
         count = added
@@ -559,6 +568,7 @@ public func scan(
         || t[j] == 0x3A && profile.colonJoinsOperators
       {
         if profile.hereDocumentsAfterOperators, t[j] == 0x2D, t[j &+ 1] == 0x3E { break }
+        if profile.codeEscape != 0, t[j] == profile.codeEscape { break }
         // Scala's `.` is never part of an operator: `a.*`, `xs.+:(x)`.
         if profile.colonJoinsOperators, t[j] == 0x2E || c == 0x2E { break }
         j &+= 1
