@@ -25,11 +25,38 @@ public struct FormatterConfiguration: Identifiable, Equatable, Sendable {
   public let requiresConfigByDefault: Bool
   /// The Homebrew formula (or other command) that installs it.
   public let installCommand: String?
+  /// Whether it runs the project's own code, which a folder that isn't trusted never allows.
+  public let projectCode: ProjectCode
+  /// How the text reaches it.
+  public let input: Input
+  /// Exit codes that still mean formatted text (SQLFluff exits 1 when a rule it can't fix is still broken).
+  public let successExitCodes: Set<Int32>
+
+  /// How a formatter is given the text.
+  public enum Input: Sendable {
+    /// On standard input; the formatted text comes back on standard output.
+    case standardInput
+    /// In a copy with the file's name in a temporary folder, whose path follows the arguments; the formatter
+    /// rewrites it in place (PHP-CS-Fixer can't write the result of standard input anywhere).
+    case temporaryCopy
+  }
+
+  /// When a formatter runs code the project chose.
+  public enum ProjectCode: Sendable {
+    /// Its configuration is data.
+    case none
+    /// Its config file, when the project has one, is code or loads code (`.php-cs-fixer.php`, `.rubocop.yml`'s
+    /// `require`).
+    case config
+    /// Always (`mix format` evaluates `.formatter.exs`; SQLFluff templates the file itself).
+    case always
+  }
 
   public init(
     id: String, name: String, languages: String, extensions: Set<String>, command: String,
     arguments: @escaping @Sendable (String) -> [String], configFiles: [String] = [],
-    requiresConfigByDefault: Bool = false, installCommand: String?
+    requiresConfigByDefault: Bool = false, projectCode: ProjectCode = .none, input: Input = .standardInput,
+    successExitCodes: Set<Int32> = [0], installCommand: String?
   ) {
     self.id = id
     self.name = name
@@ -40,6 +67,9 @@ public struct FormatterConfiguration: Identifiable, Equatable, Sendable {
     self.configFiles = configFiles
     self.requiresConfigByDefault = requiresConfigByDefault
     self.installCommand = installCommand
+    self.projectCode = projectCode
+    self.input = input
+    self.successExitCodes = successExitCodes
   }
 
   public static func == (lhs: FormatterConfiguration, rhs: FormatterConfiguration) -> Bool {
@@ -89,7 +119,7 @@ public enum FormatterCatalog {
     FormatterConfiguration(
       id: "mix-format", name: "mix format", languages: "Elixir", extensions: ["ex", "exs"],
       command: "mix", arguments: { ["format", "--stdin-filename", $0, "-"] },
-      configFiles: [".formatter.exs"], requiresConfigByDefault: true,
+      configFiles: [".formatter.exs"], requiresConfigByDefault: true, projectCode: .always,
       installCommand: "brew install elixir"),
     FormatterConfiguration(
       id: "ktlint", name: "ktlint", languages: "Kotlin", extensions: ["kt", "kts"], command: "ktlint",
@@ -98,13 +128,97 @@ public enum FormatterCatalog {
     FormatterConfiguration(
       id: "shfmt", name: "shfmt", languages: "Shell", extensions: ["sh", "bash"], command: "shfmt",
       arguments: { ["-filename", $0] }, installCommand: "brew install shfmt"),
+    FormatterConfiguration(
+      id: "google-java-format", name: "google-java-format", languages: "Java", extensions: ["java"],
+      command: "google-java-format", arguments: { _ in ["-"] }, installCommand: "brew install google-java-format"),
+    FormatterConfiguration(
+      id: "csharpier", name: "CSharpier", languages: "C#", extensions: ["cs"], command: "csharpier",
+      // Warnings go to standard output with the code, so only errors are logged.
+      arguments: { ["format", "--stdin-path", $0, "--log-level", "Error"] },
+      configFiles: [".csharpierrc", ".csharpierrc.json", ".csharpierrc.yaml", ".editorconfig"],
+      installCommand: "dotnet tool install --global csharpier"),
+    FormatterConfiguration(
+      id: "dart-format", name: "dart format", languages: "Dart", extensions: ["dart"], command: "dart",
+      arguments: { ["format", "--stdin-name", $0] }, configFiles: ["analysis_options.yaml"],
+      installCommand: "brew install dart-sdk"),
+    // PHP: Pint where the project has pint.json, PHP-CS-Fixer otherwise (FormattingService picks the nearest config).
+    FormatterConfiguration(
+      id: "pint", name: "Pint", languages: "PHP (Laravel)", extensions: ["php"], command: "pint",
+      // Pint 1.26 or later reads standard input; it looks for pint.json in the working folder only.
+      arguments: { path in ["-", "--stdin-filename=\(path)"] + ToolConfig.option("--config=", ["pint.json"], for: path) },
+      configFiles: ["pint.json"], requiresConfigByDefault: true,
+      installCommand: "composer global require laravel/pint"),
+    FormatterConfiguration(
+      id: "php-cs-fixer", name: "PHP-CS-Fixer", languages: "PHP", extensions: ["php"], command: "php-cs-fixer",
+      arguments: { path in
+        ["fix", "--quiet", "--show-progress=none", "--using-cache=no", "--path-mode=override"]
+          + ToolConfig.option("--config=", PHPCSFixer.configFiles, for: path)
+      },
+      configFiles: PHPCSFixer.configFiles, projectCode: .config, input: .temporaryCopy,
+      installCommand: "brew install php-cs-fixer"),
+    // Ruby: Standard where the project has .standard.yml or no config, RuboCop where it has .rubocop.yml.
+    FormatterConfiguration(
+      id: "standardrb", name: "Standard Ruby", languages: "Ruby", extensions: RubyFiles.extensions,
+      command: "standardrb", arguments: { ["--stdin", $0, "--fix", "--stderr", "--fail-level", "error"] },
+      configFiles: [".standard.yml"], projectCode: .config, installCommand: "gem install standard"),
+    FormatterConfiguration(
+      id: "rubocop", name: "RuboCop", languages: "Ruby", extensions: RubyFiles.extensions, command: "rubocop",
+      // The report goes to standard error; an offense it can't correct fails only from `error` up (a syntax error).
+      arguments: { ["--stdin", $0, "--autocorrect", "--stderr", "--fail-level", "error", "--format", "quiet"] },
+      configFiles: [".rubocop.yml"], requiresConfigByDefault: true, projectCode: .config,
+      installCommand: "brew install rubocop"),
+    FormatterConfiguration(
+      id: "scalafmt", name: "scalafmt", languages: "Scala", extensions: ["scala", "sc", "sbt"], command: "scalafmt",
+      arguments: { path in
+        ["--stdin", "--non-interactive", "--quiet", "--assume-filename", path]
+          + ToolConfig.option("--config", [".scalafmt.conf"], for: path, separate: true)
+      },
+      configFiles: [".scalafmt.conf"], requiresConfigByDefault: true, projectCode: .config,
+      installCommand: "cs install scalafmt"),
+    FormatterConfiguration(
+      id: "stylua", name: "StyLua", languages: "Lua", extensions: ["lua"], command: "stylua",
+      arguments: { ["--search-parent-directories", "--stdin-filepath", $0, "-"] },
+      configFiles: ["stylua.toml", ".stylua.toml", ".editorconfig"], installCommand: "brew install stylua"),
+    // Haskell: Fourmolu where the project has fourmolu.yaml, Ormolu otherwise.
+    FormatterConfiguration(
+      id: "fourmolu", name: "Fourmolu", languages: "Haskell", extensions: ["hs"], command: "fourmolu",
+      arguments: { ["--stdin-input-file", $0] }, configFiles: ["fourmolu.yaml"], requiresConfigByDefault: true,
+      installCommand: "brew install fourmolu"),
+    FormatterConfiguration(
+      id: "ormolu", name: "Ormolu", languages: "Haskell", extensions: ["hs"], command: "ormolu",
+      arguments: { ["--stdin-input-file", $0] }, configFiles: [".ormolu"], installCommand: "brew install ormolu"),
+    FormatterConfiguration(
+      id: "invoke-formatter", name: "Invoke-Formatter", languages: "PowerShell", extensions: ["ps1", "psm1", "psd1"],
+      command: "pwsh", arguments: { PowerShellFormatter.arguments(for: $0) },
+      configFiles: [PowerShellFormatter.settingsFile],
+      installCommand: "brew install powershell && \(PowerShellFormatter.installModule)"),
+    FormatterConfiguration(
+      id: "taplo", name: "Taplo", languages: "TOML", extensions: ["toml"], command: "taplo",
+      arguments: { ["fmt", "--stdin-filepath", $0, "-"] }, configFiles: [".taplo.toml", "taplo.toml"],
+      installCommand: "brew install taplo"),
+    FormatterConfiguration(
+      id: "sqlfluff", name: "SQLFluff", languages: "SQL", extensions: ["sql"], command: "sqlfluff",
+      // It needs the project's dialect, from its config. Exit 1: a rule it can't fix (the rest is fixed) or SQL it
+      // can't parse (the text comes back as it was).
+      arguments: { ["format", "--stdin-filename", $0, "-"] }, configFiles: [".sqlfluff"],
+      requiresConfigByDefault: true, projectCode: .always, successExitCodes: [0, 1],
+      installCommand: "brew install sqlfluff"),
   ]
 
+  /// The first formatter for a file's extension (its language's default when several can format it).
   public static func formatter(for url: URL, in formatters: [FormatterConfiguration] = all)
     -> FormatterConfiguration?
   {
+    self.formatters(for: url, in: formatters).first
+  }
+
+  /// Every formatter for a file's extension, in the catalog's order: PHP's Pint and PHP-CS-Fixer, Ruby's Standard and
+  /// RuboCop, Haskell's Fourmolu and Ormolu. `FormattingService.formatter(for:)` picks one by the project's config.
+  public static func formatters(for url: URL, in formatters: [FormatterConfiguration] = all)
+    -> [FormatterConfiguration]
+  {
     let ext = url.pathExtension.lowercased()
-    return formatters.first { $0.extensions.contains(ext) }
+    return formatters.filter { $0.extensions.contains(ext) }
   }
 }
 
@@ -184,22 +298,42 @@ public struct FormattingService: Sendable {
   }
 
   /// The formatter that would format `url` now, with its command.
+  ///
+  /// Of the formatters for the file's extension that are on, installed and not waiting for a config file, the one
+  /// whose config file is nearest the file wins (the catalog's order breaks a tie), else the first without one: a
+  /// project with `pint.json` gets Pint and one with `.php-cs-fixer.php` PHP-CS-Fixer. In a folder that isn't trusted,
+  /// the chosen one is skipped when it would run the project's code; another doesn't stand in for it, since the
+  /// project chose that one's style.
   public func formatter(for url: URL) -> (configuration: FormatterConfiguration, executable: String)? {
-    guard let formatter = FormatterCatalog.formatter(for: url, in: formatters),
-      !disabledIDs.contains(formatter.id), let executable = executable(for: formatter, file: url)
-    else { return nil }
-    let config = Self.findUpward(formatter.configFiles, from: url)
-    if requiresConfigFile(formatter), config == nil {
-      return nil
+    typealias Candidate = (formatter: FormatterConfiguration, executable: String, config: URL?)
+    var candidates: [Candidate] = []
+    for formatter in FormatterCatalog.formatters(for: url, in: formatters) where !disabledIDs.contains(formatter.id) {
+      guard let executable = executable(for: formatter, file: url) else { continue }
+      let config = Self.findUpward(formatter.configFiles, from: url)
+      if requiresConfigFile(formatter), config == nil { continue }
+      candidates.append((formatter, executable, config))
     }
-    if !usesProjectCode, Self.runsProjectCode(formatter, config: config, file: url) { return nil }
-    return (formatter, executable)
+    // The nearest config's folder is the longest path; `>` keeps the earlier of a tie.
+    func depth(_ candidate: Candidate) -> Int { candidate.config?.deletingLastPathComponent().path.count ?? -1 }
+    let configured = candidates.filter { $0.config != nil }
+    let chosen = configured.dropFirst().reduce(configured.first) { best, next in
+      depth(next) > depth(best!) ? next : best
+    } ?? candidates.first
+    guard let chosen else { return nil }
+    if !usesProjectCode, Self.runsProjectCode(chosen.formatter, config: chosen.config, file: url) { return nil }
+    return (chosen.formatter, chosen.executable)
   }
 
   /// Whether the formatter would run code from the project: `mix format` evaluates `.formatter.exs` (and compiles
-  /// plugins), and prettier loads a JavaScript config, a `package.json` one (which may name a module) and plugins.
+  /// plugins), SQLFluff templates the file (and its config can load Python), PHP-CS-Fixer's config is PHP, RuboCop's
+  /// and Standard's can `require` Ruby, scalafmt's names a version to download and run, and prettier loads a
+  /// JavaScript config, a `package.json` one (which may name a module) and plugins.
   static func runsProjectCode(_ formatter: FormatterConfiguration, config: URL?, file: URL) -> Bool {
-    if formatter.id == "mix-format" { return true }
+    switch formatter.projectCode {
+    case .always: return true
+    case .config where config != nil: return true
+    default: break
+    }
     let codeExtensions: Set<String> = ["js", "cjs", "mjs", "ts", "cts", "mts", "exs"]
     if let config, codeExtensions.contains(config.pathExtension.lowercased()) { return true }
     guard formatter.id == "prettier" else { return false }
@@ -237,10 +371,45 @@ public struct FormattingService: Sendable {
       directory = directory.deletingLastPathComponent()
     }
     return try await Task.detached(priority: .userInitiated) { [directory] in
-      try Self.run(
-        executable, arguments, input: text, directory: directory,
-        environment: environment, timeout: timeout, name: formatter.name)
+      switch formatter.input {
+      case .standardInput:
+        return try Self.run(
+          executable, arguments, input: text, directory: directory, environment: environment, timeout: timeout,
+          name: formatter.name, successExitCodes: formatter.successExitCodes)
+      case .temporaryCopy:
+        return try Self.formatCopy(
+          text, named: url.lastPathComponent, executable: executable, arguments: arguments, directory: directory,
+          environment: environment, timeout: timeout, formatter: formatter)
+      }
     }.value
+  }
+
+  /// Formats a copy of the text in a temporary folder of its own, by the file's name (rules can depend on it), and
+  /// reads it back.
+  static func formatCopy(
+    _ text: String, named name: String, executable: String, arguments: [String], directory: URL,
+    environment: [String: String], timeout: TimeInterval, formatter: FormatterConfiguration
+  ) throws -> String {
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent("code-format-\(UUID().uuidString)")
+    let copy = folder.appendingPathComponent(name)
+    do {
+      try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+      try Data(text.utf8).write(to: copy)
+    } catch {
+      throw Failure.failed(formatter: formatter.name, message: error.localizedDescription)
+    }
+    defer { try? FileManager.default.removeItem(at: folder) }
+    _ = try run(
+      executable, arguments + [copy.path], input: "", directory: directory, environment: environment,
+      timeout: timeout, name: formatter.name, successExitCodes: formatter.successExitCodes)
+    guard let data = try? Data(contentsOf: copy) else {
+      throw Failure.failed(formatter: formatter.name, message: "no output")
+    }
+    let formatted = String(decoding: data, as: UTF8.self)
+    if formatted.isEmpty && !text.isEmpty {
+      throw Failure.failed(formatter: formatter.name, message: "no output")
+    }
+    return formatted
   }
 
   /// The first of `names` in the file's folder or a folder above it (up
@@ -262,7 +431,7 @@ public struct FormattingService: Sendable {
 
   static func run(
     _ executable: String, _ arguments: [String], input: String, directory: URL,
-    environment: [String: String], timeout: TimeInterval, name: String
+    environment: [String: String], timeout: TimeInterval, name: String, successExitCodes: Set<Int32> = [0]
   ) throws -> String {
     #if os(macOS)
       let process = Process()
@@ -305,7 +474,7 @@ public struct FormattingService: Sendable {
         throw Failure.timedOut(formatter: name)
       }
       _ = reads.wait(timeout: .now() + 2)
-      guard process.terminationStatus == 0 else {
+      guard successExitCodes.contains(process.terminationStatus) else {
         let message = String(decoding: errors, as: UTF8.self)
           .split(separator: "\n").filter { !$0.contains("deprecated") }.prefix(3)
           .joined(separator: " ")
@@ -357,7 +526,7 @@ public struct FormattingService: Sendable {
         throw Failure.timedOut(formatter: name)
       }
       _ = reads.wait(timeout: .now() + 2)
-      guard status == 0 else {
+      guard successExitCodes.contains(status) else {
         let message = String(decoding: errors, as: UTF8.self)
           .split(separator: "\n").filter { !$0.contains("deprecated") }.prefix(3)
           .joined(separator: " ")

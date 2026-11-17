@@ -54,8 +54,43 @@ memory and power:
 When **Format when saving** is on in **Settings ▸ Formatting**, ⌘S formats the file before writing it. The change is
 one step you can undo, and only what changed is touched. Saving on its own (autosave) never formats.
 
-Code knows these formatters: swift-format, Prettier, gofmt, rustfmt, Ruff, ClangFormat, zig fmt, mix format, ktlint
-and shfmt. Each reads its own config file (`.swift-format`, `.prettierrc` and so on) from the file's folder upward.
+Code knows these formatters:
+
+| Language | Formatter | Config files |
+|---|---|---|
+| Swift | swift-format | `.swift-format` |
+| JavaScript, TypeScript, JSON, CSS, HTML, Markdown, YAML | Prettier | `.prettierrc` and the others Prettier reads |
+| Go | gofmt | none |
+| Rust | rustfmt | `rustfmt.toml` |
+| Python | Ruff | `ruff.toml`, `pyproject.toml` |
+| C, C++, Objective-C | ClangFormat | `.clang-format` |
+| Zig | zig fmt | none |
+| Elixir | mix format | `.formatter.exs` |
+| Kotlin | ktlint | `.editorconfig` |
+| Shell | shfmt | none |
+| Java | google-java-format | none |
+| C# | CSharpier | `.csharpierrc`, `.editorconfig` |
+| Dart | dart format | `analysis_options.yaml` |
+| PHP | Pint, PHP-CS-Fixer | `pint.json`; `.php-cs-fixer.php`, `.php-cs-fixer.dist.php` |
+| Ruby | Standard Ruby, RuboCop | `.standard.yml`; `.rubocop.yml` |
+| Scala | scalafmt | `.scalafmt.conf` |
+| Lua | StyLua | `stylua.toml`, `.editorconfig` |
+| Haskell | Fourmolu, Ormolu | `fourmolu.yaml`; `.ormolu` |
+| PowerShell | Invoke-Formatter (PSScriptAnalyzer, run by `pwsh`) | `PSScriptAnalyzerSettings.psd1` |
+| TOML | Taplo | `.taplo.toml`, `taplo.toml` |
+| SQL | SQLFluff | `.sqlfluff`, which names your SQL dialect |
+
+Each reads its own config file from the file's folder upward.
+
+Where a language has two formatters, the project's config file picks one: the formatter whose config file is
+nearest the file is used. A PHP project with `pint.json` gets Pint and one with `.php-cs-fixer.php` gets PHP-CS-Fixer.
+A Ruby project with `.rubocop.yml` gets RuboCop, and otherwise Standard Ruby. A Haskell project with `fourmolu.yaml`
+gets Fourmolu, and otherwise Ormolu. Pint, RuboCop and Fourmolu wait for their config file at first. If you turn one
+of them off, the other formats that language.
+
+Some formatters need a config file to run at all. scalafmt reads the version from `.scalafmt.conf`, and SQLFluff
+needs the dialect from `.sqlfluff`. Invoke-Formatter also needs the PSScriptAnalyzer module, which its **Install**
+adds after PowerShell.
 
 For each formatter, under **Formatters**:
 
@@ -72,7 +107,9 @@ On Windows, the formatters listed under **Formatters** don't run yet.
 <!-- /only -->
 
 In a folder you haven't trusted, Code uses only formatters from your PATH, never one installed inside the project,
-and skips a formatter whose config is code, such as a JavaScript Prettier config. See
+and skips a formatter whose config is code, such as a JavaScript Prettier config. PHP-CS-Fixer's config is PHP, and
+RuboCop's and Standard Ruby's can load Ruby. scalafmt can download the version its config names, and SQLFluff can
+run the project's templates and Python. Code doesn't use another formatter in their place. See
 [Privacy and Security](Privacy-and-Security.md#trusting-a-folder).
 
 ## On iPhone and iPad
