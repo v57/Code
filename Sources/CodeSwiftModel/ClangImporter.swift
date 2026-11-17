@@ -1,3 +1,4 @@
+import CodeClangModel
 import CodeModel
 import Foundation
 
@@ -1636,11 +1637,8 @@ private extension Array {
 
 /// Finds a Clang module's headers and turns them into a generated interface.
 final class ClangImporter {
-  private let sdk: String
-  private var frameworks: [String: String] = [:]
-  /// `math.h` → `_DarwinFoundation1`, from the module maps in `usr/include`.
-  private var headerModules: [String: String] = [:]
-  private var moduleHeaders: [String: [String]] = [:]
+  /// The SDK's frameworks and module maps, shared with CodeClangModel.
+  private let map: ClangModuleMap
 
   private var noteStore: [String: APINotes.Holder] = [:]
   private var globalStore: [String: String] = [:]
@@ -1655,9 +1653,7 @@ final class ClangImporter {
   private var read: [String: [Data?]] = [:]
 
   init(sdk: String, frameworks: [String: String]) {
-    self.sdk = sdk
-    self.frameworks = frameworks
-    readModuleMaps()
+    map = ClangModuleMap(sdk: sdk, frameworks: frameworks)
   }
 
   // Shared with the readers on other threads.
@@ -1701,56 +1697,14 @@ final class ClangImporter {
     return protocolStore[name] ?? noteStore[name]?.swiftName ?? name
   }
 
-  private func readModuleMaps() {
-    let directory = sdk + "/usr/include"
-    let manager = FileManager.default
-    for entry in (try? manager.contentsOfDirectory(atPath: directory)) ?? [] where entry.hasSuffix(".modulemap") {
-      guard let text = try? String(contentsOfFile: directory + "/" + entry, encoding: .utf8) else { continue }
-      var current: String?
-      for line in text.split(separator: "\n") {
-        if !line.hasPrefix(" "), !line.hasPrefix("\t") {
-          let parts = line.split(separator: " ")
-          if parts.first == "module", parts.count > 1 {
-            current = String(parts[1])
-          } else if parts.first == "framework", parts.count > 2 {
-            current = String(parts[2])
-          }
-          continue
-        }
-        let trimmed = line.drop { $0 == " " || $0 == "\t" }
-        guard trimmed.hasPrefix("header \"") || trimmed.hasPrefix("textual header \"") || trimmed.hasPrefix("private header \"") else { continue }
-        guard let current, let open = trimmed.firstIndex(of: "\""), let close = trimmed.lastIndex(of: "\""), open < close else { continue }
-        let header = String(trimmed[trimmed.index(after: open)..<close])
-        if headerModules[header] == nil { headerModules[header] = current }
-        moduleHeaders[current, default: []].append(directory + "/" + header)
-      }
-    }
-  }
+  func hasModule(_ name: String) -> Bool { map.hasModule(name) }
 
-  func hasModule(_ name: String) -> Bool { frameworks[name] != nil || moduleHeaders[name] != nil }
+  func hasHeaders(_ name: String) -> Bool { !map.headers(of: name).isEmpty }
 
-  func hasHeaders(_ name: String) -> Bool { !headers(of: name).isEmpty }
-
-  private func headers(of name: String) -> [String] {
-    if let framework = frameworks[name] {
-      let directory = framework + "/Headers"
-      let list = (try? FileManager.default.contentsOfDirectory(atPath: directory)) ?? []
-      return list.filter { $0.hasSuffix(".h") }.sorted().map { directory + "/" + $0 }
-    }
-    return Array(Set(moduleHeaders[name] ?? [])).sorted()
-  }
+  private func headers(of name: String) -> [String] { map.headers(of: name) }
 
   /// The module a `#import <...>` belongs to.
-  private func moduleOf(include: String) -> String? {
-    if let module = headerModules[include] { return module }
-    if let slash = include.firstIndex(of: "/") {
-      let first = String(include[..<slash])
-      if frameworks[first] != nil { return first }
-      if first == "objc" { return "ObjectiveC" }
-      if first == "dispatch" { return "Dispatch" }
-    }
-    return nil
-  }
+  private func moduleOf(include: String) -> String? { map.module(ofInclude: include) }
 
   /// What a module exports, before its text exists: dependencies go first, as they rename what it mentions.
   /// Its headers are kept for `generate`, so they're read once.
@@ -1789,7 +1743,7 @@ final class ClangImporter {
 
   func generate(_ name: String) -> GeneratedModule? {
     guard hasModule(name) else { return nil }
-    if let framework = frameworks[name] {
+    if let framework = map.frameworks[name] {
       let directory = framework + "/Headers"
       for entry in (try? FileManager.default.contentsOfDirectory(atPath: directory)) ?? [] where entry.hasSuffix(".apinotes") {
         guard let text = try? String(contentsOfFile: directory + "/" + entry, encoding: .utf8) else { continue }
@@ -1879,7 +1833,7 @@ final class ClangImporter {
   }
 
   private func cTypedName(of type: String) -> String? {
-    return typedStore.first { classStore[$0] == type || noteStore[$0]?.swiftName == type }
+    return typedStore.filter { classStore[$0] == type || noteStore[$0]?.swiftName == type }.min()
   }
 
   private func isTypedName(_ type: String) -> Bool {

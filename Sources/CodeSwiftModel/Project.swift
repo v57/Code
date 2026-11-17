@@ -1,3 +1,4 @@
+import CodeClangModel
 import CodeModel
 import CodeScan
 import Foundation
@@ -16,6 +17,15 @@ final class SwiftLayout: ProjectLayout {
   private var targetFolders: [(path: String, name: String)] = []
   /// How long reading the manifest took, 0 without one.
   private(set) var manifestMilliseconds = 0.0
+  private var orderedSDK: (count: Int, modules: [Module]) = (-1, [])
+
+  /// The SDK's modules in the order they were registered, kept until another is.
+  func sdkModulesInOrder(_ modules: [Name: Module]) -> [Module] {
+    if orderedSDK.count == modules.count { return orderedSDK.modules }
+    let list = modules.values.filter(\.isSDK).sorted { ($0.units.min() ?? .max, $0.displayName) < ($1.units.min() ?? .max, $1.displayName) }
+    orderedSDK = (modules.count, list)
+    return list
+  }
 
   init(root: String, useSDK: Bool, useClang: Bool, runsManifest: Bool) {
     if useSDK {
@@ -57,14 +67,12 @@ final class SwiftLayout: ProjectLayout {
       }
     }
     func frameworks(_ directory: String) {
-      for entry in (try? manager.contentsOfDirectory(atPath: directory)) ?? [] where entry.hasSuffix(".framework") {
-        let framework = directory + "/" + entry
-        frameworkPaths[String(entry.dropLast(".framework".count))] = framework
+      ClangModuleMap.walkFrameworks(directory) { name, framework in
+        frameworkPaths[name] = framework
         let modules = framework + "/Modules"
         for module in (try? manager.contentsOfDirectory(atPath: modules)) ?? [] where module.hasSuffix(".swiftmodule") {
           add(moduleDirectory: modules + "/" + module)
         }
-        frameworks(framework + "/Frameworks")
       }
     }
     for directory in ["/usr/lib/swift"] {
@@ -208,7 +216,8 @@ extension Project {
   /// Returns whether anything new came, in which case everything built so far is stale.
   func loadClang(visibleFrom askers: Set<Int32>) -> Bool {
     guard !swift.pendingClang.isEmpty else { return false }
-    var names: [Name] = askers.flatMap { visibleModules(of: $0) }
+    // In a fixed order: what's read first renames what the next module's headers mention.
+    var names: [Name] = askers.sorted().flatMap { visibleModules(of: $0) }
     if ensureModule(name("Foundation"), display: "Foundation") != nil { names.append(name("Foundation")) }
     var loaded = false
     for moduleName in names where loadClang(moduleName) { loaded = true }
@@ -239,7 +248,8 @@ extension Project {
   /// Swift interfaces don't show, so an SDK import may still bring it: Foundation, then whatever SDK module is loaded.
   func implicitlyExported(_ typeName: Name) -> [DeclRef] {
     if let foundation = ensureModule(name("Foundation"), display: "Foundation"), let list = foundation.top[typeName] { return list }
-    for module in modules.values where module.isSDK {
+    // In the order they were loaded, not the dictionary's (which changes from run to run: CGRect's references did).
+    for module in swift.sdkModulesInOrder(modules) {
       if let list = module.top[typeName] { return list }
     }
     return []

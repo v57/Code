@@ -1,3 +1,4 @@
+import CodeClangModel
 import CodeGoModel
 import CodeModel
 import CodeSwiftModel
@@ -16,12 +17,13 @@ import Foundation
 // code-model check --root <dir> [--language go]
 // code-model bench --root <dir> --at <relative path>:<line>:<character>
 // code-model files --root <dir> [--language go]: every file it reads, with its module
+// code-model decls --root <dir> --at <relative path>: a file's declarations as its parser read them
 //
 // The language: --language (a name or an extension), else the file named by --at or the queries, else the root's
 // manifest (go.mod, Package.swift, tsconfig.json).
 
 /// Every language with a model. A new front end adds itself here and in CodeKit's `CodeTiers.languages`.
-let languages: [ModelLanguage] = [.swift, .go, .typeScript]
+let languages: [ModelLanguage] = [.swift, .go, .typeScript, .clang]
 
 func option(_ flag: String) -> String? {
   guard let at = CommandLine.arguments.firstIndex(of: flag), at + 1 < CommandLine.arguments.count else { return nil }
@@ -147,6 +149,17 @@ case "files":
     print(unit.decls.count, "declarations")
   }
 
+case "decls":
+  // A file's declarations as its parser read them: kind, name, line, parent.
+  guard let at = option("--at"), let index = project.unitByPath[rootPath(at)] else { exit(2) }
+  let unit = project.units[Int(index)]
+  for (position, decl) in unit.decls.enumerated() {
+    let name = decl.nameToken >= 0 && Int(decl.nameToken) < unit.tokens.count ? unit.string(Int(decl.nameToken)) : "?"
+    let line = decl.nameToken >= 0 && Int(decl.nameToken) < unit.tokens.count ? unit.source.lines.line(of: unit.tokens[Int(decl.nameToken)].start) + 1 : 0
+    print(position, decl.kind, name, "line", line, "parent", decl.parent, decl.bodyOpen >= 0 ? "body" : "", decl.paramCount > 0 ? "params \(decl.paramCount)" : "")
+  }
+  for item in unit.imports { print("import", item.moduleName) }
+
 case "complete":
   guard let at = option("--at") else { exit(2) }
   let parts = at.split(separator: ":").map(String.init)
@@ -217,7 +230,10 @@ case "bench":
   var lines = text.components(separatedBy: "\n")
   lines.insert("_ = 1 + 1", at: line + 1)
   edit(lines.joined(separator: "\n"), "body edit")
-  edit(text + (language.name == "Go" ? "\nfunc addedByBench(value int) int { return value }\n" : "\nfunc addedByBench(_ value: Int) -> Int { value }\n"), "signature edit")
+  let added =
+    language.name == "Go" ? "\nfunc addedByBench(value int) int { return value }\n"
+    : language.name == "C" ? "\nint addedByBench(int value) { return value; }\n" : "\nfunc addedByBench(_ value: Int) -> Int { value }\n"
+  edit(text + added, "signature edit")
   print(String(format: "peak RSS %.1f MB", peakRSS()))
 
 default:
