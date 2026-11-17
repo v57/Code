@@ -1,3 +1,4 @@
+import CodeFolders
 import Foundation
 
 /// Walks a folder and reads its source files on a few threads, handing each file's padded bytes to a closure.
@@ -27,7 +28,7 @@ public enum FileWalk {
     isUnchanged: @Sendable @escaping (_ path: String, _ size: Int, _ modified: Int64) -> Bool = { _, _, _ in false },
     visit: @escaping Visit
   ) {
-    let queue = FolderQueue(roots.map { ($0, IgnoreRules.empty) })
+    let queue = FolderQueue(roots.map { ($0, IgnoreRules.outer(of: $0)) })
     DispatchQueue.concurrentPerform(iterations: threads) { worker in
       var reader = FileReader()
       defer { reader.free() }
@@ -38,14 +39,12 @@ public enum FileWalk {
           if name.first == 0x2E, !isDirectory || !name.elementsEqual(".github".utf8) { return }
           if isDirectory {
             let text = String(decoding: name, as: UTF8.self)
-            if skipped.contains(text) || rules.ignores(folder: folder, name: text, isDirectory: true) { return }
+            if skipped.contains(text) || rules.ignores(folder: folder, name: name, isDirectory: true) { return }
             more.append((folder + "/" + text, rules))
             return
           }
-          guard wants(name) else { return }
-          let text = String(decoding: name, as: UTF8.self)
-          if rules.ignores(folder: folder, name: text, isDirectory: false) { return }
-          let path = folder + "/" + text
+          guard wants(name), !rules.ignores(folder: folder, name: name, isDirectory: false) else { return }
+          let path = folder + "/" + String(decoding: name, as: UTF8.self)
           reader.read(path, isUnchanged: isUnchanged) { bytes, count, modified in
             visit(path, bytes, count, modified, worker)
           }
@@ -205,82 +204,64 @@ private final class FolderQueue: @unchecked Sendable {
   }
 }
 
-/// What the `.gitignore` files on the way down say. A subset of git's rules that covers what's found in practice:
-/// names, `*.ext` and other single-`*` globs, `dir/`, `/anchored` and `a/b`; `!name` re-includes that exact pattern.
+/// What the `.gitignore` files say about a walk's entries: those above its root up to the repository's (and
+/// `.git/info/exclude`), then those on the way down. Matched by CodeFolders' `GitIgnore.Rule`, the matcher Quick Open's
+/// file list uses (git's wildmatch: `*`, `?`, `**`, classes, escapes), with git's precedence: the deepest file first,
+/// in it the last line that matches; `!` brings back what a shallower line ignored.
 final class IgnoreRules: @unchecked Sendable {
-  static let empty = IgnoreRules(patterns: [])
+  static let empty = IgnoreRules(sets: [])
 
-  struct Pattern {
+  struct RuleSet {
+    /// The folder whose entries' paths the rules see below it (an outer set's: the walk's root).
     var base: String
-    var text: String
-    var directoryOnly: Bool
-    /// Compared to the path below `base`, not any name.
-    var anchored: Bool
-    /// `!pattern`: brings back what an earlier line ignored.
-    var negated = false
+    /// Put before that path: from the `.gitignore`'s folder to `base` ("Code/" one folder up), "" for one inside.
+    var prefix: String
+    var rules: [GitIgnore.Rule]
   }
 
-  let patterns: [Pattern]
+  /// Shallowest first.
+  let sets: [RuleSet]
 
-  init(patterns: [Pattern]) { self.patterns = patterns }
+  init(sets: [RuleSet]) { self.sets = sets }
+
+  /// The rules from above a walk's root.
+  static func outer(of root: String) -> IgnoreRules {
+    let sets = GitIgnore.outerRules(of: URL(fileURLWithPath: root)).map { RuleSet(base: root, prefix: $0.prefix, rules: $0.rules) }
+    return sets.isEmpty ? empty : IgnoreRules(sets: sets)
+  }
 
   func adding(folder: String) -> IgnoreRules {
     guard let bytes = FileManager.default.contents(atPath: folder + "/.gitignore") else { return self }
-    var patterns = self.patterns
-    for line in String(decoding: bytes, as: UTF8.self).split(whereSeparator: \.isNewline) {
-      var text = String(line).trimmingCharacters(in: .whitespaces)
-      if text.isEmpty || text.hasPrefix("#") { continue }
-      let negated = text.hasPrefix("!")
-      if negated { text.removeFirst() }
-      let directoryOnly = text.hasSuffix("/")
-      if directoryOnly { text.removeLast() }
-      let anchored = text.contains("/")
-      if text.hasPrefix("/") { text.removeFirst() }
-      if text.hasPrefix("**/") { text.removeFirst(3) }
-      patterns.append(Pattern(base: folder, text: text, directoryOnly: directoryOnly, anchored: anchored && !text.hasPrefix("*"), negated: negated))
-    }
-    return IgnoreRules(patterns: patterns)
+    let rules = GitIgnore.rules(in: String(decoding: bytes, as: UTF8.self))
+    if rules.isEmpty { return self }
+    return IgnoreRules(sets: sets + [RuleSet(base: folder, prefix: "", rules: rules)])
   }
 
-  func ignores(folder: String, name: String, isDirectory: Bool) -> Bool {
-    // The last line that matches decides.
-    for pattern in patterns.reversed() where isDirectory || !pattern.directoryOnly {
-      if pattern.anchored {
-        let relative = String((folder + "/" + name).dropFirst(pattern.base.count + 1))
-        if Self.glob(pattern.text, relative) { return !pattern.negated }
-      } else if Self.glob(pattern.text, name) {
-        return !pattern.negated
+  func ignores(folder: String, name: UnsafeBufferPointer<UInt8>, isDirectory: Bool) -> Bool {
+    for set in sets.reversed() {
+      var relative: [UInt8]?
+      for rule in set.rules.reversed() where isDirectory || !rule.isDirectoryOnly {
+        let matched: Bool
+        if rule.isAnchored {
+          if relative == nil { relative = Self.path(below: set, folder: folder, name: name) }
+          matched = relative!.withUnsafeBufferPointer { rule.matches($0) }
+        } else {
+          matched = rule.matches(name)
+        }
+        if matched { return !rule.isNegated }
       }
     }
     return false
   }
 
-  /// `*` matches anything but `/`, `?` one character.
-  static func glob(_ pattern: String, _ text: String) -> Bool {
-    if !pattern.contains("*"), !pattern.contains("?") { return pattern == text }
-    let p = Array(pattern.utf8)
-    let s = Array(text.utf8)
-    var pi = 0
-    var si = 0
-    var star = -1
-    var mark = 0
-    while si < s.count {
-      if pi < p.count, p[pi] == 0x3F || p[pi] == s[si], p[pi] != 0x2A {
-        pi += 1
-        si += 1
-      } else if pi < p.count, p[pi] == 0x2A {
-        star = pi
-        mark = si
-        pi += 1
-      } else if star >= 0, s[mark] != 0x2F {
-        pi = star + 1
-        mark += 1
-        si = mark
-      } else {
-        return false
-      }
+  /// An entry's path as a set's rules see it: the prefix, then the path below the set's base.
+  private static func path(below set: RuleSet, folder: String, name: UnsafeBufferPointer<UInt8>) -> [UInt8] {
+    var path = Array(set.prefix.utf8)
+    if folder.utf8.count > set.base.utf8.count {
+      path += folder.utf8.dropFirst(set.base.utf8.count + 1)
+      path.append(0x2F)
     }
-    while pi < p.count, p[pi] == 0x2A { pi += 1 }
-    return pi == p.count
+    path += name
+    return path
   }
 }

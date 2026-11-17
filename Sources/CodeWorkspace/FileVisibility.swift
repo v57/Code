@@ -1,3 +1,4 @@
+import CodeFolders
 import Foundation
 
 /// Which files a project hides from its navigator and Quick Open: version

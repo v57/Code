@@ -113,8 +113,8 @@ document.save()
 - `FileVisibility` (`hidesIgnoredFiles`, `hiddenPaths`, `shownPaths`, `showsHiddenFiles`) and `HiddenReason`: hidden
   by name (`.name`: `.git`, `.svn`, `.hg`, `.DS_Store`), by the user (`.user`) or by a `.gitignore` line
   (`.gitIgnore(_:)`).
-- `GitIgnore`: `.gitignore` rules (the folder's, those above it up to the repository root, `.git/info/exclude`);
-  `rule(ignoring:isDirectory:)`.
+- `GitIgnore` ([CodeFolders](CodeFolders.md), which CodeScan's walk shares): `.gitignore` rules (the folder's, those
+  above it up to the repository root, `.git/info/exclude`); `rule(ignoring:isDirectory:)`.
 - `FileWatcher(root:latency:fileEvents:handler:)`: batched change events (`Change`: `url`, `structural`, `rescan`) on
   the main actor.
 

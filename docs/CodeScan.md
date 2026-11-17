@@ -120,7 +120,9 @@ if let swift = LexProfile.profile(forLanguage: "swift") {
   language (`LanguageRules.rules(for:)` by the spec's name); a language without a row gets the defaults and still
   scans.
 - `FileWalk.walk(roots:threads:skipped:wants:isUnchanged:visit:)`: a multi-threaded folder walk that skips dependency
-  and build folders (`defaultSkippedFolders`) and files over `largestFile` (8 MB); `FileWalk.read(_:)`.
+  and build folders (`defaultSkippedFolders`), what `.gitignore` files ignore (those on the way down, and those above
+  a root up to its repository's root with `.git/info/exclude`, read with [CodeFolders](CodeFolders.md)' `GitIgnore`
+  rules, the matcher Quick Open's file list uses) and files over `largestFile` (8 MB); `FileWalk.read(_:)`.
 - `TextPosition`, `TextRange`, `SourceLocation`.
 
 ## CodePretty

@@ -1,3 +1,4 @@
+import CodeFolders
 import CodeHighlighting
 import Foundation
 import Observation

@@ -16,6 +16,8 @@ CodeFolders holds the small things that [CodeActions](CodeActions.md), [CodeWork
   `ShellEnvironment` and CodeLSP's servers.
 - **Xcode's DerivedData** (`XcodeDerivedData`): where Xcode keeps a workspace's builds and package checkouts, custom
   locations included, for CodeActions' package check and CodeWorkspace's dependency list.
+- **`.gitignore` rules** (`GitIgnore`): git's own matching, so CodeWorkspace's file tree and Quick Open and CodeScan's
+  index leave out the same files.
 
 CodeFolders is not a sandbox: it decides nothing on its own and blocks nothing itself. The other libraries ask it
 before they run a folder's code. It doesn't store anything either: the host gives trust a store. It has no
@@ -124,11 +126,32 @@ let derivedData = XcodeDerivedData.root(nextTo: projectFolder)
 let app = XcodeDerivedData.folder(of: projectFolder.appendingPathComponent("App.xcodeproj"), in: derivedData)
 ```
 
+### `.gitignore` rules
+
+`GitIgnore(root:)` reads the rules above a project (the repository's `info/exclude` and each `.gitignore` between its
+root and the project) and the project's own `.gitignore`; `load(folder:)` reads a folder's as a walk reaches it,
+`reload()` re-reads them all, and `rule(ignoring:isDirectory:)` is the rule that ignores a project-relative path (nil
+when none does, or the last match re-includes it). Matching is git's: the deepest file first and in it the last line
+that matches, `!` re-includes, a trailing `/` matches only folders, a `/` before the end anchors a line to its file's
+folder, `*` and `?` stop at `/`, `**` crosses folders, `[a-z]` and `[!a-z]` are classes and `\` escapes.
+
+For a walk of its own (CodeScan's): `GitIgnore.rules(in:)` and `rules(at:)` parse a file's lines into `Rule`s
+(`line`, `isNegated`, `isDirectoryOnly`, `isAnchored`), `outerRules(of:)` lists the sets above a root with the prefix
+from each to it, and `Rule.matches(_:)` matches a name (or, for an anchored rule, the path below the rule's folder)
+given as UTF-8 bytes, without allocating.
+
+```swift
+var ignore = GitIgnore(root: projectFolder)
+ignore.load(folder: "Sources")
+ignore.rule(ignoring: "Sources/Generated", isDirectory: true)?.line  // "Generated/", from Sources/.gitignore
+```
+
 ## Testing
 
 CodeFolders has no test target of its own. Folder trust is tested through the language servers
 (`swift test --filter LanguageServerManagerTests`), and containers through CodeActions (`swift test --filter
-BuildSourceTests`). Use `FolderTrust.Store.memory()` in your own tests. Trust is process-wide and `use(_:)` can't be
+BuildSourceTests`), `.gitignore` rules through CodeWorkspace (`--filter ProjectTests`) and CodeScan (`--filter
+gitignore`). Use `FolderTrust.Store.memory()` in your own tests. Trust is process-wide and `use(_:)` can't be
 undone, so run tests that install a store apart from those that expect every folder to be trusted.
 
 ## Related

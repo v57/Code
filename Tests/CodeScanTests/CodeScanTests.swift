@@ -488,6 +488,45 @@ private func names(_ text: String, _ language: String) -> [String] {
     }
   }
 
+  /// The scanner reads `.gitignore` with git's matcher, the one Quick Open's file list uses: `**`, character classes,
+  /// negation in the same file and in a deeper one.
+  @Test func gitignoreMatchesAsGitDoes() throws {
+    try withFolder([
+      ".gitignore": "**/gen/\ndocs/**/*.swift\nfile[0-9].swift\n[!a-c]x.swift\ndrop/*.swift\n!drop/Keep.swift\n*.gen.swift\n",
+      "a/b/gen/GenA.swift": "struct GenA {}\n",
+      "docs/x/y/DocsDeep.swift": "struct DocsDeep {}\n",
+      "docs/DocsTop.swift": "struct DocsTop {}\n",
+      "src/docs/OtherDocs.swift": "struct OtherDocs {}\n",
+      "file7.swift": "struct FileSeven {}\n",
+      "fileX.swift": "struct FileX {}\n",
+      "dx.swift": "struct DX {}\n",
+      "ax.swift": "struct AX {}\n",
+      "drop/Dropped.swift": "struct Dropped {}\n",
+      "drop/Keep.swift": "struct Kept {}\n",
+      "sub/.gitignore": "!keep.gen.swift\n",
+      "sub/keep.gen.swift": "struct KeptGen {}\n",
+      "sub/drop.gen.swift": "struct DroppedGen {}\n",
+    ]) { root in
+      let index = WorkspaceIndex(roots: [root])
+      index.refresh()
+      func found(_ name: String) -> Bool { index.workspaceSymbols(query: name, limit: 50).contains { $0.name == name } }
+      for name in ["GenA", "DocsDeep", "DocsTop", "FileSeven", "DX", "Dropped", "DroppedGen"] { #expect(!found(name), "\(name)") }
+      for name in ["OtherDocs", "FileX", "AX", "Kept", "KeptGen"] { #expect(found(name), "\(name)") }
+    }
+  }
+
+  /// A `.gitignore` above the walked folder counts up to the repository's root, as it does in Quick Open.
+  @Test func gitignoreAboveTheRootInTheRepository() throws {
+    try withFolder([".git/HEAD": "", ".gitignore": "*.skip.swift\nproject/out/\n", "project/a.skip.swift": "struct Skipped {}\n",
+      "project/out/Out.swift": "struct Out {}\n", "project/b.swift": "struct Kept {}\n"]) { base in
+      let index = WorkspaceIndex(roots: [base + "/project"])
+      index.refresh()
+      #expect(index.workspaceSymbols(query: "Skipped", limit: 5).isEmpty)
+      #expect(index.workspaceSymbols(query: "Out", limit: 5).filter { $0.name == "Out" }.isEmpty)
+      #expect(index.workspaceSymbols(query: "Kept", limit: 5).count == 1)
+    }
+  }
+
   @Test func renameOnlyWhatItCanProve() throws {
     try withFolder([
       "A.swift": "func once() {}\nfunc twice() {}\nfunc f() { let local = 1; print(local); once(); twice() }\n",

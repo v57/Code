@@ -154,7 +154,7 @@ let package = Package(
       name: "CodeActionsUI", dependencies: ["CodeActions", .product(name: "ComponentKit", package: "Component")],
       swiftSettings: swiftSettings),
     .target(name: "CodeLSP", dependencies: ["CodeFolders"], swiftSettings: swiftSettings),
-    .target(name: "CodeScan", dependencies: ["CodeHighlighting"], swiftSettings: swiftSettings),
+    .target(name: "CodeScan", dependencies: ["CodeHighlighting", "CodeFolders"], swiftSettings: swiftSettings),
     .target(name: "CodePretty", dependencies: ["CodeScan"], swiftSettings: swiftSettings),
     .target(name: "CodeServer", dependencies: ["CodeScan", "CodePretty", "CodeLSP"], swiftSettings: swiftSettings),
     .executableTarget(name: "code-lsp", dependencies: ["CodeServer"], swiftSettings: swiftSettings),

@@ -14,11 +14,16 @@ public struct GitIgnore: Sendable {
     /// The line as written in the file ("build/", "!keep.log").
     public let line: String
     let pattern: [UInt8]
-    let isNegated: Bool
-    let isDirectoryOnly: Bool
-    let isAnchored: Bool
+    /// `!pattern`: brings back what an earlier line ignored.
+    public let isNegated: Bool
+    /// A trailing `/`: only folders.
+    public let isDirectoryOnly: Bool
+    /// A `/` before the end: matched against the path below the rule's folder, not the last name.
+    public let isAnchored: Bool
+    /// No wildcard, class or escape: a plain comparison.
+    let isLiteral: Bool
 
-    init?(line raw: String) {
+    public init?(line raw: String) {
       var text = Substring(raw)
       if text.hasSuffix("\r") { text = text.dropLast() }
       // Trailing spaces are dropped unless escaped.
@@ -34,13 +39,26 @@ public struct GitIgnore: Sendable {
       if text.hasPrefix("/") { text = text.dropFirst() }
       guard !text.isEmpty else { return nil }
       pattern = Array(text.utf8)
+      isLiteral = !pattern.contains { $0 == UInt8(ascii: "*") || $0 == UInt8(ascii: "?") || $0 == UInt8(ascii: "[") || $0 == UInt8(ascii: "\\") }
     }
 
     /// Whether the rule matches `path`, relative to the rule's folder.
     func matches(_ path: Substring, isDirectory: Bool) -> Bool {
       if isDirectoryOnly && !isDirectory { return false }
-      let subject = isAnchored ? path : path.split(separator: "/").last ?? path
-      return GitIgnore.wildmatch(pattern, Array(subject.utf8))
+      var subject = String(isAnchored ? path : path.split(separator: "/").last ?? path)
+      return subject.withUTF8 { matches($0) }
+    }
+
+    /// Whether the rule's pattern matches `subject`: the entry's name for a rule that isn't anchored, else its path
+    /// below the rule's folder. The caller checks `isDirectoryOnly`.
+    public func matches(_ subject: UnsafeBufferPointer<UInt8>) -> Bool {
+      return pattern.withUnsafeBufferPointer { pattern in
+        if isLiteral {
+          guard subject.count == pattern.count, let a = subject.baseAddress, let b = pattern.baseAddress else { return false }
+          return memcmp(a, b, pattern.count) == 0
+        }
+        return GitIgnore.match(pattern, 0, subject, 0)
+      }
     }
   }
 
@@ -116,36 +134,48 @@ public struct GitIgnore: Sendable {
   /// Finds the repository root above the project and reads its
   /// `info/exclude` and every `.gitignore` between it and the project.
   private mutating func loadOuterRules() {
+    outer = Self.outerRules(of: root).map { RuleSet(prefix: $0.prefix, rules: $0.rules) }
+  }
+
+  /// The rules from outside a project, lowest precedence first: the repository's `info/exclude`, then each `.gitignore`
+  /// from the repository's root down to the project's parent. `folder` is where a set's paths start, `prefix` the path
+  /// from there to the project ("Code/" one folder up). Outside a repository there are none.
+  public static func outerRules(of root: URL) -> [(folder: String, prefix: String, rules: [Rule])] {
+    let root = root.standardizedFileURL
     // Walks path components, not URLs: `deletingLastPathComponent()` of "/"
     // is "/..", so a URL walk never reaches a fixed point above the root.
     var components = root.pathComponents.filter { $0 != "/" }
     var prefix = ""
-    var sets: [RuleSet] = []
+    var sets: [(folder: String, prefix: String, rules: [Rule])] = []
     let fm = FileManager.default
     while true {
       let folder = "/" + components.joined(separator: "/")
       if components.count < root.pathComponents.count - 1 {
         let rules = Self.rules(at: URL(fileURLWithPath: folder).appendingPathComponent(".gitignore"))
-        if !rules.isEmpty { sets.append(RuleSet(prefix: prefix, rules: rules)) }
+        if !rules.isEmpty { sets.append((folder, prefix, rules)) }
       }
       let git = URL(fileURLWithPath: folder).appendingPathComponent(".git")
       if fm.fileExists(atPath: git.path) {
         let exclude = Self.rules(at: git.appendingPathComponent("info/exclude"))
-        if !exclude.isEmpty { sets.append(RuleSet(prefix: prefix, rules: exclude)) }
+        if !exclude.isEmpty { sets.append((folder, prefix, exclude)) }
         break
       }
       // Not in a repository: only the project's own .gitignore files count.
-      guard let name = components.popLast() else { return }
+      guard let name = components.popLast() else { return [] }
       prefix = name + "/" + prefix
     }
-    outer = sets.reversed()
+    return sets.reversed()
   }
 
-  static func rules(at url: URL) -> [Rule] {
+  /// The rules of a `.gitignore` file, in file order; empty when it can't be read.
+  public static func rules(at url: URL) -> [Rule] {
     guard let text = try? String(contentsOf: url, encoding: .utf8) else { return [] }
-    return text.split(separator: "\n", omittingEmptySubsequences: true).compactMap {
-      Rule(line: String($0))
-    }
+    return rules(in: text)
+  }
+
+  /// The rules of a `.gitignore` file's text, in file order.
+  public static func rules(in text: String) -> [Rule] {
+    text.split(separator: "\n", omittingEmptySubsequences: true).compactMap { Rule(line: String($0)) }
   }
 
   // MARK: - Wildcards
@@ -154,13 +184,13 @@ public struct GitIgnore: Sendable {
   /// either end) crosses folders, `[a-z]` and `[!a-z]` are classes, `\`
   /// escapes.
   static func wildmatch(_ pattern: [UInt8], _ text: [UInt8]) -> Bool {
-    match(pattern, 0, text, 0)
+    pattern.withUnsafeBufferPointer { p in text.withUnsafeBufferPointer { t in match(p, 0, t, 0) } }
   }
 
   private static let star = UInt8(ascii: "*")
   private static let slash = UInt8(ascii: "/")
 
-  private static func match(_ p: [UInt8], _ start: Int, _ t: [UInt8], _ textStart: Int) -> Bool {
+  static func match(_ p: UnsafeBufferPointer<UInt8>, _ start: Int, _ t: UnsafeBufferPointer<UInt8>, _ textStart: Int) -> Bool {
     var pi = start
     var ti = textStart
     while pi < p.count {
@@ -221,7 +251,7 @@ public struct GitIgnore: Sendable {
   /// Matches `c` against the class starting at `p[start]` ("["). Returns
   /// whether it matched and the index after "]", or nil when the class is
   /// not closed (the "[" is then literal).
-  private static func matchClass(_ p: [UInt8], _ start: Int, _ c: UInt8) -> (Bool, Int)? {
+  private static func matchClass(_ p: UnsafeBufferPointer<UInt8>, _ start: Int, _ c: UInt8) -> (Bool, Int)? {
     var i = start + 1
     var negated = false
     if i < p.count, p[i] == UInt8(ascii: "!") || p[i] == UInt8(ascii: "^") {
