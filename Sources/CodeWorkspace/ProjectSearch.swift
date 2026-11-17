@@ -213,7 +213,7 @@ public enum ProjectReplace {
     guard let expression = query.expression else { return (text, 0) }
     let string = text as NSString
     let template = query.template(replacement)
-    let result = NSMutableString()
+    let result = NSMutableString(capacity: string.length)
     var count = 0
     var copied = 0
     expression.enumerateMatches(in: text, range: NSRange(location: 0, length: string.length)) { match, _, _ in
