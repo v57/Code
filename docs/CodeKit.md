@@ -21,7 +21,7 @@ What it adds:
 
 CodeKit is not a separate library of features: everything it shows comes from the libraries it re-exports.
 [CodeScan](CodeScan.md), CodePretty, [CodeSwiftModel](CodeSwiftModel.md), [CodeGoModel](CodeGoModel.md),
-[CodeTypeScriptModel](CodeTypeScriptModel.md), [CodeClangModel](CodeClangModel.md), [CodePythonModel](CodePythonModel.md), [CodeRustModel](CodeRustModel.md), [CodeJavaModel](CodeJavaModel.md), [CodeKotlinModel](CodeKotlinModel.md), [CodeCSharpModel](CodeCSharpModel.md), [CodeDartModel](CodeDartModel.md) and [CodePHPModel](CodePHPModel.md) are used inside but not re-exported; [CodeActionsUI](CodeActionsUI.md) and CodeServer are separate products. It links all of
+[CodeTypeScriptModel](CodeTypeScriptModel.md), [CodeClangModel](CodeClangModel.md), [CodePythonModel](CodePythonModel.md), [CodeRustModel](CodeRustModel.md), [CodeJavaModel](CodeJavaModel.md), [CodeKotlinModel](CodeKotlinModel.md), [CodeCSharpModel](CodeCSharpModel.md), [CodeDartModel](CodeDartModel.md), [CodePHPModel](CodePHPModel.md) and [CodeRubyModel](CodeRubyModel.md) are used inside but not re-exported; [CodeActionsUI](CodeActionsUI.md) and CodeServer are separate products. It links all of
 them, so take a single library when that is all you need.
 
 ## Platforms
@@ -225,5 +225,5 @@ the AppKit ones need a Mac. The last line checks that the libraries still build 
 - [CodeScan](CodeScan.md), [CodeSwiftModel](CodeSwiftModel.md), [CodeGoModel](CodeGoModel.md),
   [CodeTypeScriptModel](CodeTypeScriptModel.md), [CodeClangModel](CodeClangModel.md), [CodePythonModel](CodePythonModel.md), [CodeRustModel](CodeRustModel.md),
   [CodeJavaModel](CodeJavaModel.md), [CodeKotlinModel](CodeKotlinModel.md), [CodeCSharpModel](CodeCSharpModel.md),
-  [CodeDartModel](CodeDartModel.md), [CodePHPModel](CodePHPModel.md): the fast tiers.
+  [CodeDartModel](CodeDartModel.md), [CodePHPModel](CodePHPModel.md), [CodeRubyModel](CodeRubyModel.md): the fast tiers.
 - [CodeFolders](CodeFolders.md): folder trust.

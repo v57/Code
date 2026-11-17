@@ -141,6 +141,16 @@ Libraries
                        a hand-written stub of PHP's functions and classes;
                        definitions, completions, references and details
                        (numbers in ../Demos/CodeModelBench/php)
+    CodeRubyModel      a Ruby code model on CodeModel from source: classes
+                       and modules reopened across files, lexical constant
+                       lookup, include/extend/prepend, attr_*, alias,
+                       define_method and Struct.new members, require and
+                       require_relative, gems from Gemfile.lock read in
+                       place (never installed), YARD and Sorbet sig types,
+                       blocks, command calls; a stub of the core classes
+                       generated from rbs; definitions, completions,
+                       references and details (numbers in
+                       ../Demos/CodeModelBench/rb)
     CodeKit            re-exports them all; CodeEditorView(document:) edits a
                        workspace document (autosave, reload, ⌘S trimming,
                        minimap, issues, breakpoints); ProjectServices connects

@@ -93,10 +93,11 @@ tests.
 | [CodeCSharpModel](CodeCSharpModel.md) | A C# code model from source (`.csproj` projects, a generated stub of .NET 10's library): definitions, completions, references | macOS, Linux, Windows, iOS | `import CodeCSharpModel` |
 | [CodeDartModel](CodeDartModel.md) | A Dart code model from source (libraries and parts, `package:` from the pub cache, a stub of the `dart:` libraries): definitions, completions, references | macOS, Linux, Windows, iOS | `import CodeDartModel` |
 | [CodePHPModel](CodePHPModel.md) | A PHP code model from source (namespaces, Composer's autoloading read in place, a stub of PHP's functions and classes): definitions, completions, references | macOS, Linux, Windows, iOS | `import CodePHPModel` |
+| [CodeRubyModel](CodeRubyModel.md) | A Ruby code model from source (classes reopened across files, gems from `Gemfile.lock` read in place, a stub of the core classes generated from rbs): definitions, completions, references | macOS, Linux, Windows, iOS | `import CodeRubyModel` |
 
 The package also builds four tools: `code-lsp` (CodeServer's server on standard input and output), `code-pretty`
 (CodePretty over files and folders), `swift-model` (measures CodeSwiftModel on a project) and `code-model` (measures
-any language's model, Swift's, Go's, TypeScript's, C's, Python's, Rust's, Java's, Kotlin's, C#'s, Dart's or PHP's, chosen by the files or `--language`). Android is not supported
+any language's model, Swift's, Go's, TypeScript's, C's, Python's, Rust's, Java's, Kotlin's, C#'s, Dart's, PHP's or Ruby's, chosen by the files or `--language`). Android is not supported
 yet by any library.
 
 Run every test with `swift test` at the repository root.
