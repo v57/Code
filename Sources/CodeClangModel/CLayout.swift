@@ -190,15 +190,15 @@ final class CLayout: ProjectLayout {
   private func walk(_ start: String) -> [String] {
     var result: [String] = []
     let manager = FileManager.default
-    var stack = [start]
-    while let directory = stack.popLast() {
+    var stack = FolderStack(start)
+    while let directory = stack.pop() {
       guard let entries = try? manager.contentsOfDirectory(atPath: directory) else { continue }
       for entry in entries where !entry.hasPrefix(".") {
         let path = directory + "/" + entry
         var isDirectory: ObjCBool = false
         guard manager.fileExists(atPath: path, isDirectory: &isDirectory) else { continue }
         if isDirectory.boolValue {
-          if !CLayout.skipped.contains(entry), !entry.hasSuffix(".xcodeproj"), !entry.hasSuffix(".xcassets"), !entry.hasSuffix(".app") { stack.append(path) }
+          if !CLayout.skipped.contains(entry), !entry.hasSuffix(".xcodeproj"), !entry.hasSuffix(".xcassets"), !entry.hasSuffix(".app") { stack.push(path) }
           continue
         }
         guard let dot = entry.lastIndex(of: "."), CLayout.sourceExtensions.contains(entry[entry.index(after: dot)...].lowercased()) else { continue }

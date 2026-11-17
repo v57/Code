@@ -44,8 +44,8 @@ package final class JVMWorkspace {
   package func sourceFiles(in directory: String) -> [String] {
     var result: [String] = []
     let manager = FileManager.default
-    var stack = [directory]
-    while let current = stack.popLast() {
+    var stack = FolderStack(directory)
+    while let current = stack.pop() {
       guard let entries = try? manager.contentsOfDirectory(atPath: current) else { continue }
       for entry in entries {
         if entry.hasPrefix(".") || Self.skipped.contains(entry) { continue }
@@ -55,7 +55,7 @@ package final class JVMWorkspace {
           continue
         }
         var isDirectory: ObjCBool = false
-        if manager.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue { stack.append(path) }
+        if manager.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue { stack.push(path) }
       }
     }
     return result.sorted()

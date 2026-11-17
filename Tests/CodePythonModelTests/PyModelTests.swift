@@ -307,4 +307,22 @@ private final class Project {
       Toolchains.newestPathsFirst(["/m2/g/a/1.9.0/a-1.9.0-sources.jar", "/m2/g/a/1.10.0/a-1.10.0-sources.jar"])
         == ["/m2/g/a/1.10.0/a-1.10.0-sources.jar", "/m2/g/a/1.9.0/a-1.9.0-sources.jar"])
   }
+
+  /// A folder link back up the tree is left out; one to a folder beside it is still followed.
+  @Test func folderLinkLoopsAreSkipped() throws {
+    let base = NSTemporaryDirectory() + "pymodel-" + UUID().uuidString
+    defer { try? FileManager.default.removeItem(atPath: base) }
+    let root = base + "/project"
+    let manager = FileManager.default
+    for (name, text) in ["pkg/a.py": "A = 1\n", "other/b.py": "B = 2\n", "pkg/inner/c.py": "C = 3\n"] {
+      try manager.createDirectory(atPath: ((root + "/" + name) as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+      try text.write(toFile: root + "/" + name, atomically: true, encoding: .utf8)
+    }
+    try manager.createSymbolicLink(atPath: root + "/pkg/inner/up", withDestinationPath: "../..")
+    try manager.createSymbolicLink(atPath: root + "/pkg/self", withDestinationPath: ".")
+    try manager.createSymbolicLink(atPath: root + "/pkg/beside", withDestinationPath: "../other")
+    let model = PyModel(root: root)
+    let paths = Set(model.project.units.map(\.path).filter { $0.hasPrefix(root + "/") }.map { String($0.dropFirst(root.count + 1)) })
+    #expect(paths == ["pkg/a.py", "pkg/inner/c.py", "other/b.py", "pkg/beside/b.py"])
+  }
 }

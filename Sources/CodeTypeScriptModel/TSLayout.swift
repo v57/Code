@@ -153,8 +153,8 @@ final class TSLayout: ProjectLayout {
   func sourceFiles(in directory: String) -> [String] {
     var result: [String] = []
     let manager = FileManager.default
-    var stack = [directory]
-    while let current = stack.popLast() {
+    var stack = FolderStack(directory)
+    while let current = stack.pop() {
       guard let entries = try? manager.contentsOfDirectory(atPath: current) else { continue }
       for entry in entries {
         if entry.hasPrefix(".") || TSLayout.skipped.contains(entry) { continue }
@@ -162,7 +162,7 @@ final class TSLayout: ProjectLayout {
         var isDirectory: ObjCBool = false
         guard manager.fileExists(atPath: path, isDirectory: &isDirectory) else { continue }
         if isDirectory.boolValue {
-          stack.append(path)
+          stack.push(path)
         } else if TSLayout.isSource(entry) {
           result.append(path)
         }

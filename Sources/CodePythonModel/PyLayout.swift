@@ -62,8 +62,8 @@ final class PyLayout: ProjectLayout {
     var result: [String] = []
     var manifests: [String] = []
     let manager = FileManager.default
-    var stack = [directory]
-    while let current = stack.popLast() {
+    var stack = FolderStack(directory)
+    while let current = stack.pop() {
       guard let entries = try? manager.contentsOfDirectory(atPath: current) else { continue }
       for entry in entries {
         let path = current + "/" + entry
@@ -73,7 +73,7 @@ final class PyLayout: ProjectLayout {
         guard manager.fileExists(atPath: path, isDirectory: &isDirectory) else { continue }
         if isDirectory.boolValue {
           if manager.fileExists(atPath: path + "/pyvenv.cfg") { continue }
-          stack.append(path)
+          stack.push(path)
         } else if PyLayout.isSource(entry) {
           result.append(path)
         }

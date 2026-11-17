@@ -109,8 +109,8 @@ final class RustLayout: ProjectLayout {
 
   private func findPackages() {
     var manifests: [String] = []
-    var stack = [root]
-    while let directory = stack.popLast() {
+    var stack = FolderStack(root)
+    while let directory = stack.pop() {
       guard let entries = try? fileManager.contentsOfDirectory(atPath: directory) else { continue }
       for entry in entries {
         if entry.hasPrefix(".") || entry == "target" || entry == "node_modules" { continue }
@@ -120,7 +120,7 @@ final class RustLayout: ProjectLayout {
           continue
         }
         var isDirectory: ObjCBool = false
-        if fileManager.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue { stack.append(path) }
+        if fileManager.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue { stack.push(path) }
       }
     }
     // The package and workspace above the root, when it's inside one.
@@ -433,12 +433,12 @@ final class RustLayout: ProjectLayout {
   }
 
   private func findPackage(named name: String, under directory: String) -> String? {
-    var stack = [directory]
-    while let current = stack.popLast() {
+    var stack = FolderStack(directory)
+    while let current = stack.pop() {
       if let toml = Toml.read(current + "/Cargo.toml"), (toml["package"] as? [String: Any])?["name"] as? String == name { return current }
       for entry in (try? fileManager.contentsOfDirectory(atPath: current)) ?? [] where !entry.hasPrefix(".") && entry != "target" {
         var isDirectory: ObjCBool = false
-        if fileManager.fileExists(atPath: current + "/" + entry, isDirectory: &isDirectory), isDirectory.boolValue { stack.append(current + "/" + entry) }
+        if fileManager.fileExists(atPath: current + "/" + entry, isDirectory: &isDirectory), isDirectory.boolValue { stack.push(current + "/" + entry) }
       }
     }
     return nil
@@ -596,8 +596,8 @@ final class RustLayout: ProjectLayout {
 
   func sourceFiles(in directory: String) -> [String] {
     var result: [String] = []
-    var stack = [directory]
-    while let current = stack.popLast() {
+    var stack = FolderStack(directory)
+    while let current = stack.pop() {
       guard let entries = try? fileManager.contentsOfDirectory(atPath: current) else { continue }
       for entry in entries {
         if entry.hasPrefix(".") || entry == "target" || entry == "node_modules" { continue }
@@ -607,7 +607,7 @@ final class RustLayout: ProjectLayout {
           continue
         }
         var isDirectory: ObjCBool = false
-        if fileManager.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue { stack.append(path) }
+        if fileManager.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue { stack.push(path) }
       }
     }
     return result.sorted()

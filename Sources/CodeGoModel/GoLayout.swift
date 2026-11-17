@@ -280,8 +280,8 @@ final class GoLayout: ProjectLayout {
   private func walk(_ start: String, wantsModules: Bool) -> [String] {
     var result: [String] = []
     let manager = FileManager.default
-    var stack = [start]
-    while let directory = stack.popLast() {
+    var stack = FolderStack(start)
+    while let directory = stack.pop() {
       guard let entries = try? manager.contentsOfDirectory(atPath: directory) else { continue }
       for entry in entries {
         if entry.hasPrefix(".") || entry.hasPrefix("_") || entry == "testdata" || entry == "vendor" || entry == "node_modules" { continue }
@@ -289,8 +289,7 @@ final class GoLayout: ProjectLayout {
         var isDirectory: ObjCBool = false
         guard manager.fileExists(atPath: path, isDirectory: &isDirectory) else { continue }
         if isDirectory.boolValue {
-          stack.append(path)
-          if wantsModules, manager.fileExists(atPath: path + "/go.mod") { result.append(path) }
+          if stack.push(path), wantsModules, manager.fileExists(atPath: path + "/go.mod") { result.append(path) }
         } else if !wantsModules, entry.hasSuffix(".go") {
           result.append(path)
         }
