@@ -16,7 +16,7 @@ func v57(_ name: String) -> Package.Dependency {
 ///   (platform-neutral, no dependencies; what Git's diffs and Md's fenced code need).
 /// - CodeWorkspace: project folders — file tree, watching, Quick Open index,
 ///   text documents with autosave, tabs and sessions (platform-neutral).
-/// - CodeEditor: the AppKit code editor view (text in, text out).
+/// - CodeEditor: the code editor view (text in, text out): AppKit on the Mac, UIKit on iPhone and iPad.
 /// - CodeActions: Xcode-style schemes found in a project folder (Xcode,
 ///   SwiftPM, Cargo, Go, Gradle/Android, Node, Python, …), run destinations
 ///   (Mac, simulators, devices, Android), and running build/run/test with

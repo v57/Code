@@ -271,6 +271,7 @@
     }
 
     private func applyConfiguration(previous: EditorConfiguration?) {
+      if previous?.isEditable != configuration.isEditable { isEditable = configuration.isEditable }
       if previous?.wrapLines != configuration.wrapLines { applyWrapping() }
       if previous?.showLineNumbers != configuration.showLineNumbers {
         enclosingScrollView?.rulersVisible = configuration.showLineNumbers

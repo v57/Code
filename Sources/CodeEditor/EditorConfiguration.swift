@@ -21,12 +21,14 @@ public struct EditorConfiguration: Equatable, Sendable {
   public var autoCloseDelimiters: Bool
   /// ⌘S trims trailing whitespace from edited lines.
   public var trimTrailingWhitespace: Bool
+  /// False shows the text read-only (selectable, not editable).
+  public var isEditable: Bool
 
   public init(
     themeID: String? = nil, fontName: String? = nil, fontSize: CGFloat = 13, tabWidth: Int = 2,
     insertSpaces: Bool = true, wrapLines: Bool = true, showLineNumbers: Bool = true,
     highlightCurrentLine: Bool = true, autoCloseDelimiters: Bool = true,
-    trimTrailingWhitespace: Bool = true
+    trimTrailingWhitespace: Bool = true, isEditable: Bool = true
   ) {
     self.themeID = themeID
     self.fontName = fontName
@@ -38,6 +40,7 @@ public struct EditorConfiguration: Equatable, Sendable {
     self.highlightCurrentLine = highlightCurrentLine
     self.autoCloseDelimiters = autoCloseDelimiters
     self.trimTrailingWhitespace = trimTrailingWhitespace
+    self.isEditable = isEditable
   }
 
   public static let fontSizes: ClosedRange<CGFloat> = 8...36

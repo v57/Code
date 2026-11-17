@@ -170,7 +170,7 @@ no fakes; `SyntaxHighlighter` and `CodeHighlighter` are pure values you can call
 
 ## Related
 
-- [CodeEditor](CodeEditor.md): the Mac editor view that draws these tokens.
+- [CodeEditor](CodeEditor.md): the editor view (Mac, iPhone and iPad) that draws these tokens.
 - [CodeScan](CodeScan.md): a faster scanner compiled from this catalog, with declarations and an index.
 - [CodeMinimap](CodeMinimap.md) and [CodeWorkspace](CodeWorkspace.md): use `SyntaxKind`, `EditorTheme` and
   `Language.detect`.

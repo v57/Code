@@ -69,7 +69,7 @@ tests.
 | [CodeHighlighting](CodeHighlighting.md) | Languages, file language detection, the incremental highlighter, bracket matching, color schemes and themes; no dependencies | macOS, iOS, Linux, Windows | `import CodeHighlighting` |
 | [CodeWorkspace](CodeWorkspace.md) | A project folder: file tree, hidden files, watching, Quick Open index, Find in Project, package dependencies, autosaving documents, tabs, the project's icon | macOS, iOS (no watching), Linux, Windows | `import CodeWorkspace` |
 | [CodeFolders](CodeFolders.md) | Folder trust, folder scope, a folder's Xcode workspaces, projects and package; no dependencies | macOS, iOS, Linux, Windows | `import CodeFolders` |
-| [CodeEditor](CodeEditor.md) | The AppKit code editor (`CodeTextView`, `CodeEditorScrollView`, SwiftUI `CodeTextEditor`) and neutral editor types | macOS; types everywhere | `import CodeEditor` |
+| [CodeEditor](CodeEditor.md) | The code editor (`CodeTextView` on AppKit and UIKit, `CodeEditorScrollView`, SwiftUI `CodeTextEditor`) and neutral editor types | macOS, iOS (partial); types everywhere | `import CodeEditor` |
 | [CodeMinimap](CodeMinimap.md) | Xcode's minimap with sections and marks | macOS | `import CodeMinimap` |
 | [CodeAutocompletion](CodeAutocompletion.md) | The completion list, the provider protocol, fuzzy matching, snippets as placeholders | macOS (list); model everywhere | `import CodeAutocompletion` |
 | [CodeActions](CodeActions.md) | Schemes found in a folder, run destinations, running actions with progress and issues, here, over SSH or in a container; the release tools | macOS; iOS (over SSH only); Windows, Linux (early) | `import CodeActions` |

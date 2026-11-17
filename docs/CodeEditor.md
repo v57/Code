@@ -2,14 +2,17 @@
 
 ## Purpose
 
-CodeEditor is Code's text editor view for the Mac: an `NSTextView` subclass (`CodeTextView`) with syntax colors,
+CodeEditor is Code's text editor view. On the Mac it is an `NSTextView` subclass (`CodeTextView`) with syntax colors,
 line numbers, the current line, Xcode's edit assists (auto-closed brackets and quotes, indentation, block indent,
 comment toggle, `<#placeholder#>` tokens, moving by names and subwords), inline issues, breakpoints and the debugger's
-line. Text in, text out.
+line. On iPhone and iPad it is a `UITextView` subclass of the same name on TextKit 2, with syntax colors, Return
+keeping the line's indentation and the file's line ending, and Tab to the next tab stop. Text in, text out.
 
-Colors are never written into the text storage: they are handed to the layout manager at draw time, so only visible
-text is colored and undo never sees colors. Highlighting comes from [CodeHighlighting](CodeHighlighting.md)'s
-incremental `SyntaxHighlighter`.
+Colors are never written into the text storage: on the Mac they are handed to the layout manager at draw time, on
+iPhone and iPad they are TextKit 2's rendering attributes, set as each layout fragment is laid out. Either way only
+text that is shown is colored and undo never sees colors. Highlighting comes from
+[CodeHighlighting](CodeHighlighting.md)'s incremental `SyntaxHighlighter`; a text over 100,000 characters finishes its
+opening scan off the main thread on iPhone and iPad (the first 150 lines are colored at once).
 
 CodeEditor is not a document editor. It knows nothing about files, saving, language servers or completion. For an
 editor of a workspace document with autosave, issues and language services, use [CodeKit](CodeKit.md)'s
@@ -20,7 +23,10 @@ editor of a workspace document with autosave, issues and language services, use 
 
 <!-- platforms: macos ios=partial linux=partial windows=partial -->
 
-The views are AppKit (macOS 14 or later). On iOS (iPadOS), Linux and Windows only the platform-neutral types build
+The views are AppKit on macOS 14 or later and UIKit on iOS and iPadOS 17 or later, with the same `CodeTextEditor`.
+The iPhone and iPad editor has no line numbers, issues, breakpoints or edit assists beyond indentation yet, wraps
+lines always and draws every kind in the theme's plain font (rendering attributes can't change fonts). On Linux and
+Windows only the platform-neutral types build
 (`EditorConfiguration`, `EditorSelection`, `LineAnnotation`, `TextEdit`, `CodeTextEditing`, `EditorPlaceholder`).
 Code's Windows and Linux builds edit with CodeKit's portable editor, a SwiftUI text editor of the highlighted text,
 behind `CodeTextEditing`. Android: not yet (the package has no Android setup).
@@ -62,7 +68,8 @@ struct ScriptEditor: View {
 
 ### SwiftUI and AppKit views (macOS)
 
-- `CodeTextEditor(text:language:configuration:onSelectionChange:)`: the SwiftUI view, bound to a `String`.
+- `CodeTextEditor(text:language:configuration:onSelectionChange:)`: the SwiftUI view, bound to a `String` (also on
+  iPhone and iPad).
 - `CodeEditorScrollView(text:language:highlightsSyntax:configuration:)`: the scroll view with the text view
   (`textView`) and its line numbers. Keep one per open file so a file brought back keeps its undo history, selection
   and scroll position.
@@ -99,6 +106,12 @@ textView.setLanguage(CodeHighlighter.spec(forLanguage: "python"), highlightsSynt
 textView.applyFormattedText(formatted)  // undoable, keeps the caret where the text didn't change
 ```
 
+### The text view (iPhone and iPad)
+
+`CodeTextView(text:spec:highlightsSyntax:configuration:)`, a `UITextView`: `replaceAllText(_:)`,
+`setLanguage(_:highlightsSyntax:)`, `configuration`, `spec`, `lineIndex`, `string`, `currentSelection`, `onEdit` and
+`onSelectionChange`. Find (⌘F) is the system's find interaction.
+
 ### Issues, breakpoints and the debugger (macOS)
 
 `annotations` (`[LineAnnotation]`), `showsAnnotationMessages`, `breakpoints` (lines from 0), `breakpointsActive`,
@@ -127,8 +140,8 @@ textView.onCommandClick = { location in
 
 ### Platform-neutral types
 
-- `EditorConfiguration(themeID:fontName:fontSize:tabWidth:insertSpaces:wrapLines:showLineNumbers:highlightCurrentLine:autoCloseDelimiters:trimTrailingWhitespace:)`:
-  plain values, fit for `@AppStorage`; `fontSizes` is 8...36; `theme(isDark:)` resolves `themeID` with
+- `EditorConfiguration(themeID:fontName:fontSize:tabWidth:insertSpaces:wrapLines:showLineNumbers:highlightCurrentLine:autoCloseDelimiters:trimTrailingWhitespace:isEditable:)`:
+  plain values, fit for `@AppStorage` (`isEditable: false` shows the text read-only); `fontSizes` is 8...36; `theme(isDark:)` resolves `themeID` with
   `EditorTheme.resolve`.
 - `EditorSelection`: `line`, `column`, `length` and `lineCount`, lines and columns from 1.
 - `LineAnnotation`: an issue on a line (from 0), with an optional `column` and a `Severity` (`error`, `warning`,
@@ -154,6 +167,7 @@ swift test --filter CodeEditorTests
 
 `EditAssistTests` drive a `CodeTextView` with typed text and check the edit assists; `EditorTests` cover colors from
 the highlighter, indentation, comment toggling, the line index and CRLF files. They need AppKit, so run them on a Mac.
+The UIKit editor has no tests yet; Shell's iPhone and iPad file editor exercises it.
 `PlaceholderScopeTests` check `EditorPlaceholder` and run everywhere.
 
 See also the user guide's [Editing](Editing.md).

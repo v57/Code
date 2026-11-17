@@ -28,8 +28,9 @@ Libraries
                        Quick Open index, Find in Project, package
                        dependencies, text documents with autosave, tabs
                        and sessions, the project's icon (neutral)
-    CodeEditor         the AppKit editor: CodeTextView, line numbers,
-                       CodeEditorScrollView, SwiftUI CodeTextEditor(text:)
+    CodeEditor         the editor: CodeTextView (AppKit, and UIKit on iPhone
+                       and iPad), line numbers, CodeEditorScrollView,
+                       SwiftUI CodeTextEditor(text:)
     CodeActions        schemes found in a folder (Xcode, SwiftPM, Cargo, Go,
                        Gradle/Android, Maven, Node, Python, CMake, Make, Zig,
                        Dart, .NET, Elixir, Ruby, PHP, Docker Compose), with
