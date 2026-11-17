@@ -265,7 +265,7 @@ struct QuickOpenView: View {
           fileItem(result, id: "last:" + result.path)
         }
         ForEach(last.symbols) { symbol in
-          item(symbol, query: last.query, id: "last:symbol:\(symbol.id)")
+          item(symbol, id: "last:symbol:\(symbol.id)")
         }
       }
     }
