@@ -92,6 +92,12 @@ Libraries
                        Clang importer's); definitions, completions,
                        references and details (numbers in
                        ../Demos/CodeModelBench/c)
+    CodePythonModel    a Python code model on CodeModel from source:
+                       packages from the file tree and pyproject.toml,
+                       .pyi stubs, the standard library and a virtual
+                       environment's site-packages (read, never installed
+                       into); definitions, completions, references and
+                       details (numbers in ../Demos/CodeModelBench/py)
     CodeKit            re-exports them all; CodeEditorView(document:) edits a
                        workspace document (autosave, reload, ⌘S trimming,
                        minimap, issues, breakpoints); ProjectServices connects

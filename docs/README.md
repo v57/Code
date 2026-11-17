@@ -86,10 +86,11 @@ tests.
 | [CodeGoModel](CodeGoModel.md) | A Go code model from source: definitions, completions, references | macOS, Linux, Windows; iOS without GOROOT | `import CodeGoModel` |
 | [CodeTypeScriptModel](CodeTypeScriptModel.md) | A TypeScript and JavaScript code model from source: definitions, completions, references | macOS, Linux; Windows, iOS without an installed TypeScript | `import CodeTypeScriptModel` |
 | [CodeClangModel](CodeClangModel.md) | A C, C++ and Objective-C code model from source: definitions, completions, references | macOS; Linux, Windows, iOS without the SDK | `import CodeClangModel` |
+| [CodePythonModel](CodePythonModel.md) | A Python code model from source: definitions, completions, references | macOS, Linux; Windows, iOS without the standard library | `import CodePythonModel` |
 
 The package also builds four tools: `code-lsp` (CodeServer's server on standard input and output), `code-pretty`
 (CodePretty over files and folders), `swift-model` (measures CodeSwiftModel on a project) and `code-model` (measures
-any language's model, Swift's, Go's, TypeScript's or C's, chosen by the files or `--language`). Android is not supported
+any language's model, Swift's, Go's, TypeScript's, C's or Python's, chosen by the files or `--language`). Android is not supported
 yet by any library.
 
 Run every test with `swift test` at the repository root.

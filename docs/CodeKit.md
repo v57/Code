@@ -21,7 +21,7 @@ What it adds:
 
 CodeKit is not a separate library of features: everything it shows comes from the libraries it re-exports.
 [CodeScan](CodeScan.md), CodePretty, [CodeSwiftModel](CodeSwiftModel.md), [CodeGoModel](CodeGoModel.md),
-[CodeTypeScriptModel](CodeTypeScriptModel.md) and [CodeClangModel](CodeClangModel.md) are used inside but not re-exported; [CodeActionsUI](CodeActionsUI.md) and CodeServer are separate products. It links all of
+[CodeTypeScriptModel](CodeTypeScriptModel.md), [CodeClangModel](CodeClangModel.md) and [CodePythonModel](CodePythonModel.md) are used inside but not re-exported; [CodeActionsUI](CodeActionsUI.md) and CodeServer are separate products. It links all of
 them, so take a single library when that is all you need.
 
 ## Platforms
@@ -223,5 +223,5 @@ the AppKit ones need a Mac. The last line checks that the libraries still build 
 - [CodeActions](CodeActions.md), [CodeLSP](CodeLSP.md), [CodeFormatting](CodeFormatting.md): what `ProjectServices`
   runs.
 - [CodeScan](CodeScan.md), [CodeSwiftModel](CodeSwiftModel.md), [CodeGoModel](CodeGoModel.md),
-  [CodeTypeScriptModel](CodeTypeScriptModel.md), [CodeClangModel](CodeClangModel.md): the fast tiers.
+  [CodeTypeScriptModel](CodeTypeScriptModel.md), [CodeClangModel](CodeClangModel.md), [CodePythonModel](CodePythonModel.md): the fast tiers.
 - [CodeFolders](CodeFolders.md): folder trust.
