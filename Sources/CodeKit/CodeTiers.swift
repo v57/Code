@@ -3,17 +3,18 @@
   import CodeFolders
   import CodeGoModel
   import CodePythonModel
+  import CodeRustModel
   import CodeScan
   import CodeSwiftModel
   import CodeTypeScriptModel
   import Foundation
 
   /// The fast tiers of one workspace, in this process: Code's scanner for every language, and a language's model
-  /// (CodeModel's front ends: Swift, Go, TypeScript, C/C++/Objective-C, Python) for its files. Each works on its own serial queue, built on first use, and
+  /// (CodeModel's front ends: Swift, Go, TypeScript, C/C++/Objective-C, Python, Rust) for its files. Each works on its own serial queue, built on first use, and
   /// answers with the editor's current text.
   final class CodeTiers: @unchecked Sendable {
     /// The languages with a model, by file extension.
-    static let languages: [ModelLanguage] = [.swift, .go, .typeScript, .clang, .python]
+    static let languages: [ModelLanguage] = [.swift, .go, .typeScript, .clang, .python, .rust]
 
     let root: URL
     private let scanner: ScannerTier

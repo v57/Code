@@ -162,7 +162,7 @@ let package = Package(
       dependencies: [
         "CodeHighlighting", "CodeWorkspace", "CodeEditor", "CodeActions", "CodeLSP", "CodeMinimap",
         "CodeFormatting", "CodeAutocompletion", "CodeIcons", "CodeProgress", "CodeFolders", "CodeScan", "CodePretty", "CodeSwiftModel",
-        "CodeGoModel", "CodeTypeScriptModel", "CodeClangModel", "CodePythonModel",
+        "CodeGoModel", "CodeTypeScriptModel", "CodeClangModel", "CodePythonModel", "CodeRustModel",
       ],
       swiftSettings: swiftSettings),
 
