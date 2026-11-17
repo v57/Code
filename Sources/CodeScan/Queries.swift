@@ -432,8 +432,12 @@ extension WorkspaceIndex {
     public var offset: Int
     /// The declarations it's inside, outermost first (`Outer`, `Inner` for `Outer.Inner.value`).
     public var containers: [String]
-    /// The part of the query matched against the name (after the last `.` or `::`), for highlighting.
+    /// The part of the query matched against the name (after the last `.` or `::`).
     public var nameQuery: String
+    /// UTF-16 offsets of the name's characters that matched, as the ranking matched them, for highlighting.
+    public var nameMatches: [Int] = []
+    /// The same for each of `containers`: those a qualified query matched, empty for the others.
+    public var containerMatches: [[Int]] = []
   }
 
   /// Declarations for Open Quickly, best first. The query is fuzzy like `workspaceSymbols`, and may be qualified:
@@ -490,9 +494,22 @@ extension WorkspaceIndex {
         containers.insert(file.symbols.name(symbols[Int(parent)]), at: 0)
         parent = symbols[Int(parent)].parent
       }
+      // Where the ranking's matcher matched, for highlighting: the name, and each container a part of the query named.
+      var containerMatches = [[Int]](repeating: [], count: containers.count)
+      let nameMatches = file.symbols.names.withUnsafeBufferPointer { names -> [Int] in
+        func name(_ symbol: Symbol) -> UnsafeBufferPointer<UInt8> {
+          UnsafeBufferPointer(rebasing: names[Int(symbol.nameOffset)..<Int(symbol.nameOffset) + Int(symbol.nameLength)])
+        }
+        var parent = symbol.parent
+        for (depth, containerNeedle) in containerNeedles.enumerated() where parent >= 0 {
+          containerMatches[containers.count - 1 - depth] = fuzzyPositions(containerNeedle, name(symbols[Int(parent)]))
+          parent = symbols[Int(parent)].parent
+        }
+        return fuzzyPositions(needle, name(symbol))
+      }
       return SymbolMatch(
         name: file.symbols.name(symbol), kind: symbol.kind, path: file.path, offset: Int(symbol.offset),
-        containers: containers, nameQuery: last)
+        containers: containers, nameQuery: last, nameMatches: nameMatches, containerMatches: containerMatches)
     }
   }
 
@@ -753,6 +770,29 @@ extension WorkspaceIndex {
 
 /// Larger is better; 0 is no match.
 private func fuzzyScore(_ needle: [UInt8], _ name: UnsafeBufferPointer<UInt8>) -> Int {
+  fuzzyMatch(needle, name) { _ in }
+}
+
+/// The UTF-16 offsets of the characters `fuzzyScore` matched, for highlighting what ranked a name; empty for no match.
+private func fuzzyPositions(_ needle: [UInt8], _ name: UnsafeBufferPointer<UInt8>) -> [Int] {
+  var bytes: [Int] = []
+  guard fuzzyMatch(needle, name, { bytes.append($0) }) > 0 else { return [] }
+  // Byte offsets to UTF-16 ones: each character's lead byte counts one unit, a 4-byte one two.
+  var positions: [Int] = []
+  var units = 0
+  var next = 0
+  for (index, byte) in name.enumerated() {
+    if next < bytes.count, bytes[next] == index {
+      positions.append(units)
+      next += 1
+    }
+    if byte & 0xC0 != 0x80 { units += byte >= 0xF0 ? 2 : 1 }
+  }
+  return positions
+}
+
+/// `fuzzyScore`, telling `matched` each byte offset it matched.
+@inline(__always) private func fuzzyMatch(_ needle: [UInt8], _ name: UnsafeBufferPointer<UInt8>, _ matched: (Int) -> Void) -> Int {
   if needle.isEmpty { return 1 }
   guard name.count >= needle.count else { return 0 }
   var score = 0
@@ -761,6 +801,7 @@ private func fuzzyScore(_ needle: [UInt8], _ name: UnsafeBufferPointer<UInt8>) -
   for (index, raw) in name.enumerated() {
     let c = raw >= 0x41 && raw <= 0x5A ? raw | 0x20 : raw
     if c == needle[at] {
+      matched(index)
       score += 1
       if index == 0 { score += 8 }
       if previousMatched { score += 3 }

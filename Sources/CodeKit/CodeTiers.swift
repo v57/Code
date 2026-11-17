@@ -264,7 +264,7 @@
             return ProjectSymbol(
               name: match.name, kind: ProjectSymbol.Kind(match.kind), containers: match.containers,
               url: URL(fileURLWithPath: match.path), line: range.start.line, column: range.start.character,
-              nameQuery: match.nameQuery)
+              nameQuery: match.nameQuery, nameMatches: match.nameMatches, containerMatches: match.containerMatches)
           }
           continuation.resume(returning: found)
         }

@@ -527,6 +527,24 @@ private func names(_ text: String, _ language: String) -> [String] {
     }
   }
 
+  /// Open Quickly's matches carry the letters that ranked them, so the highlight shows what the ranking matched.
+  @Test func searchSymbolsReportsWhatItMatched() throws {
+    try withFolder(["A.swift": "struct Outer { struct Inner { func valueReader() {} } }\nlet émoji😀Name = 1\n"]) { root in
+      let index = WorkspaceIndex(roots: [root])
+      index.refresh()
+      let member = try #require(index.searchSymbols("Out.Inr.vr").first)
+      #expect(member.name == "valueReader")
+      #expect(member.nameMatches == [0, 5])
+      #expect(member.containerMatches == [[0, 1, 2], [0, 1, 4]])
+      let plain = try #require(index.searchSymbols("inner").first)
+      #expect(plain.nameMatches == [0, 1, 2, 3, 4])
+      #expect(plain.containerMatches == [[]])
+      // UTF-16 offsets: é is one unit, 😀 two.
+      let wide = try #require(index.searchSymbols("jn").first)
+      #expect(wide.nameMatches == [3, 7])
+    }
+  }
+
   @Test func renameOnlyWhatItCanProve() throws {
     try withFolder([
       "A.swift": "func once() {}\nfunc twice() {}\nfunc f() { let local = 1; print(local); once(); twice() }\n",

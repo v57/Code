@@ -34,8 +34,12 @@
     public var line: Int
     /// From 0, in UTF-16 units.
     public var column: Int
-    /// The part of the query matched against the name (after the last `.`), for highlighting it.
+    /// The part of the query matched against the name (after the last `.`).
     public var nameQuery: String
+    /// UTF-16 offsets of the name's characters the search matched (what ranked it), for highlighting.
+    public var nameMatches: [Int] = []
+    /// The same for each of `containers`, empty for those the query didn't name.
+    public var containerMatches: [[Int]] = []
 
     public var id: String { "\(url.path):\(line):\(column)" }
 

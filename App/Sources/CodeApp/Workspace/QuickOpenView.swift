@@ -304,7 +304,7 @@ struct QuickOpenView: View {
         systemImage: "curlybraces", hue: .purple
       ) {
         ForEach(symbols) { symbol in
-          item(symbol, query: query, id: "symbol:\(symbol.id)")
+          item(symbol, id: "symbol:\(symbol.id)")
         }
       }
     }
@@ -322,18 +322,22 @@ struct QuickOpenView: View {
     return query.contains(".") || symbol.name.lowercased() == query
   }
 
-  private func item(_ symbol: ProjectSymbol, query: String, id: String) -> some View {
+  private func item(_ symbol: ProjectSymbol, id: String) -> some View {
     let place = "\(symbol.url.lastPathComponent):\(symbol.line + 1)"
     let containers = symbol.containers.joined(separator: ".")
-    // The containers' part of the query ("Some" in "Some.value") bolded in the subtitle.
-    let query = query.filter { !$0.isWhitespace }.replacingOccurrences(of: "::", with: ".")
-    let containerQuery = query.contains(".") ? String(query[..<query.lastIndex(of: ".")!]) : ""
-    let containerMatches = containerQuery.isEmpty ? [] : FuzzyMatch.match(containerQuery, in: containers)?.positions ?? []
+    // The letters the search matched (what ranked the row): the name's, and the containers' a qualified query named
+    // ("Some" in "Some.value"), bolded in the subtitle.
+    var containerMatches: [Int] = []
+    var start = 0
+    for (container, matches) in zip(symbol.containers, symbol.containerMatches) {
+      containerMatches += matches.map { start + $0 }
+      start += container.utf16.count + 1
+    }
     let look = Self.look(symbol.kind)
     return PaletteItem(
       symbol.name, id: id, systemImage: look.image, hue: look.hue,
       subtitle: containers.isEmpty ? place : "\(containers) · \(place)",
-      matches: FuzzyMatch.match(symbol.nameQuery, in: symbol.name)?.positions ?? [],
+      matches: symbol.nameMatches,
       subtitleMatches: containerMatches,
       note: symbol.kind == .extension ? String(localized: "Extension") : nil
     ) {
