@@ -369,15 +369,18 @@ package final class JVMSourceSet {
   private let archive: ZipArchive?
   /// Files held in memory (the built-in stub), by entry name.
   private var memory: [String: [UInt8]] = [:]
+  /// Where files held in memory are written when opened, under the temporary folder.
+  private var memoryFolder = "code-java-std"
   /// Each package's files: entry names in the archive, or paths in the folder.
   package private(set) var packages: [String: [String]] = [:]
   /// Every package and the packages above it (`java`, `java.util`): what a qualified name may walk through.
   package private(set) var prefixes: Set<String> = []
 
   /// Sources given as text: the built-in stub of the platform (`JavaStd`), its path a name for it.
-  package init(path: String, files: [String: String], kind: Kind) {
+  package init(path: String, files: [String: String], kind: Kind, folder: String = "code-java-std") {
     self.path = path
     self.kind = kind
+    memoryFolder = folder
     archive = nil
     for (name, text) in files { memory[name] = Array(text.utf8) }
     index(names: Array(files.keys))
@@ -434,7 +437,7 @@ package final class JVMSourceSet {
   /// Where a file is on disk: in a folder, itself; in an archive, a copy made under the temporary folder the first
   /// time it's opened (`$TMPDIR/code-jvm-sources/<archive>/<entry>`).
   package func diskPath(_ name: String) -> String {
-    if !memory.isEmpty { return NSTemporaryDirectory() + "code-java-std/" + name }
+    if !memory.isEmpty { return NSTemporaryDirectory() + memoryFolder + "/" + name }
     guard archive != nil else { return path + "/" + name }
     let folder = (path as NSString).lastPathComponent + "-" + String(UInt32(truncatingIfNeeded: hashName(path)), radix: 16)
     return NSTemporaryDirectory() + "code-jvm-sources/" + folder + "/" + name

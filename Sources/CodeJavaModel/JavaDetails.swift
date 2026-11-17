@@ -189,7 +189,7 @@ extension JavaModel {
   }
 
   /// `java.util.Map.Entry`, `java.util.List.of(2)`, `java.lang.String.<init>(1)`.
-  func qualifiedName(_ ref: DeclRef) -> String? {
+  package func qualifiedName(_ ref: DeclRef) -> String? {
     let holder = unit(ref)
     let item = decl(ref)
     var types: [String] = []

@@ -15,18 +15,18 @@ import Foundation
 /// - `import a.b.C`, `import a.b.*` and their `static` forms are `Import`s whose module is the package as written (the
 ///   words up to the first capitalized one) and whose member is the first type's name; the model reads the rest from
 ///   the tokens at `Import.token`.
-final class JavaSyntax: LanguageSyntax {
-  static let shared = JavaSyntax()
-  let profile = LexProfile.profile(forLanguage: "java")!
-  let parametersHaveLabels = false
+package final class JavaSyntax: LanguageSyntax {
+  package static let shared = JavaSyntax()
+  package let profile = LexProfile.profile(forLanguage: "java")!
+  package let parametersHaveLabels = false
 
-  func parse(_ unit: Unit) -> UInt64 {
+  package func parse(_ unit: CodeModel.Unit) -> UInt64 {
     var parser = JavaParser(unit: unit)
     parser.parseFile()
     return parser.shape
   }
 
-  func evaluateCondition(_ unit: Unit, _ i: inout Int) -> Bool {
+  package func evaluateCondition(_ unit: CodeModel.Unit, _ i: inout Int) -> Bool {
     i += 1
     return true
   }

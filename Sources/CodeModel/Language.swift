@@ -17,6 +17,9 @@ package protocol LanguageSyntax: AnyObject {
   func codeTokens(_ source: SourceFile) -> [Token]
   /// Which part of conditional compilation a directive token is.
   func conditional(_ unit: Unit, _ i: Int) -> ConditionalDirective
+  /// The syntax that reads a file at this path: itself, unless a project mixes languages (Kotlin's reads `.java`
+  /// files with Java's parser).
+  func syntax(forPath path: String) -> any LanguageSyntax
 }
 
 /// A directive's part in conditional compilation: `#if` (C's `#ifdef` and `#ifndef` too), `#elseif` (C's `#elif`),
@@ -26,6 +29,8 @@ package enum ConditionalDirective {
 }
 
 extension LanguageSyntax {
+  package func syntax(forPath path: String) -> any LanguageSyntax { self }
+
   package func codeTokens(_ source: SourceFile) -> [Token] {
     var kept = [Token]()
     kept.reserveCapacity(source.tokens.count)

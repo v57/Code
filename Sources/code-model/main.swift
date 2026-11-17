@@ -1,6 +1,7 @@
 import CodeClangModel
 import CodeGoModel
 import CodeJavaModel
+import CodeKotlinModel
 import CodeModel
 import CodePythonModel
 import CodeRustModel
@@ -26,7 +27,7 @@ import Foundation
 // manifest (go.mod, Package.swift, tsconfig.json).
 
 /// Every language with a model. A new front end adds itself here and in CodeKit's `CodeTiers.languages`.
-let languages: [ModelLanguage] = [.swift, .go, .typeScript, .clang, .python, .rust, .java]
+let languages: [ModelLanguage] = [.swift, .go, .typeScript, .clang, .python, .rust, .java, .kotlin]
 
 func option(_ flag: String) -> String? {
   guard let at = CommandLine.arguments.firstIndex(of: flag), at + 1 < CommandLine.arguments.count else { return nil }

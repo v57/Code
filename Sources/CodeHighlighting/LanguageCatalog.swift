@@ -237,7 +237,7 @@ public enum LanguageCatalog {
   static let kotlin = LanguageSpec(
     name: "Kotlin", aliases: ["kotlin", "kt", "kts"], lineComments: ["//"],
     blockComments: [("/*", "*/")],
-    strings: [StringDelim(open: "\"\"\"", multiline: true), StringDelim(open: "\"")],
+    strings: [StringDelim(open: "\"\"\"", multiline: true), StringDelim(open: "\"")], charLiteral: "'",
     keywords: [
       "as", "break", "class", "companion", "const", "constructor", "continue", "crossinline",
       "data", "do", "else", "enum", "expect", "external", "false", "final", "finally", "for", "fun",

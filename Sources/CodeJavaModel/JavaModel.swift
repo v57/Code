@@ -43,7 +43,7 @@ public final class JavaModel: LanguageModel {
   // MARK: Packages
 
   /// The package a unit is in, as written.
-  func packageOf(_ unitIndex: Int32) -> String {
+  package func packageOf(_ unitIndex: Int32) -> String {
     var display = project.modules[project.units[Int(unitIndex)].moduleName]?.displayName ?? ""
     if display.hasSuffix(JavaLayout.librarySuffix) { display.removeLast(JavaLayout.librarySuffix.count) }
     return display
@@ -90,7 +90,7 @@ public final class JavaModel: LanguageModel {
 
   static let unknown = Answer(state: .unknown, sites: [])
 
-  func answer(unitIndex: Int32, token: Int) -> Answer {
+  package func answer(unitIndex: Int32, token: Int) -> Answer {
     let unit = project.units[Int(unitIndex)]
     let kind = unit.tokens[token].kind
     if kind == .attribute {

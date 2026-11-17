@@ -21,7 +21,7 @@ extension JavaModel {
   }
 
   /// A type written from `start` to `end`, its names looked up from token `scope`.
-  func parseType(unitIndex: Int32, start: Int32, end: Int32, scope: Int32) -> Ty {
+  package func parseType(unitIndex: Int32, start: Int32, end: Int32, scope: Int32) -> Ty {
     guard start >= 0, start < end else { return .unknown }
     let unit = project.units[Int(unitIndex)]
     var cursor = Cursor(i: Int(start))
@@ -174,7 +174,7 @@ extension JavaModel {
   }
 
   /// A type parameter's first bound (`T extends Foo & Bar` is Foo), or nil.
-  func bound(of ty: Ty) -> Ty? {
+  package func bound(of ty: Ty) -> Ty? {
     guard case .param(let word, let owner?) = ty else { return nil }
     let holder = unit(owner)
     let item = decl(owner)
@@ -225,7 +225,7 @@ extension JavaModel {
 
   /// A class's direct supertypes as written, in terms of its own parameters: `extends` and `implements`, or the
   /// implicit ones (Object, `Enum<E>`, `Record`; an enum constant's body extends its enum).
-  func supertypes(of ref: DeclRef) -> [Ty] {
+  package func supertypes(of ref: DeclRef) -> [Ty] {
     if let known = supertypeCache[ref] { return known }
     supertypeCache[ref] = []
     let item = decl(ref)
@@ -394,7 +394,7 @@ extension JavaModel {
   // MARK: Values
 
   /// A declaration's type as a value: a field's, a method's result (as written), an enum constant's enum.
-  func valueType(of ref: DeclRef) -> Ty {
+  package func valueType(of ref: DeclRef) -> Ty {
     if let known = valueTypes[ref] { return known }
     guard resolving.insert(ref).inserted else { return .unknown }
     defer { resolving.remove(ref) }
@@ -580,7 +580,7 @@ extension JavaModel {
   }
 
   /// A method's parameter types, its declaring class's parameters put in.
-  func parameterTypes(_ ref: DeclRef, _ map: [Name: Ty]) -> [Ty] {
+  package func parameterTypes(_ ref: DeclRef, _ map: [Name: Ty]) -> [Ty] {
     let item = decl(ref)
     let holder = unit(ref)
     return (0..<Int(item.paramCount)).map { p in
@@ -589,7 +589,7 @@ extension JavaModel {
     }
   }
 
-  func isVariadic(_ ref: DeclRef) -> Bool {
+  package func isVariadic(_ ref: DeclRef) -> Bool {
     let item = decl(ref)
     guard item.paramCount > 0 else { return false }
     return unit(ref).params[Int(item.paramStart + item.paramCount - 1)].variadic

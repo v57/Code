@@ -61,7 +61,8 @@ public final class Project {
       nonisolated(unsafe) let slots = buffer
       DispatchQueue.concurrentPerform(iterations: paths.count) { index in
         guard let data = FileManager.default.contents(atPath: paths[index]) else { return }
-        slots[index] = Unit(path: paths[index], source: SourceFile(bytes: data, profile: syntax.profile), syntax: syntax, isInterface: isInterface)
+        let reader = syntax.syntax(forPath: paths[index])
+        slots[index] = Unit(path: paths[index], source: SourceFile(bytes: data, profile: reader.profile), syntax: reader, isInterface: isInterface)
       }
     }
     return parsed.compactMap { $0 }
@@ -190,7 +191,8 @@ public final class Project {
   public func update(path: String, text: String) -> Bool {
     guard let index = unitByPath[path] else { return false }
     let old = units[Int(index)]
-    return install(Unit(path: path, source: SourceFile(text, profile: syntax.profile), syntax: syntax, focusOffset: old.focusOffset), at: index, replacing: old)
+    let reader = old.syntax
+    return install(Unit(path: path, source: SourceFile(text, profile: reader.profile), syntax: reader, focusOffset: old.focusOffset), at: index, replacing: old)
   }
 
   /// A question inside code `#if` leaves out reads that branch; one outside what's being worked on goes back.

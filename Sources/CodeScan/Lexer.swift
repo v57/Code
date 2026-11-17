@@ -86,6 +86,7 @@ public final class LexProfile: @unchecked Sendable {
   let commentsNeedWordStart: Bool
   let hereDocuments: Bool
   let regexLiterals: Bool
+  let backtickIdentifiers: Bool
 
   // Keywords: open addressing over the word's first 16 bytes, its length and whether it declares.
   private let keywordWords: UnsafeMutablePointer<UInt64>
@@ -189,6 +190,8 @@ public final class LexProfile: @unchecked Sendable {
     if regexLiterals { cls[0x2F] = ByteClass.opener }
     hereDocuments = rules.hereDocuments
     if hereDocuments { cls[0x3C] = ByteClass.opener }
+    backtickIdentifiers = rules.backtickIdentifiers
+    if backtickIdentifiers { cls[0x60] = ByteClass.opener }
     commentsNeedWordStart = rules.commentsNeedWordStart || spec.lineCommentsAtLineStartOnly
     openers = table
 
@@ -680,6 +683,13 @@ private func opener(
       return (j, count &+ 1)
     }
     return nil
+  case 0x60 where profile.backtickIdentifiers:
+    // `` `a name` ``: one identifier, on one line.
+    var j = i &+ 1
+    while j < n, t[j] != 0x60, t[j] != 0x0A { j &+= 1 }
+    guard j < n, t[j] == 0x60, j > i &+ 1 else { return nil }
+    out[count] = Token(.identifier, i, j &+ 1)
+    return (j &+ 1, count &+ 1)
   case 0x40:
     guard profile.atWords, profile.ident[Int(t[i &+ 1])] != 0 else { return nil }
     var j = i &+ 2
