@@ -163,15 +163,15 @@ model the same way ([CodeGoModel](CodeGoModel.md)).
 ## CodeModel, the core
 
 What isn't Swift lives in its own library, `CodeModel` (`.product(name: "CodeModel", package: "Code")`), which
-CodeSwiftModel, CodeGoModel, CodeTypeScriptModel, CodeClangModel, CodePythonModel, CodeRustModel, CodeJavaModel and CodeKotlinModel re-export. Its public part is what the models' API returns and what an editor asks any
+CodeSwiftModel, CodeGoModel, CodeTypeScriptModel, CodeClangModel, CodePythonModel, CodeRustModel, CodeJavaModel, CodeKotlinModel and CodeCSharpModel re-export. Its public part is what the models' API returns and what an editor asks any
 language through:
 
 - `LanguageModel`: what every model answers (`answer`, `references(of:)`, `complete`, `details`, `referenceCount`,
   `allFindings`, `place(of:)`, `location(of:)`), with a `project`. Not thread-safe: one serial queue per model.
 - `ModelLanguage(name:extensions:manifests:make:)`: a language's file extensions, manifests and how to make its model
-  for a folder (`make(root, trusted)`); `handles(_:)`. CodeKit's model tier and the `code-model` tool list
+  for a folder (`make(root, trusted)`); `handles(_:)`, `isManifest(_:)` (a manifest named by a pattern, `*.csproj`). CodeKit's model tier and the `code-model` tool list
   `ModelLanguage.swift`, `ModelLanguage.go`, `ModelLanguage.typeScript`, `ModelLanguage.clang`, `ModelLanguage.python`,
-  `ModelLanguage.rust`, `ModelLanguage.java` and `ModelLanguage.kotlin`.
+  `ModelLanguage.rust`, `ModelLanguage.java`, `ModelLanguage.kotlin` and `ModelLanguage.cSharp`.
 - `Project` (`root`, `units`, `projectUnits`, `loadedBytes`, `update(path:text:)`), `Unit` (one file: `path`,
   `source`, `tokens` without comments, `decls`, `imports`, `shape`), the declaration tables (`Decl`, `Param`, `Import`,
   `DeclRef`, `DeclKind` (`namespace` for TypeScript's namespaces and `declare module` blocks), `Access`, `Name`; an
@@ -182,6 +182,7 @@ language through:
 
 ```swift
 import CodeModel
+import CodeCSharpModel
 import CodeClangModel
 import CodeGoModel
 import CodeJavaModel
@@ -191,7 +192,7 @@ import CodeRustModel
 import CodeSwiftModel
 import CodeTypeScriptModel
 
-let languages: [ModelLanguage] = [.swift, .go, .typeScript, .clang, .python, .rust, .java, .kotlin]
+let languages: [ModelLanguage] = [.swift, .go, .typeScript, .clang, .python, .rust, .java, .kotlin, .cSharp]
 func model(for file: String, root: String, trusted: Bool) -> (any LanguageModel)? {
   languages.first { $0.handles(file) }?.make(root, trusted)
 }
@@ -206,14 +207,14 @@ their condition, Rust's `#[cfg]` items: a question inside one is read with every
 file's module, where a module an import names is found, the modules every file sees). These, and the rest of what
 front ends share (`Ty`, with `Ty.union` and `Ty.intersection` among the constructed types, `Module`, a unit's token
 navigation (`Navigation.swift`: the token at an offset, the bracket a token is in, text between tokens, whether an
-offset is in a comment or string, an answer summarizing sites), conditional branches, a zip reader for archives of sources
+offset is in a comment or string, whether tokens start with a word list (`startsWith`), whether a punctuation token is made only of some characters (`punctuation(_:madeOf:)`: CodeScan lexes `>>` or `<?` as one token, so a type argument list's end is a token of `>`s), an answer summarizing sites), a project-relative path (`Project.rootRelative`), the member tables of nominal types with generics (`NominalTypes`: `MemberEntry`, type parameter maps, substitution, supertype walks and unification; Java's, Kotlin's and C#'s models conform), conditional branches, a zip reader for archives of sources
 (`ZipArchive`: stored and deflated entries, zip64; Java's `src.zip`, `-sources.jar` and the Android SDK's sources), a layout-sensitive language's
 logical lines and indented blocks (`LogicalLines`, Python's), completion's site (`Unit.completionSite(at:)`:
 the anchor, the typed prefix, where the replacement starts, a `.` split from a number) and ranking with
 `ModelCompletionHit`, `membersNamed`, `Unit.chain`, doc comments above a declaration), are `package` declarations: a
 new language's model is a target in this package. Swift's front end is `SwiftSyntax` and `SwiftLayout` (a package's
 manifest, sibling packages, the SDK's interfaces and Clang headers); Go's is in [CodeGoModel](CodeGoModel.md), TypeScript's in [CodeTypeScriptModel](CodeTypeScriptModel.md), C's, C++'s and
-Objective-C's in [CodeClangModel](CodeClangModel.md), Python's in [CodePythonModel](CodePythonModel.md), Rust's in [CodeRustModel](CodeRustModel.md), Java's in [CodeJavaModel](CodeJavaModel.md), Kotlin's in [CodeKotlinModel](CodeKotlinModel.md). Swift's Clang importer finds module maps and frameworks with
+Objective-C's in [CodeClangModel](CodeClangModel.md), Python's in [CodePythonModel](CodePythonModel.md), Rust's in [CodeRustModel](CodeRustModel.md), Java's in [CodeJavaModel](CodeJavaModel.md), Kotlin's in [CodeKotlinModel](CodeKotlinModel.md), C#'s in [CodeCSharpModel](CodeCSharpModel.md). Swift's Clang importer finds module maps and frameworks with
 CodeClangModel's `ClangModuleMap`, so CodeSwiftModel depends on it and there is one header locator. The
 resolver, member tables, completion contexts and the type of an expression stay in each front end: Swift's follow its
 rules (conditional conformances, raw values, `@dynamicMemberLookup`, argument labels), Go's its own (method sets

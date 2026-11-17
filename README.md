@@ -117,6 +117,13 @@ Libraries
                        standard library; definitions, completions,
                        references and details (numbers in
                        ../Demos/CodeModelBench/kt)
+    CodeCSharpModel    a C# code model on CodeModel from source: .csproj
+                       projects with ProjectReferences and Directory.Build.props,
+                       namespaces, global and implicit usings, partial types,
+                       records, extension methods and blocks, overloads, #if
+                       as Debug builds, a generated stub of .NET 10's library;
+                       definitions, completions, references and details
+                       (numbers in ../Demos/CodeModelBench/cs)
     CodeKit            re-exports them all; CodeEditorView(document:) edits a
                        workspace document (autosave, reload, ⌘S trimming,
                        minimap, issues, breakpoints); ProjectServices connects
