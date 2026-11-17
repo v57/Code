@@ -158,7 +158,7 @@ final class RubyLayout: ProjectLayout {
     var folders: [String] = []
     func addVersions(_ base: String, _ suffix: String = "/gems") {
       guard let versions = try? FileManager.default.contentsOfDirectory(atPath: base) else { return }
-      for version in versions.sorted(by: >) where Self.isDirectory(base + "/" + version + suffix) { folders.append(base + "/" + version + suffix) }
+      for version in Toolchains.newestFirst(versions) where Self.isDirectory(base + "/" + version + suffix) { folders.append(base + "/" + version + suffix) }
     }
     var bundlePaths: [String] = []
     for config in [root + "/.bundle/config", NSHomeDirectory() + "/.bundle/config"] {
@@ -180,7 +180,7 @@ final class RubyLayout: ProjectLayout {
     addVersions(home + "/.local/share/gem/ruby")
     for manager in [home + "/.rbenv/versions", home + "/.rubies", home + "/.asdf/installs/ruby"] {
       guard let rubies = try? FileManager.default.contentsOfDirectory(atPath: manager) else { continue }
-      for ruby in rubies.sorted(by: >) { addVersions(manager + "/" + ruby + "/lib/ruby/gems") }
+      for ruby in Toolchains.newestFirst(rubies) { addVersions(manager + "/" + ruby + "/lib/ruby/gems") }
     }
     for base in ["/opt/homebrew/lib/ruby/gems", "/usr/local/lib/ruby/gems", "/Library/Ruby/Gems", "/var/lib/gems", "/usr/lib/ruby/gems",
       "/System/Library/Frameworks/Ruby.framework/Versions/Current/usr/lib/ruby/gems"]

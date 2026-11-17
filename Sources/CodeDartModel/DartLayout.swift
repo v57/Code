@@ -103,10 +103,10 @@ final class DartLayout: ProjectLayout {
     candidates.append(root + "/.fvm/flutter_sdk")
     candidates += [home + "/fvm/default", home + "/flutter", home + "/development/flutter", home + "/sdk/flutter", "/opt/flutter", home + "/snap/flutter/common/flutter"]
     for cask in ["/opt/homebrew/Caskroom/flutter", "/usr/local/Caskroom/flutter"] {
-      let versions = ((try? FileManager.default.contentsOfDirectory(atPath: cask)) ?? []).sorted().reversed()
+      let versions = Toolchains.newestFirst((try? FileManager.default.contentsOfDirectory(atPath: cask)) ?? [])
       for version in versions { candidates.append(cask + "/" + version + "/flutter") }
     }
-    let fvm = ((try? FileManager.default.contentsOfDirectory(atPath: home + "/fvm/versions")) ?? []).sorted().reversed()
+    let fvm = Toolchains.newestFirst((try? FileManager.default.contentsOfDirectory(atPath: home + "/fvm/versions")) ?? [])
     for version in fvm { candidates.append(home + "/fvm/versions/" + version) }
     return candidates.first { isDirectory($0 + "/packages/flutter/lib") }
   }

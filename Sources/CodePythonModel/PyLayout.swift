@@ -260,12 +260,12 @@ final class PyLayout: ProjectLayout {
     if let path = ProcessInfo.processInfo.environment["CODE_PYTHON_STDLIB"], manager.fileExists(atPath: path + "/os.py") { return path }
     var candidates = ["/Applications/Xcode.app/Contents/Developer/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9"]
     for frameworks in ["/Library/Frameworks/Python.framework/Versions", "/opt/homebrew/Frameworks/Python.framework/Versions", "/usr/local/Frameworks/Python.framework/Versions"] {
-      for version in ((try? manager.contentsOfDirectory(atPath: frameworks)) ?? []).sorted().reversed() where version.hasPrefix("3") {
+      for version in Toolchains.newestFirst((try? manager.contentsOfDirectory(atPath: frameworks)) ?? []) where version.hasPrefix("3") {
         candidates.append(frameworks + "/" + version + "/lib/python" + version)
       }
     }
     for lib in ["/usr/lib", "/usr/local/lib"] {
-      for entry in ((try? manager.contentsOfDirectory(atPath: lib)) ?? []).sorted().reversed() where entry.hasPrefix("python3") { candidates.append(lib + "/" + entry) }
+      for entry in Toolchains.newestFirst((try? manager.contentsOfDirectory(atPath: lib)) ?? []) where entry.hasPrefix("python3") { candidates.append(lib + "/" + entry) }
     }
     return candidates.first { manager.fileExists(atPath: $0 + "/os.py") }
   }
@@ -278,7 +278,7 @@ final class PyLayout: ProjectLayout {
       guard manager.fileExists(atPath: base + "/pyvenv.cfg") else { continue }
       if manager.fileExists(atPath: base + "/Lib/site-packages") { return base + "/Lib/site-packages" }
       let lib = base + "/lib"
-      for entry in ((try? manager.contentsOfDirectory(atPath: lib)) ?? []).sorted().reversed() where entry.hasPrefix("python") {
+      for entry in Toolchains.newestFirst((try? manager.contentsOfDirectory(atPath: lib)) ?? []) where entry.hasPrefix("python") {
         if manager.fileExists(atPath: lib + "/" + entry + "/site-packages") { return lib + "/" + entry + "/site-packages" }
       }
     }

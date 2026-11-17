@@ -401,9 +401,9 @@ package final class JVMWorkspace {
     if let home = environment["JAVA_HOME"] { homes.append(home) }
     let user = NSHomeDirectory()
     for folder in ["/Library/Java/JavaVirtualMachines", user + "/Library/Java/JavaVirtualMachines"] {
-      for entry in ((try? FileManager.default.contentsOfDirectory(atPath: folder)) ?? []).sorted().reversed() { homes.append(folder + "/" + entry + "/Contents/Home") }
+      for entry in Toolchains.newestFirst((try? FileManager.default.contentsOfDirectory(atPath: folder)) ?? []) { homes.append(folder + "/" + entry + "/Contents/Home") }
     }
-    for entry in ((try? FileManager.default.contentsOfDirectory(atPath: "/usr/lib/jvm")) ?? []).sorted().reversed() { homes.append("/usr/lib/jvm/" + entry) }
+    for entry in Toolchains.newestFirst((try? FileManager.default.contentsOfDirectory(atPath: "/usr/lib/jvm")) ?? []) { homes.append("/usr/lib/jvm/" + entry) }
     for home in homes where exists(home + "/lib/src.zip") { return home + "/lib/src.zip" }
     return nil
   }
@@ -447,7 +447,7 @@ package final class JVMWorkspace {
     }
     // The newest version of each artifact: its folder's path without the version and hash.
     let extensions = archiveExtensions
-    return jars.sorted().reversed().compactMap { JVMSourceSet(path: $0, kind: .dependency, extensions: extensions) }
+    return Toolchains.newestPathsFirst(jars).compactMap { JVMSourceSet(path: $0, kind: .dependency, extensions: extensions) }
   }()
 }
 

@@ -36,7 +36,7 @@ final class LuaLayout: ProjectLayout {
     }
     readRockspecs()
     for tree in [root + "/lua_modules/share/lua", root + "/.luarocks/share/lua"] {
-      for version in ((try? FileManager.default.contentsOfDirectory(atPath: tree)) ?? []).sorted(by: >) { libraries.append(tree + "/" + version) }
+      for version in Toolchains.newestFirst((try? FileManager.default.contentsOfDirectory(atPath: tree)) ?? []) { libraries.append(tree + "/" + version) }
     }
   }
 

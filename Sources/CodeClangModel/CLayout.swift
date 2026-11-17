@@ -176,8 +176,8 @@ final class CLayout: ProjectLayout {
       let clang = ClangModuleMap.run("/usr/bin/xcrun", ["--find", "clang"]).trimmingCharacters(in: .whitespacesAndNewlines)
       guard !clang.isEmpty else { return "" }
       let base = URL(fileURLWithPath: clang).deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("lib/clang").resolvingSymlinksInPath().path
-      let versions = ((try? FileManager.default.contentsOfDirectory(atPath: base)) ?? []).sorted()
-      for version in versions.reversed() where FileManager.default.fileExists(atPath: base + "/" + version + "/include/stddef.h") {
+      let versions = Toolchains.newestFirst((try? FileManager.default.contentsOfDirectory(atPath: base)) ?? [])
+      for version in versions where FileManager.default.fileExists(atPath: base + "/" + version + "/include/stddef.h") {
         return URL(fileURLWithPath: base + "/" + version + "/include").resolvingSymlinksInPath().path
       }
     #endif

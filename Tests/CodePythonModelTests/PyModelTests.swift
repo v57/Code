@@ -296,3 +296,15 @@ private final class Project {
     #expect(p.complete("Ax", typed: 1).contains("A"))
   }
 }
+
+@Suite struct Folders {
+  @Test func newestVersionFirst() {
+    #expect(Toolchains.newestFirst(["3.9", "Current", "3.13", "3.10"]) == ["3.13", "3.10", "3.9", "Current"])
+    #expect(Toolchains.newestFirst(["python3", "python3.9", "python3.13"]) == ["python3.13", "python3.9", "python3"])
+    #expect(Toolchains.newestFirst(["jdk1.8.0_292.jdk", "temurin-17.jdk", "jdk-21.jdk"]) == ["jdk-21.jdk", "temurin-17.jdk", "jdk1.8.0_292.jdk"])
+    #expect(Toolchains.newestFirst(["ruby-3.3.0", "ruby-3.10.0", "default"]) == ["ruby-3.10.0", "ruby-3.3.0", "default"])
+    #expect(
+      Toolchains.newestPathsFirst(["/m2/g/a/1.9.0/a-1.9.0-sources.jar", "/m2/g/a/1.10.0/a-1.10.0-sources.jar"])
+        == ["/m2/g/a/1.10.0/a-1.10.0-sources.jar", "/m2/g/a/1.9.0/a-1.9.0-sources.jar"])
+  }
+}
