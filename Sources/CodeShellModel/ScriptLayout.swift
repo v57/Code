@@ -35,7 +35,7 @@ public enum ScriptDialect: Sendable {
   }
 
   var lexerLanguage: String { self == .shell ? "shell" : "powershell" }
-  /// The stub's module name, and how its places are written (`builtin:echo`, `cmdlet:Get-ChildItem`).
+  /// The stub's module name, and how its places are written (`builtin:echo`, `ps:Get-ChildItem`).
   var stubModule: String { self == .shell ? "sh-builtins" : "ps-builtins" }
   var stubFile: String { self == .shell ? "builtins.sh" : "builtins.ps1" }
 }
