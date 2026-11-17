@@ -59,7 +59,10 @@ Names resolve the way javac resolves them:
 `JVMWorkspace`, `JVMSourceSet` and `JavaLayout` are the JVM's, not only Java's: [CodeKotlinModel](CodeKotlinModel.md)
 takes them with its own extensions, syntax and standard library (`JavaLayout(root:findsPlatform:extensions:syntax:extraSets:)`,
 a set held in memory written to its own `$TMPDIR` folder), as `package` declarations of this library, and asks a
-`JavaModel` on the same `Project` about Java's declarations.
+`JavaModel` on the same `Project` about Java's declarations. [CodeScalaModel](CodeScalaModel.md) does the same and also
+passes `packageOfFile` (Scala's chained `package` clauses). With `scala` among the extensions, `JVMWorkspace` also reads
+sbt's and Mill's builds (`build.sbt` projects, `build.sc`/`build.mill` modules), `src/<set>/scala*` roots and Mill's
+`src`, and Coursier's and Ivy's caches; a Java or Kotlin project never looks at them.
 
 ## Platforms
 

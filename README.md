@@ -151,6 +151,17 @@ Libraries
                        generated from rbs; definitions, completions,
                        references and details (numbers in
                        ../Demos/CodeModelBench/rb)
+    CodeScalaModel     a Scala 2 and 3 code model on CodeModel from source,
+                       on CodeJavaModel's JVM layout (sbt, Mill and
+                       scala-cli source roots, a mixed project's Java
+                       files): chained packages, imports anywhere with
+                       renames and givens, companions, case classes, enums,
+                       extensions and implicit classes, significant
+                       indentation, lambdas, patterns, for-comprehensions;
+                       implicits left unknown; a hand-written stub of the
+                       standard library; definitions, completions,
+                       references and details (numbers in
+                       ../Demos/CodeModelBench/scala)
     CodeKit            re-exports them all; CodeEditorView(document:) edits a
                        workspace document (autosave, reload, ⌘S trimming,
                        minimap, issues, breakpoints); ProjectServices connects
