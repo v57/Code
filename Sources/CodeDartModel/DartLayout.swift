@@ -39,7 +39,7 @@ final class DartLayout: ProjectLayout {
   init(root: String) {
     self.root = root
     let environment = ProcessInfo.processInfo.environment
-    let home = FileManager.default.homeDirectoryForCurrentUser.path
+    let home = NSHomeDirectory()
     let flutter = DartLayout.findFlutter(environment: environment, home: home, root: root)
     flutterRoot = flutter
     sdkLibrary = DartLayout.findSDK(environment: environment, flutter: flutter)
