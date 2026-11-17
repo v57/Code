@@ -1,3 +1,4 @@
+import CodeCSharpModel
 import CodeClangModel
 import CodeGoModel
 import CodeJavaModel
@@ -27,7 +28,7 @@ import Foundation
 // manifest (go.mod, Package.swift, tsconfig.json).
 
 /// Every language with a model. A new front end adds itself here and in CodeKit's `CodeTiers.languages`.
-let languages: [ModelLanguage] = [.swift, .go, .typeScript, .clang, .python, .rust, .java, .kotlin]
+let languages: [ModelLanguage] = [.swift, .go, .typeScript, .clang, .python, .rust, .java, .kotlin, .cSharp]
 
 func option(_ flag: String) -> String? {
   guard let at = CommandLine.arguments.firstIndex(of: flag), at + 1 < CommandLine.arguments.count else { return nil }
@@ -81,7 +82,8 @@ func chooseLanguage() -> ModelLanguage? {
     paths += list.prefix(20).compactMap { $0["path"] as? String }
   }
   for path in paths { if let found = languages.first(where: { $0.handles(path) }) { return found } }
-  for language in languages where language.manifests.contains(where: { FileManager.default.fileExists(atPath: root + "/" + $0) }) { return language }
+  let files = (try? FileManager.default.contentsOfDirectory(atPath: root)) ?? []
+  for language in languages where files.contains(where: language.isManifest) { return language }
   return nil
 }
 
