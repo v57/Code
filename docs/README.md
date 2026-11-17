@@ -88,10 +88,11 @@ tests.
 | [CodeClangModel](CodeClangModel.md) | A C, C++ and Objective-C code model from source: definitions, completions, references | macOS; Linux, Windows, iOS without the SDK | `import CodeClangModel` |
 | [CodePythonModel](CodePythonModel.md) | A Python code model from source: definitions, completions, references | macOS, Linux; Windows, iOS without the standard library | `import CodePythonModel` |
 | [CodeRustModel](CodeRustModel.md) | A Rust code model from source: definitions, completions, references | macOS, Linux; Windows, iOS without Cargo's registry | `import CodeRustModel` |
+| [CodeJavaModel](CodeJavaModel.md) | A Java code model from source: definitions, completions, references | macOS, Linux; Windows, iOS with the built-in platform stub | `import CodeJavaModel` |
 
 The package also builds four tools: `code-lsp` (CodeServer's server on standard input and output), `code-pretty`
 (CodePretty over files and folders), `swift-model` (measures CodeSwiftModel on a project) and `code-model` (measures
-any language's model, Swift's, Go's, TypeScript's, C's, Python's or Rust's, chosen by the files or `--language`). Android is not supported
+any language's model, Swift's, Go's, TypeScript's, C's, Python's, Rust's or Java's, chosen by the files or `--language`). Android is not supported
 yet by any library.
 
 Run every test with `swift test` at the repository root.

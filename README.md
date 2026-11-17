@@ -104,6 +104,12 @@ Libraries
                        as this machine builds, a stub of the standard
                        library; definitions, completions, references and
                        details (numbers in ../Demos/CodeModelBench/rs)
+    CodeJavaModel      a Java code model on CodeModel from source: packages,
+                       Gradle and Maven modules, Android, the platform from
+                       a JDK's src.zip or the Android SDK's sources (read in
+                       place, never downloaded), else a stub; dependencies'
+                       -sources.jars; definitions, completions, references
+                       and details (numbers in ../Demos/CodeModelBench/java)
     CodeKit            re-exports them all; CodeEditorView(document:) edits a
                        workspace document (autosave, reload, ⌘S trimming,
                        minimap, issues, breakpoints); ProjectServices connects

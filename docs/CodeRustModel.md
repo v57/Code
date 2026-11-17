@@ -151,7 +151,8 @@ The tests write small Cargo projects to a temporary folder with `@@` before the 
 ## Related
 
 - [CodeSwiftModel](CodeSwiftModel.md), [CodeGoModel](CodeGoModel.md), [CodeTypeScriptModel](CodeTypeScriptModel.md),
-  [CodeClangModel](CodeClangModel.md) and [CodePythonModel](CodePythonModel.md): the other models, and the
+  [CodeClangModel](CodeClangModel.md), [CodePythonModel](CodePythonModel.md) and [CodeJavaModel](CodeJavaModel.md): the
+  other models, and the
   [CodeModel core](CodeSwiftModel.md#codemodel-the-core) all are built on.
 - [CodeScan](CodeScan.md): the tokens the model reads, and the tier before it.
 - [CodeKit](CodeKit.md): the definition tiers that ask the model.
