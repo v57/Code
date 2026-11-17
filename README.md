@@ -133,6 +133,14 @@ Libraries
                        stub of the dart: libraries; definitions,
                        completions, references and details (numbers in
                        ../Demos/CodeModelBench/dart)
+    CodePHPModel       a PHP code model on CodeModel from source: namespaces
+                       and use imports, Composer's PSR-4, PSR-0, classmap and
+                       files autoloading (read in place, never installed),
+                       traits with insteadof/as, enums, PHPDoc types,
+                       instanceof narrowing, closures and arrow functions,
+                       a hand-written stub of PHP's functions and classes;
+                       definitions, completions, references and details
+                       (numbers in ../Demos/CodeModelBench/php)
     CodeKit            re-exports them all; CodeEditorView(document:) edits a
                        workspace document (autosave, reload, ⌘S trimming,
                        minimap, issues, breakpoints); ProjectServices connects
