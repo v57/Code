@@ -6,12 +6,13 @@ import Testing
 /// A Scala project in a temporary folder, from file text with `@@` before the word a question is about. The platform is
 /// Java's built-in stub and the standard library Scala's hand-written one, so nothing installed is needed.
 private final class Project {
+  let base: String
   let root: String
   let model: ScalaModel
   var marks: [String: (path: String, line: Int, character: Int)] = [:]
 
   init(_ files: [String: String], root folder: String = "project") throws {
-    let base = NSTemporaryDirectory() + "scalamodel-" + UUID().uuidString
+    base = NSTemporaryDirectory() + "scalamodel-" + UUID().uuidString
     root = base + "/" + folder
     for (name, text) in files.sorted(by: { $0.key < $1.key }) {
       var body = ""
@@ -38,7 +39,7 @@ private final class Project {
     model = ScalaModel(root: root, findsPlatform: false)
   }
 
-  deinit { try? FileManager.default.removeItem(atPath: URL(fileURLWithPath: root).deletingLastPathComponent().path) }
+  deinit { try? FileManager.default.removeItem(atPath: base) }
 
   /// The answer's definitions as `path:line` (1-based), paths relative to the root; the stub's as `sdk:<file>:<line>`.
   func answer(_ key: String) -> (state: AnswerState, places: [String]) {
