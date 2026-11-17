@@ -1,4 +1,5 @@
 #if os(macOS) || os(Windows) || os(Linux)
+  import CodeClangModel
   import CodeFolders
   import CodeGoModel
   import CodeScan
@@ -7,11 +8,11 @@
   import Foundation
 
   /// The fast tiers of one workspace, in this process: Code's scanner for every language, and a language's model
-  /// (CodeModel's front ends: Swift, Go, TypeScript) for its files. Each works on its own serial queue, built on first use, and
+  /// (CodeModel's front ends: Swift, Go, TypeScript, C/C++/Objective-C) for its files. Each works on its own serial queue, built on first use, and
   /// answers with the editor's current text.
   final class CodeTiers: @unchecked Sendable {
     /// The languages with a model, by file extension.
-    static let languages: [ModelLanguage] = [.swift, .go, .typeScript]
+    static let languages: [ModelLanguage] = [.swift, .go, .typeScript, .clang]
 
     let root: URL
     private let scanner: ScannerTier
