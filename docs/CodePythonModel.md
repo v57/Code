@@ -151,8 +151,8 @@ The tests write small projects to a temporary folder with `@@` before the words 
 
 ## Related
 
-- [CodeSwiftModel](CodeSwiftModel.md), [CodeGoModel](CodeGoModel.md), [CodeTypeScriptModel](CodeTypeScriptModel.md)
-  and [CodeClangModel](CodeClangModel.md): the other models, and the [CodeModel core](CodeSwiftModel.md#codemodel-the-core)
+- [CodeSwiftModel](CodeSwiftModel.md), [CodeGoModel](CodeGoModel.md), [CodeTypeScriptModel](CodeTypeScriptModel.md),
+  [CodeClangModel](CodeClangModel.md) and [CodeRustModel](CodeRustModel.md): the other models, and the [CodeModel core](CodeSwiftModel.md#codemodel-the-core)
   all are built on.
 - [CodeScan](CodeScan.md): the tokens the model reads (f-strings with their code parts and format specs), and the tier
   before it.

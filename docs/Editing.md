@@ -79,7 +79,7 @@ In Swift, the "(" of a call lists every initializer or function it could mean (`
 - A function's arguments come in as placeholders. Press Tab and ⇧Tab, or **Editor ▸ Select Next Placeholder** (⌃/)
   and **Select Previous Placeholder** (⌃⇧/), to move between them. Click a placeholder to select it whole.
 
-Suggestions come from the language server, from Code's own models for Swift, Go, TypeScript, JavaScript, C, C++, Objective-C and Python files (Code's scanner
+Suggestions come from the language server, from Code's own models for Swift, Go, TypeScript, JavaScript, C, C++, Objective-C, Python and Rust files (Code's scanner
 for other languages), and from the file's words and the language's keywords. Turn off **Suggest completions** in Settings ▸ Editor to open the list only with ⌃Space.
 
 ### Find and replace
@@ -117,7 +117,7 @@ for other languages), and from the file's words and the language's keywords. Tur
 underlined with its declaration.
 
 Code asks up to three sources at once: its own scanner (fast guesses, any language), its code model for Swift, Go,
-TypeScript, JavaScript, C, C++, Objective-C and Python (usually exact) and the language server. When the answer is sure and there's one place, Code jumps there. When it's a
+TypeScript, JavaScript, C, C++, Objective-C, Python and Rust (usually exact) and the language server. When the answer is sure and there's one place, Code jumps there. When it's a
 guess, or there are several places, a menu under the name lists them; it fills in as slower sources answer, without
 moving the rows you've already passed.
 

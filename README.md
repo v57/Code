@@ -98,6 +98,12 @@ Libraries
                        environment's site-packages (read, never installed
                        into); definitions, completions, references and
                        details (numbers in ../Demos/CodeModelBench/py)
+    CodeRustModel      a Rust code model on CodeModel from source: Cargo
+                       workspaces, path, git and registry dependencies from
+                       Cargo.lock (read, never fetched), features and #[cfg]
+                       as this machine builds, a stub of the standard
+                       library; definitions, completions, references and
+                       details (numbers in ../Demos/CodeModelBench/rs)
     CodeKit            re-exports them all; CodeEditorView(document:) edits a
                        workspace document (autosave, reload, ⌘S trimming,
                        minimap, issues, breakpoints); ProjectServices connects
