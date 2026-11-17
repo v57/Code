@@ -89,6 +89,9 @@ public struct LanguageRules: Sendable {
   public var hashBracketAttributes = false
   /// `` `a name` `` is one identifier (Kotlin's test names and keywords used as names).
   public var backtickIdentifiers = false
+  /// `:` is an operator byte like `+` or `<`: `+:`, `:+`, `<:` and `#::` are one token each, and a lone `:` stays
+  /// one; `.` is never part of an operator (`import a.*`, `xs.+:(x)`) (Scala).
+  public var colonJoinsOperators = false
   /// A `#` comment needs a space before it (`$#` and `${#a}` aren't comments).
   public var commentsNeedWordStart = false
   /// Strings may run over lines whatever their quote (Shell, Ruby, PHP).
@@ -352,6 +355,8 @@ public struct LanguageRules: Sendable {
       $0.interpolations = [Interpolation(open: "${", close: 0x7D)]
       $0.newlineEndsStatements = true
       $0.colonHugsLeft = true
+      $0.backtickIdentifiers = true
+      $0.colonJoinsOperators = true
     },
     "PowerShell": LanguageRules {
       $0.layout = .lines

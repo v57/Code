@@ -166,6 +166,21 @@ private func names(_ text: String, _ language: String) -> [String] {
     #expect(tokens[dot + 1] == ("end", .keyword))
   }
 
+  @Test func scalaOperatorsBackquotesAndComments() {
+    let text = "import a.b.*\nval xs = 1 +: ys :+ 2\ndef f[A <: B](`type`: A) = x #:: s.+:(y) /* a /* b */ c */ d\nval y: Int = 1\n"
+    let tokens = kinds(text, "Scala")
+    // `.` stays its own token, also before an operator.
+    #expect(tokens.contains { $0 == (".", .punctuation) } && tokens.contains { $0 == ("*", .punctuation) } && !tokens.contains { $0.0 == ".*" || $0.0 == ".+:" })
+    #expect(tokens.contains { $0 == ("+:", .punctuation) } && tokens.contains { $0 == (":+", .punctuation) } && tokens.contains { $0 == ("<:", .punctuation) })
+    #expect(tokens.contains { $0 == ("#::", .punctuation) } && tokens.contains { $0 == (":", .punctuation) })
+    #expect(tokens.contains { $0 == ("`type`", .identifier) })
+    // A nested comment ends where its outer one does.
+    #expect(tokens.contains { $0 == ("d", .identifier) } && !tokens.contains { $0.0 == "c" })
+    // A name ending in `_` takes the operator after it; `_` alone doesn't.
+    let names = kinds("def unary_- = 1\nxs.reduce(_+_)\n", "Scala")
+    #expect(names.contains { $0 == ("unary_-", .identifier) } && names.contains { $0 == ("+", .punctuation) })
+  }
+
   @Test func nestedComments() {
     #expect(kinds("/* a /* b */ c */ d", "Swift").map(\.0).last == "d")
   }

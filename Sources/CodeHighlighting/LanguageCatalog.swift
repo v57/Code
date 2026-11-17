@@ -322,6 +322,7 @@ public enum LanguageCatalog {
 
   static let scala = LanguageSpec(
     name: "Scala", aliases: ["scala", "sc"], lineComments: ["//"], blockComments: [("/*", "*/")],
+    nestedBlockComments: true,
     strings: [StringDelim(open: "\"\"\"", multiline: true), StringDelim(open: "\"")],
     charLiteral: "'",
     keywords: [

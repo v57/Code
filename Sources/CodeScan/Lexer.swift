@@ -94,6 +94,7 @@ public final class LexProfile: @unchecked Sendable {
   let hasSuffixes: Bool
   let sigilNames: Bool
   let colonSymbols: Bool
+  let colonJoinsOperators: Bool
   let keywordsAsNames: Bool
   let percentLiterals: Bool
   let hereDocumentsAfterOperators: Bool
@@ -216,6 +217,7 @@ public final class LexProfile: @unchecked Sendable {
       cls[0x24] = ByteClass.opener
     }
     colonSymbols = rules.colonSymbols
+    colonJoinsOperators = rules.colonJoinsOperators
     keywordsAsNames = rules.keywordsAsNames
     percentLiterals = rules.percentLiterals
     if percentLiterals {
@@ -411,6 +413,11 @@ public func scan(
         continue
       }
       var j = identifierEnd(i)
+      // Scala's `unary_-`, `name_=`: a name ending in `_` takes the operator characters after it (`_` alone doesn't:
+      // `_+_`, `case _=>`).
+      if profile.colonJoinsOperators, j &- i > 1, t[j &- 1] == 0x5F {
+        while j < n, isScalaOperatorByte(t[j]) { j &+= 1 }
+      }
       if profile.hasSuffixes, profile.suffix[Int(t[j])] != 0, t[j &+ 1] != 0x3D { j &+= 1 }
       let length = j &- i
       var tokenKind = TokenKind.identifier
@@ -494,7 +501,10 @@ public func scan(
         i = j
         continue
       }
-      let j = t[i &+ 1] == 0x3A ? i &+ 2 : i &+ 1
+      var j = t[i &+ 1] == 0x3A ? i &+ 2 : i &+ 1
+      if profile.colonJoinsOperators {
+        while j < n, cls[Int(t[j])] == ByteClass.punct && t[j] != 0x2E || t[j] == 0x3A { j &+= 1 }
+      }
       out[count] = Token(.punctuation, i, j)
       count &+= 1
       i = j
@@ -510,8 +520,12 @@ public func scan(
       // An `=` there is an operator's (`||=`, `!=`) even where it may open `=begin` at a line's start, and a `<` one's
       // (`<<`, `<=>`) where it may open a here-document.
       // Ruby's lambda `->` stays its own (`&->(x) { }`).
-      while j < n, cls[Int(t[j])] == ByteClass.punct || t[j] == 0x3D && profile.embeddedDocuments || t[j] == 0x3C && profile.hereDocumentsAfterOperators {
+      while j < n, cls[Int(t[j])] == ByteClass.punct || t[j] == 0x3D && profile.embeddedDocuments || t[j] == 0x3C && profile.hereDocumentsAfterOperators
+        || t[j] == 0x3A && profile.colonJoinsOperators
+      {
         if profile.hereDocumentsAfterOperators, t[j] == 0x2D, t[j &+ 1] == 0x3E { break }
+        // Scala's `.` is never part of an operator: `a.*`, `xs.+:(x)`.
+        if profile.colonJoinsOperators, t[j] == 0x2E || c == 0x2E { break }
         j &+= 1
       }
       out[count] = Token(.punctuation, i, j)
@@ -1185,4 +1199,12 @@ private func continueString(
     count &+= 1
   }
   return (end, count)
+}
+
+/// Scala's operator characters (`!#%&*+-/:<=>?@\^|~`), which follow a `_` in a name.
+@inline(__always) func isScalaOperatorByte(_ b: UInt8) -> Bool {
+  switch b {
+  case 0x21, 0x23, 0x25, 0x26, 0x2A, 0x2B, 0x2D, 0x2F, 0x3A, 0x3C, 0x3D, 0x3E, 0x3F, 0x40, 0x5C, 0x5E, 0x7C, 0x7E: return true
+  default: return false
+  }
 }
