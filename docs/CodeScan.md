@@ -115,7 +115,8 @@ if let swift = LexProfile.profile(forLanguage: "swift") {
 ### Language rules and walking folders
 
 - `LanguageRules`: what a language needs beyond its `LanguageSpec`: blocks, declarations (`SymbolKind`), parameters,
-  layout, interpolations, extra strings, and formatting preferences CodePretty reads. Plain data, one table row per
+  layout, interpolations, extra strings, lexing switches (regex literals, here-documents, Kotlin's backtick
+  identifiers), and formatting preferences CodePretty reads. Plain data, one table row per
   language (`LanguageRules.rules(for:)` by the spec's name); a language without a row gets the defaults and still
   scans.
 - `FileWalk.walk(roots:threads:skipped:wants:isUnchanged:visit:)`: a multi-threaded folder walk that skips dependency

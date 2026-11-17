@@ -110,6 +110,13 @@ Libraries
                        place, never downloaded), else a stub; dependencies'
                        -sources.jars; definitions, completions, references
                        and details (numbers in ../Demos/CodeModelBench/java)
+    CodeKotlinModel    a Kotlin code model on CodeModel from source, on Java's
+                       layout: packages from package lines, extensions,
+                       companions, smart casts, scope functions, mixed
+                       Kotlin/Java projects, a generated stub of the
+                       standard library; definitions, completions,
+                       references and details (numbers in
+                       ../Demos/CodeModelBench/kt)
     CodeKit            re-exports them all; CodeEditorView(document:) edits a
                        workspace document (autosave, reload, ⌘S trimming,
                        minimap, issues, breakpoints); ProjectServices connects

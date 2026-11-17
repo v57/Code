@@ -56,8 +56,10 @@ Names resolve the way javac resolves them:
   and `lib:<qualified name>` for a dependency (a method `java.util.List.of(2)`, a constructor `…String.<init>(1)`, a
   field `…Integer.MAX_VALUE`, line 1), `package:<name>` (line 0) for a package.
 
-`JVMWorkspace` and `JVMSourceSet` are the JVM's, not Java's: a Kotlin front end takes them with its own extensions
-(`JVMWorkspace(root:extensions:)` already reads `src/*/kotlin`), as `package` declarations of this library.
+`JVMWorkspace`, `JVMSourceSet` and `JavaLayout` are the JVM's, not only Java's: [CodeKotlinModel](CodeKotlinModel.md)
+takes them with its own extensions, syntax and standard library (`JavaLayout(root:findsPlatform:extensions:syntax:extraSets:)`,
+a set held in memory written to its own `$TMPDIR` folder), as `package` declarations of this library, and asks a
+`JavaModel` on the same `Project` about Java's declarations.
 
 ## Platforms
 
@@ -161,8 +163,8 @@ the platform.
 ## Related
 
 - [CodeSwiftModel](CodeSwiftModel.md), [CodeGoModel](CodeGoModel.md), [CodeTypeScriptModel](CodeTypeScriptModel.md),
-  [CodeClangModel](CodeClangModel.md), [CodePythonModel](CodePythonModel.md) and [CodeRustModel](CodeRustModel.md): the
-  other models, and the [CodeModel core](CodeSwiftModel.md#codemodel-the-core) all are built on.
+  [CodeClangModel](CodeClangModel.md), [CodePythonModel](CodePythonModel.md), [CodeRustModel](CodeRustModel.md) and
+  [CodeKotlinModel](CodeKotlinModel.md): the other models, and the [CodeModel core](CodeSwiftModel.md#codemodel-the-core) all are built on.
 - [CodeScan](CodeScan.md): the tokens the model reads, and the tier before it.
 - [CodeKit](CodeKit.md): the definition tiers that ask the model.
 - [CodeLSP](CodeLSP.md): jdtls, the tier after it.
