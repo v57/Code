@@ -124,6 +124,15 @@ Libraries
                        as Debug builds, a generated stub of .NET 10's library;
                        definitions, completions, references and details
                        (numbers in ../Demos/CodeModelBench/cs)
+    CodeDartModel      a Dart code model on CodeModel from source: libraries
+                       with parts, prefixes, show/hide and exports, package:
+                       from package_config.json or pubspec.lock and the pub
+                       cache (read in place, never fetched), mixins,
+                       extensions and extension types, cascades, null
+                       safety and promotion, switch patterns, a hand-written
+                       stub of the dart: libraries; definitions,
+                       completions, references and details (numbers in
+                       ../Demos/CodeModelBench/dart)
     CodeKit            re-exports them all; CodeEditorView(document:) edits a
                        workspace document (autosave, reload, ⌘S trimming,
                        minimap, issues, breakpoints); ProjectServices connects
