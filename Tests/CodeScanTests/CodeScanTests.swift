@@ -181,6 +181,21 @@ private func names(_ text: String, _ language: String) -> [String] {
     #expect(names.contains { $0 == ("unary_-", .identifier) } && names.contains { $0 == ("+", .punctuation) })
   }
 
+  @Test func luaLongBracketsEscapesAndOperators() {
+    let text = "local a = [==[\nx ]] y ]=] z\n]==] .. b\n--[[ c\n]] d\n--[=[ e ]] f ]=] g\nlocal s = \"one \\z\n  two\" h\nt[ [[k]] ] = #s // 2 ~= -1 and x=#w and s..#s\n::top:: goto top\n"
+    let tokens = kinds(text, "Lua")
+    #expect(tokens.contains { $0 == ("[==[\nx ]] y ]=] z\n]==]", .string) } && tokens.contains { $0 == ("[[k]]", .string) })
+    #expect(tokens.contains { $0.0 == "--[[ c\n]]" && $0.1 == .comment } && tokens.contains { $0.0 == "--[=[ e ]] f ]=]" && $0.1 == .comment })
+    #expect(["b", "d", "g", "h"].allSatisfy { word in tokens.contains { $0 == (word, .identifier) } })
+    #expect(!tokens.contains { $0.0 == "y" || $0.0 == "c" || $0.0 == "e" || $0.0 == "f" || $0.0 == "two" })
+    // Operator runs split into Lua's operators: `=#` is `=` and `#`, `..#` is `..` and `#`.
+    for op in ["..", "#", "//", "~=", "-", "=", "::"] { #expect(tokens.contains { $0 == (op, .punctuation) }) }
+    #expect(!tokens.contains { $0.0 == "=#" || $0.0 == "..#" })
+    // `1.` is a number; `1..2` and `a.b` keep their dots.
+    let numbers = kinds("x = { 1., 2 } .. 1 .. 2\n", "Lua")
+    #expect(numbers.contains { $0 == ("1.", .number) } && numbers.contains { $0 == ("..", .punctuation) })
+  }
+
   @Test func nestedComments() {
     #expect(kinds("/* a /* b */ c */ d", "Swift").map(\.0).last == "d")
   }

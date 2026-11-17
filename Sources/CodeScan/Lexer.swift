@@ -99,6 +99,11 @@ public final class LexProfile: @unchecked Sendable {
   let percentLiterals: Bool
   let hereDocumentsAfterOperators: Bool
   let embeddedDocuments: Bool
+  let longBrackets: Bool
+  /// `LanguageRules.operators` as bytes, longest first; empty when a run of operator bytes is one token.
+  let operators: [[UInt8]]
+  let whitespaceEscape: UInt8
+  let trailingDotNumbers: Bool
 
   // Keywords: open addressing over the word's first 16 bytes, its length and whether it declares.
   private let keywordWords: UnsafeMutablePointer<UInt64>
@@ -227,6 +232,14 @@ public final class LexProfile: @unchecked Sendable {
     hereDocumentsAfterOperators = rules.hereDocumentsAfterOperators
     embeddedDocuments = rules.embeddedDocuments
     if embeddedDocuments { cls[0x3D] = ByteClass.opener }
+    longBrackets = rules.longBrackets
+    if longBrackets {
+      cls[0x5B] = ByteClass.opener
+      cls[0x2D] = ByteClass.opener
+    }
+    operators = rules.operators.map { Array($0.utf8) }.sorted { $0.count > $1.count }
+    whitespaceEscape = rules.whitespaceEscape
+    trailingDotNumbers = rules.trailingDotNumbers
     openers = table
 
     // Keywords: the spec's, and every declaration word of the rules. Kinds come from the rules, else the spec's.
@@ -440,6 +453,9 @@ public func scan(
           j &+= 1
         } else if b == 0x2E, t[j &+ 1] >= 0x30, t[j &+ 1] <= 0x39 {
           j &+= 2
+        } else if b == 0x2E, profile.trailingDotNumbers, t[j &+ 1] != 0x2E, ident[Int(t[j &+ 1])] == 0, t[i &+ 1] | 0x20 != 0x78 {
+          j &+= 1
+          break
         } else if b == 0x2B || b == 0x2D, t[j &- 1] | 0x20 == 0x65, t[i &+ 1] | 0x20 != 0x78 {
           j &+= 1
         } else {
@@ -528,12 +544,47 @@ public func scan(
         if profile.colonJoinsOperators, t[j] == 0x2E || c == 0x2E { break }
         j &+= 1
       }
+      if !profile.operators.isEmpty {
+        // The language's operators, longest first, from the run's start: `=#` is `=` and `#`.
+        var k = i
+        while k < j {
+          var width = 1
+          for op in profile.operators where op.count <= j &- k && matches(t, k, op) {
+            width = op.count
+            break
+          }
+          out[count] = Token(.punctuation, k, k &+ width)
+          count &+= 1
+          k &+= width
+        }
+        i = j
+        continue
+      }
       out[count] = Token(.punctuation, i, j)
       count &+= 1
       i = j
     }
   }
   return count
+}
+
+/// The end of a long bracket opening at `i` (`[[`, `[=[`, `[==[` …), after the close of the same level or at the end of
+/// the text; nil when `i` opens none.
+private func longBracketEnd(_ t: UnsafePointer<UInt8>, _ n: Int, _ i: Int) -> Int? {
+  var j = i &+ 1
+  while j < n, t[j] == 0x3D { j &+= 1 }
+  guard j < n, t[j] == 0x5B else { return nil }
+  let level = j &- i &- 1
+  j &+= 1
+  while j < n {
+    guard let found = memchr(t + j, 0x5D, n &- j) else { return n }
+    j = UnsafePointer(found.assumingMemoryBound(to: UInt8.self)) - t
+    var k = j &+ 1
+    while k < n, t[k] == 0x3D { k &+= 1 }
+    if k < n, t[k] == 0x5D, k &- j &- 1 == level { return k &+ 1 }
+    j &+= 1
+  }
+  return n
 }
 
 /// High bit set in each byte that isn't [A-Za-z0-9_] or at least 0x80.
@@ -637,6 +688,17 @@ private func opener(
   _ frames: inout InterpolationFrames, _ hereDocument: inout HereDocument
 ) -> (Int, Int)? {
   let c = t[i]
+  if profile.longBrackets {
+    // `[==[ … ]==]`: a string; `--[==[ … ]==]`: a comment. A `[` that opens no long bracket is a bracket.
+    if c == 0x5B, let end = longBracketEnd(t, n, i) {
+      out[count] = Token(.string, i, end)
+      return (end, count &+ 1)
+    }
+    if c == 0x2D, i &+ 2 < n, t[i &+ 1] == 0x2D, t[i &+ 2] == 0x5B, let end = longBracketEnd(t, n, i &+ 2) {
+      out[count] = Token(.comment, i, end)
+      return (end, count &+ 1)
+    }
+  }
   let list = profile.openers[Int(c)]
   if !list.isEmpty {
     for (index, entry) in list.enumerated() where matches(t, i, entry.open) {
@@ -1174,6 +1236,12 @@ private func continueString(
     if c == escape, escape != 0, c != closeByte || (i &+ 1 < n && t[i &+ 1] == escape) || !matches(t, i, close),
       !(entry.rawCode && i &+ 1 < n && t[i &+ 1] == codeByte)
     {
+      if profile.whitespaceEscape != 0, i &+ 1 < n, t[i &+ 1] == profile.whitespaceEscape {
+        // Lua's `\z`: the string goes on past the line breaks after it.
+        i &+= 2
+        while i < n, t[i] == 0x20 || t[i] == 0x09 || t[i] == 0x0A || t[i] == 0x0D { i &+= 1 }
+        continue
+      }
       i &+= 2
       continue
     }

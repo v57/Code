@@ -119,6 +119,16 @@ public struct LanguageRules: Sendable {
   public var hereDocumentsAfterOperators = false
   /// `=begin` … `=end` at a line's start are a comment, and `__END__` alone on a line ends the code (Ruby).
   public var embeddedDocuments = false
+  /// `[[…]]` and `[==[…]==]` are strings, `--[[…]]` and `--[==[…]==]` comments, closed only by a bracket of the same
+  /// level (Lua).
+  public var longBrackets = false
+  /// The language's operators: a run of operator bytes is split into the longest of these from its start (Lua's `=#`
+  /// is `=` and `#`, `..#` is `..` and `#`). Empty: a run is one token.
+  public var operators: [String] = []
+  /// A string's escape that skips the whitespace after it, line breaks too (Lua's `\z`); 0 for none.
+  public var whitespaceEscape: UInt8 = 0
+  /// `1.` is a number, the dot its own when no digit, name or dot follows (Lua's `{ 1., 2 }`).
+  public var trailingDotNumbers = false
   /// `.`, `?.` and these reach into a value.
   public var memberOperators: Set<String> = []
   /// The language's trailing comma where a list breaks: required (Go) or welcome.
@@ -376,6 +386,13 @@ public struct LanguageRules: Sendable {
       $0.parameters = .nameFirst
       $0.assignmentDeclares = true
       $0.declarations = ["function": .function, "local": .variable]
+      $0.longBrackets = true
+      $0.whitespaceEscape = 0x7A
+      $0.trailingDotNumbers = true
+      $0.operators = [
+        "...", "..", "==", "~=", "<=", ">=", "<<", ">>", "//", "::", "+", "-", "*", "/", "%", "^", "#", "&", "~", "|", "<", ">",
+        "=", ":", ".",
+      ]
     },
     "Haskell": LanguageRules {
       $0.blocks = .indentation
