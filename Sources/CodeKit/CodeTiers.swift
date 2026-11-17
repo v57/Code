@@ -1,4 +1,5 @@
 #if os(macOS) || os(Windows) || os(Linux)
+  import CodeCSharpModel
   import CodeClangModel
   import CodeFolders
   import CodeGoModel
@@ -16,7 +17,7 @@
   /// answers with the editor's current text.
   final class CodeTiers: @unchecked Sendable {
     /// The languages with a model, by file extension.
-    static let languages: [ModelLanguage] = [.swift, .go, .typeScript, .clang, .python, .rust, .java, .kotlin]
+    static let languages: [ModelLanguage] = [.swift, .go, .typeScript, .clang, .python, .rust, .java, .kotlin, .cSharp]
 
     let root: URL
     private let scanner: ScannerTier
@@ -82,7 +83,7 @@
       for model in madeModels {
         let language = model.language
         let own = paths.filter { language.handles($0) }
-        let reload = paths.contains { language.manifests.contains(($0 as NSString).lastPathComponent) } || (structural && !own.isEmpty)
+        let reload = paths.contains(where: language.isManifest) || (structural && !own.isEmpty)
         model.filesChanged(own, reload: reload)
       }
     }
