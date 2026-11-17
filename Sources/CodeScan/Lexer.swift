@@ -104,6 +104,7 @@ public final class LexProfile: @unchecked Sendable {
   let operators: [[UInt8]]
   let whitespaceEscape: UInt8
   let trailingDotNumbers: Bool
+  let symbolOperators: Bool
 
   // Keywords: open addressing over the word's first 16 bytes, its length and whether it declares.
   private let keywordWords: UnsafeMutablePointer<UInt64>
@@ -240,6 +241,7 @@ public final class LexProfile: @unchecked Sendable {
     operators = rules.operators.map { Array($0.utf8) }.sorted { $0.count > $1.count }
     whitespaceEscape = rules.whitespaceEscape
     trailingDotNumbers = rules.trailingDotNumbers
+    symbolOperators = rules.symbolOperators
     openers = table
 
     // Keywords: the spec's, and every declaration word of the rules. Kinds come from the rules, else the spec's.
@@ -518,6 +520,9 @@ public func scan(
         continue
       }
       var j = t[i &+ 1] == 0x3A ? i &+ 2 : i &+ 1
+      if profile.symbolOperators {
+        while j < n, isHaskellSymbol(t[j]) { j &+= 1 }
+      }
       if profile.colonJoinsOperators {
         while j < n, cls[Int(t[j])] == ByteClass.punct && t[j] != 0x2E || t[j] == 0x3A { j &+= 1 }
       }
@@ -529,6 +534,20 @@ public func scan(
       if c == 0x3F, t[i &+ 1] == 0x3E, profile.inlineMarkup {
         out[count] = Token(.punctuation, i, i &+ 2)
         (i, count) = markup(t, n, i &+ 2, out, count &+ 1)
+        continue
+      }
+      if profile.symbolOperators, isHaskellSymbol(c) {
+        var j = i &+ 1
+        while j < n, isHaskellSymbol(t[j]) { j &+= 1 }
+        // `Map.!`: the qualifier's `.`, then the operator.
+        if c == 0x2E, j > i &+ 1, count > 0, out[count &- 1].end == i, out[count &- 1].kind == .identifier,
+          t[out[count &- 1].start] >= 0x41, t[out[count &- 1].start] <= 0x5A
+        {
+          j = i &+ 1
+        }
+        out[count] = Token(.punctuation, i, j)
+        count &+= 1
+        i = j
         continue
       }
       // A run of operator bytes is one token, up to anything that may start something else.
@@ -566,6 +585,14 @@ public func scan(
     }
   }
   return count
+}
+
+/// One of Haskell's symbol bytes, which make operators: `!#$%&*+./<=>?@\^|-~:`.
+@inline(__always) private func isHaskellSymbol(_ b: UInt8) -> Bool {
+  switch b {
+  case 0x21, 0x23, 0x24, 0x25, 0x26, 0x2A, 0x2B, 0x2E, 0x2F, 0x3C, 0x3D, 0x3E, 0x3F, 0x40, 0x5C, 0x5E, 0x7C, 0x2D, 0x7E, 0x3A: return true
+  default: return false
+  }
 }
 
 /// The end of a long bracket opening at `i` (`[[`, `[=[`, `[==[` …), after the close of the same level or at the end of
@@ -717,6 +744,12 @@ private func opener(
         }
         // `#[…]`: an attribute (below).
         if c == 0x23, profile.rustAttributes, t[i &+ 1] == 0x5B { continue }
+        // Haskell's `-->`: dashes followed by a symbol are an operator.
+        if profile.symbolOperators, c == 0x2D {
+          var k = i
+          while t[k] == 0x2D { k &+= 1 }
+          if isHaskellSymbol(t[k]) { continue }
+        }
         var end = lineEnd(t, n, i)
         // `// … ?>` ends at the `?>`.
         if profile.inlineMarkup {

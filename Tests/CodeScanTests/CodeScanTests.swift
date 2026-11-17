@@ -196,6 +196,16 @@ private func names(_ text: String, _ language: String) -> [String] {
     #expect(numbers.contains { $0 == ("1.", .number) } && numbers.contains { $0 == ("..", .punctuation) })
   }
 
+  @Test func haskellOperatorsPrimesAndComments() {
+    let text = "x' <- foldl' (+) 0 xs -- c\ny = a --> b |-- w\n{- a {- b -} c -} d\n--- e\nz = M.lookup k m Map.! k f . g $ 'a' : '\\'' : []\n"
+    let tokens = kinds(text, "Haskell")
+    for word in ["x'", "foldl'", "y", "a", "b", "w", "d", "z", "M", "lookup", "Map", "k", "f", "g"] { #expect(tokens.contains { $0 == (word, .identifier) }, "\(word)") }
+    for op in ["<-", "-->", "|--", ".", "!", "$", ":", "+"] { #expect(tokens.contains { $0 == (op, .punctuation) }, "\(op)") }
+    #expect(!tokens.contains { $0.0 == "c" || $0.0 == "e" || $0.0 == ".!" })
+    #expect(tokens.contains { $0 == ("'a'", .string) } && tokens.contains { $0 == ("'\\''", .string) })
+    #expect(tokens.contains { $0 == ("{- a {- b -} c -}", .comment) } && tokens.contains { $0 == ("--- e", .comment) })
+  }
+
   @Test func nestedComments() {
     #expect(kinds("/* a /* b */ c */ d", "Swift").map(\.0).last == "d")
   }

@@ -368,7 +368,7 @@ public enum LanguageCatalog {
 
   static let haskell = LanguageSpec(
     name: "Haskell", aliases: ["haskell", "hs"], lineComments: ["--"],
-    blockComments: [("{-", "-}")], strings: [StringDelim(open: "\"")], charLiteral: "'",
+    blockComments: [("{-", "-}")], nestedBlockComments: true, strings: [StringDelim(open: "\"")], charLiteral: "'",
     keywords: [
       "as", "case", "class", "data", "default", "deriving", "do", "else", "foreign", "forall",
       "hiding", "if", "import", "in", "infix", "infixl", "infixr", "instance", "let", "mdo",

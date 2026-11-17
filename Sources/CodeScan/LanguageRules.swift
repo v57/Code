@@ -129,6 +129,10 @@ public struct LanguageRules: Sendable {
   public var whitespaceEscape: UInt8 = 0
   /// `1.` is a number, the dot its own when no digit, name or dot follows (Lua's `{ 1., 2 }`).
   public var trailingDotNumbers = false
+  /// Every run of the symbol bytes `!#$%&*+./<=>?@\^|-~:` is one operator, `:`, `.` and `-` included (`<-`, `.:`,
+  /// `|->`); a run of two or more dashes alone starts a line comment, and `--` inside a longer run doesn't (`-->`,
+  /// `|--`); a run right after a capitalized word splits off its first `.` (`Map.!` is `Map`, `.`, `!`) (Haskell).
+  public var symbolOperators = false
   /// `.`, `?.` and these reach into a value.
   public var memberOperators: Set<String> = []
   /// The language's trailing comma where a list breaks: required (Go) or welcome.
@@ -397,6 +401,10 @@ public struct LanguageRules: Sendable {
     "Haskell": LanguageRules {
       $0.blocks = .indentation
       $0.signatureDeclares = true
+      $0.symbolOperators = true
+      $0.dollarIsPunctuation = true
+      // `foldl'`, `x'`: a prime continues a name; `'a'` where no name runs into it is a character.
+      $0.extraIdentifierBytes = "'"
       $0.declarations = [
         "data": .struct, "newtype": .struct, "type": .typeAlias, "class": .interface, "instance": .extension,
         "module": .module,
