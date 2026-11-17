@@ -34,6 +34,7 @@ public struct Finding {
 extension Project {
   /// A declaration's place: `path` relative to the root, or `sdk:<module><interface extension>`.
   public func place(of site: Site) -> (path: String, line: Int)? {
+    if let file = site.fileUnit { return (rootRelative(units[Int(file)].path), 1) }
     switch site {
     case .decl(let ref):
       return placeOf(unit(ref), token: Int(decl(ref).nameToken))
@@ -48,6 +49,10 @@ extension Project {
   /// generated declaration was read from. Line and character from 0, the character in UTF-16 units; `name` is what's
   /// declared there. Nil for a module.
   public func location(of site: Site) -> (path: String, line: Int, character: Int, name: String, preview: String)? {
+    if let file = site.fileUnit {
+      let holder = units[Int(file)]
+      return (holder.path, 0, 0, (holder.path as NSString).lastPathComponent, holder.lineText(0))
+    }
     let holder: Unit
     let token: Int
     switch site {

@@ -148,6 +148,21 @@ private final class Project {
     #expect(project.references("report") == ["a.lua:2", "b.lua:2"])
   }
 
+  /// A required module is the whole file: it opens at its first line, not at its first token below a comment header.
+  @Test func requireOpensTheWholeFile() throws {
+    let project = try Project([
+      "doc.lua": "-- A header.\n-- More of it.\n\nlocal D = {}\nreturn D\n",
+      "main.lua": "local doc = require(^^\"doc\")\n",
+    ])
+    #expect(project.exact("") == "doc.lua:1")
+    let mark = project.marks[""]!
+    let site = try #require(project.model.answer(path: mark.path, line: mark.line, character: mark.character).sites.first)
+    #expect(site.fileUnit != nil)
+    let at = try #require(project.model.location(of: site))
+    #expect(at.path.hasSuffix("/doc.lua") && at.line == 0 && at.character == 0 && at.preview == "-- A header.")
+    #expect(project.model.details(of: site)?.symbol.line == 0)
+  }
+
   @Test func requireFindsTheModulesReturnedTable() throws {
     let project = try Project([
       ".luarc.json": #"{ "runtime.path": ["src/?.lua", "src/?/init.lua"] }"#,

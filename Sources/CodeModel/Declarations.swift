@@ -137,3 +137,15 @@ public enum Site: Hashable {
   case generic(unit: Int32, token: Int32)
   case module(Name)
 }
+
+extension Site {
+  /// A whole file, as `require`, `include`, `source` and the like name one: it opens at the file's first line, not at a
+  /// token in it (`Project.location(of:)`, `place(of:)`).
+  public static func file(_ unit: Int32) -> Site { .local(unit: unit, token: -1) }
+
+  /// The file's unit when the site is a whole file.
+  public var fileUnit: Int32? {
+    if case .local(let unit, let token) = self, token < 0 { return unit }
+    return nil
+  }
+}

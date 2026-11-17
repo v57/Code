@@ -176,7 +176,8 @@ language through:
   `source`, `tokens` without comments, `decls`, `imports`, `shape`), the declaration tables (`Decl`, `Param`, `Import`,
   `DeclRef`, `DeclKind` (`namespace` for TypeScript's namespaces and `declare module` blocks), `Access`, `Name`; an
   `Import`'s `member` is the declaration it takes, `import { a as b }`) and `Site` (a declaration, a local, a generic
-  parameter or a module).
+  parameter or a module; `Site.file(_:)` is a whole file, as `require`, `include` and `source` name one, which
+  `Project.location(of:)` opens at its first line and `place(of:)` names as line 1).
 - `Answer`, `AnswerState`, `Finding`, `SymbolDetails`, `SymbolPart`, and completion's `ModelCompletionList`,
   `ModelCompletionEntry`, `ModelCompletionContext` and `ModelCompletionItemKind`.
 

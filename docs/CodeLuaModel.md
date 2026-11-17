@@ -120,7 +120,8 @@ so the rest of the project isn't read again.
 
 ### Definitions and references
 
-- `answer(path:line:character:)`, `location(of:)` (the stub's file is written out first), `place(of:)`.
+- `answer(path:line:character:)`, `location(of:)` (the stub's file is written out first; a required file opens at its
+  first line), `place(of:)`.
 - `references(of:)`: where an answer's definitions are used in the project, one line each: every use that answers the
   same definitions (a field's uses on the same table, a local's in its scope).
 

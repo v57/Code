@@ -903,7 +903,7 @@ public final class RubyModel: LanguageModel {
     }
     for item in holder.imports where Int(item.token) == token {
       guard item.member != RubyImport.loadPath, let path = requiredFile(item, of: holder), let target = load(path) else { return Self.unknown }
-      return Answer(state: .exact, sites: [.local(unit: target, token: 0)])
+      return Answer(state: .exact, sites: [.file(target)])
     }
     return Self.unknown
   }
@@ -1111,7 +1111,8 @@ public final class RubyModel: LanguageModel {
       }
     case .local(let unitIndex, let token), .generic(let unitIndex, let token):
       let holder = project.units[Int(unitIndex)]
-      if token == 0, !holder.rbIsIdentifier(0) || holder.rbIsConstant(0) { return [] }
+      // A required file is used by its requires, which aren't names.
+      if token < 0 { return [] }
       names.insert(holder.hash(Int(token)))
       // A local is only seen in its file; a keyword parameter is named by callers anywhere, a variable with a sign too.
       if holder.rbIsPlain(Int(token)), !holder.isByte(Int(token) + 1, 0x3A) { restrict = unitIndex }
@@ -1131,6 +1132,7 @@ public final class RubyModel: LanguageModel {
 
   /// A place as `rbref.rb` names it: a path relative to the root (`../` outside it), `ruby:` for the stub.
   public func place(of site: Site) -> (path: String, line: Int)? {
+    if site.fileUnit != nil { return project.place(of: site) }
     let holder: Unit
     let token: Int
     switch site {

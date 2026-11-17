@@ -640,7 +640,7 @@ public final class PHPModel: LanguageModel, NominalTypes {
     }
     let path = PHPLayout.standardize(value.hasPrefix("/") && prefix.isEmpty ? value : directory + "/" + value)
     guard load(path), let target = project.unitByPath[path] else { return Self.unknown }
-    return Answer(state: .exact, sites: [.local(unit: target, token: 0)])
+    return Answer(state: .exact, sites: [.file(target)])
   }
 
   // MARK: Named arguments
@@ -717,6 +717,8 @@ public final class PHPModel: LanguageModel, NominalTypes {
         }
       }
     case .local(let unitIndex, let token), .generic(let unitIndex, let token):
+      // An included file is used by its includes, which aren't names.
+      guard token >= 0 else { return [] }
       let holder = project.units[Int(unitIndex)]
       names.insert(holder.hash(Int(token)))
       // A parameter is named by arguments anywhere (`f(name: …)`); a variable is only seen in its file.

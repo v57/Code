@@ -23,7 +23,7 @@ extension PHPModel {
     case .local(let unitIndex, let token):
       let holder = project.units[Int(unitIndex)]
       guard let at = project.location(of: site) else { return nil }
-      if token == 0 {
+      if token < 0 {
         // An included file.
         let name = (holder.path as NSString).lastPathComponent
         let symbol = SymbolPart(kind: .module, name: name, keyword: "file", path: at.path, line: 0, character: 0, module: moduleText(holder), isSDK: project.isSDK(holder))
@@ -174,25 +174,16 @@ extension PHPModel {
       if item.kind == .variable, holder.phIsVariable(Int(item.nameToken)) { text = "$" + text }
       if item.parent >= 0 { text = holder.string(Int(holder.decls[Int(item.parent)].nameToken)) + "::" + text }
       return ("php:" + text, 1)
-    case .local(let unitIndex, let token) where project.isSDK(project.units[Int(unitIndex)]):
+    case .local(let unitIndex, let token) where token >= 0 && project.isSDK(project.units[Int(unitIndex)]):
       let holder = project.units[Int(unitIndex)]
       if holder.chain(at: token).isEmpty { return ("php:$" + holder.string(Int(token)), 1) }
       return nil
-    case .local(let unitIndex, 0):
+    case .local(_, let token) where token < 0:
       // An included file: its first line.
-      return (project.rootRelative(project.units[Int(unitIndex)].path), 1)
+      return project.place(of: site)
     default:
       guard let at = project.location(of: site) else { return nil }
       return (project.rootRelative(at.path), at.line + 1)
     }
-  }
-
-  /// Where a site is; an included file opens at its start.
-  public func location(of site: Site) -> (path: String, line: Int, character: Int, name: String, preview: String)? {
-    if case .local(let unitIndex, 0) = site {
-      let holder = project.units[Int(unitIndex)]
-      return (holder.path, 0, 0, (holder.path as NSString).lastPathComponent, holder.lineText(0))
-    }
-    return project.location(of: site)
   }
 }

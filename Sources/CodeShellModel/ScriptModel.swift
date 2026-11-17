@@ -370,7 +370,7 @@ public final class ScriptModel: LanguageModel {
         return globalAnswer(lowerName("env:" + holder.string(token)), in: unitIndex)
       case .path(let source):
         guard Int(source) < facts.sources.count, let target = targets(unitIndex)[Int(source)] else { return Self.unknown }
-        return Answer(state: .exact, sites: [.local(unit: target, token: -1)])
+        return Answer(state: .exact, sites: [.file(target)])
       case .parameter(let command):
         return parameterAnswer(token, command: Int(command), in: unitIndex)
       case .this(let type):
@@ -416,7 +416,7 @@ public final class ScriptModel: LanguageModel {
       sites = functions(key, in: Array(others)).map { Site.decl($0) }
     }
     if sites.isEmpty, dialect == .shell, let file = autoloadedFunction(key, in: unitIndex) {
-      sites = [.local(unit: file, token: -1)]
+      sites = [.file(file)]
     }
     if dialect == .powerShell, sites.isEmpty { sites = moduleFunctions(key, in: unitIndex).map { Site.decl($0) } }
     if !functionsOnly {
@@ -592,7 +592,7 @@ public final class ScriptModel: LanguageModel {
       return (project.rootRelative(holder.path), holder.source.lines.line(of: holder.tokens[token].start) + 1)
     case .local(let unitIndex, let token):
       let holder = project.units[Int(unitIndex)]
-      if token < 0 { return (project.rootRelative(holder.path), 1) }
+      if token < 0 { return project.place(of: site) }
       guard Int(token) < holder.tokens.count else { return nil }
       return (project.rootRelative(holder.path), holder.source.lines.line(of: holder.tokens[Int(token)].start) + 1)
     case .generic, .module:
@@ -608,13 +608,5 @@ public final class ScriptModel: LanguageModel {
     if dialect == .powerShell, found.name == lowerName("env:" + own) { return "env:" + own }
     guard found.parent >= 0 else { return own }
     return holder.string(Int(holder.decls[Int(found.parent)].nameToken)) + "." + own
-  }
-
-  public func location(of site: Site) -> (path: String, line: Int, character: Int, name: String, preview: String)? {
-    if case .local(let unitIndex, let token) = site, token < 0 {
-      let holder = project.units[Int(unitIndex)]
-      return (holder.path, 0, 0, (holder.path as NSString).lastPathComponent, holder.lineText(0))
-    }
-    return project.location(of: site)
   }
 }

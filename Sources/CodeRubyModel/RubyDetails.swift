@@ -25,7 +25,7 @@ extension RubyModel {
     case .local(let unitIndex, let token):
       let holder = project.units[Int(unitIndex)]
       guard let at = project.location(of: site) else { return nil }
-      if token == 0, !holder.rbIsIdentifier(0) || holder.rbIsConstant(0) {
+      if token < 0 {
         // A required file.
         let name = (holder.path as NSString).lastPathComponent
         let symbol = SymbolPart(kind: .module, name: name, keyword: "file", path: at.path, line: 0, character: 0, module: moduleText(holder), isSDK: project.isSDK(holder))

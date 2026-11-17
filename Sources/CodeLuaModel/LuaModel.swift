@@ -267,7 +267,7 @@ public final class LuaModel: LanguageModel {
       // `require "a.b"`: the file; `t["name"] = …`: the field.
       if file.requireStrings[Int32(token)] != nil {
         guard let target = requiredUnit(unitIndex, Int32(token)) else { return Self.unknown }
-        return Answer(state: .exact, sites: [.local(unit: target, token: 0)])
+        return Answer(state: .exact, sites: [.file(target)])
       }
       if let site = unit.declaredSite(at: token, unitIndex: unitIndex), case .decl(let ref) = site { return declAnswer(ref) }
       return Self.unknown
@@ -346,7 +346,8 @@ public final class LuaModel: LanguageModel {
         if case .decl(let ref) = site { names.insert(decl(ref).name) }
       }
     case .local(let unitIndex, let token):
-      guard token > 0 || luaFile(unitIndex)?.locals[0] != nil else { return [] }
+      // A required file is used by its requires, which aren't names.
+      guard token > 0 || token == 0 && luaFile(unitIndex)?.locals[0] != nil else { return [] }
       names.insert(project.units[Int(unitIndex)].hash(Int(token)))
       restrict = unitIndex
     case .generic, .module:
@@ -374,8 +375,9 @@ public final class LuaModel: LanguageModel {
       guard token >= 0, token < holder.tokens.count else { return nil }
       return (project.rootRelative(holder.path), holder.source.lines.line(of: holder.tokens[token].start) + 1)
     case .local(let unitIndex, let token):
+      if token < 0 { return project.place(of: site) }
       let holder = project.units[Int(unitIndex)]
-      guard token >= 0, Int(token) < holder.tokens.count else { return nil }
+      guard Int(token) < holder.tokens.count else { return nil }
       return (project.rootRelative(holder.path), holder.source.lines.line(of: holder.tokens[Int(token)].start) + 1)
     case .generic, .module:
       return nil
