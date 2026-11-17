@@ -14,7 +14,7 @@ public enum LanguageCatalog {
   // MARK: - JavaScript
 
   static let javascript = LanguageSpec(
-    name: "JavaScript", aliases: ["javascript", "js", "jsx", "mjs", "node", "ecmascript"],
+    name: "JavaScript", aliases: ["javascript", "js", "jsx", "mjs", "node", "ecmascript", "javascriptreact"],
     lineComments: ["//"], blockComments: [("/*", "*/")],
     strings: [
       StringDelim(open: "`", multiline: true), StringDelim(open: "\""), StringDelim(open: "'"),
@@ -30,7 +30,7 @@ public enum LanguageCatalog {
   // MARK: - TypeScript
 
   static let typescript = LanguageSpec(
-    name: "TypeScript", aliases: ["typescript", "ts", "tsx"], lineComments: ["//"],
+    name: "TypeScript", aliases: ["typescript", "ts", "tsx", "typescriptreact"], lineComments: ["//"],
     blockComments: [("/*", "*/")],
     strings: [
       StringDelim(open: "`", multiline: true), StringDelim(open: "\""), StringDelim(open: "'"),
@@ -155,7 +155,7 @@ public enum LanguageCatalog {
   // MARK: - Shell (Bash/Zsh)
 
   static let shell = LanguageSpec(
-    name: "Shell", aliases: ["sh", "shell", "bash", "zsh", "ksh", "fish"], lineComments: ["#"],
+    name: "Shell", aliases: ["sh", "shell", "bash", "zsh", "ksh", "fish", "shellscript"], lineComments: ["#"],
     // `'…'` has no escapes; `$'…'` (ANSI-C quoting) has.
     strings: [StringDelim(open: "\""), StringDelim(open: "'", escape: nil), StringDelim(open: "$'", close: "'")],
     keywords: [
@@ -307,7 +307,7 @@ public enum LanguageCatalog {
   // MARK: - Objective-C
 
   static let objectiveC = LanguageSpec(
-    name: "Objective-C", aliases: ["objectivec", "objective-c", "objc", "obj-c", "m", "mm"],
+    name: "Objective-C", aliases: ["objectivec", "objective-c", "objc", "obj-c", "m", "mm", "objective-cpp"],
     lineComments: ["//"], blockComments: [("/*", "*/")],
     strings: [StringDelim(open: "@\"", close: "\""), StringDelim(open: "\"")], charLiteral: "'",
     keywords: [

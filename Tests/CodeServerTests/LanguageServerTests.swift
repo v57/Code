@@ -1,4 +1,5 @@
 import CodeLSP
+import CodeScan
 import Foundation
 import Testing
 
@@ -347,5 +348,24 @@ private final class Client: @unchecked Sendable {
     #expect(decodePath("file://localhost/a") == "/a")
     #expect(decodePath("untitled:1") == nil)
     #expect(uri("/a b/c#d.swift") == "file:///a%20b/c%23d.swift")
+  }
+}
+
+/// Every language ID an editor sends for the catalog's servers (VS Code's: `shellscript`, `typescriptreact`,
+/// `objective-cpp`) finds the scanner's profile when the file's name doesn't say.
+@Suite struct LanguageIDTests {
+  /// Languages with no `LanguageSpec` in CodeHighlighting yet: the scanner reads them as plain text.
+  static let withoutSpec: Set<String> = ["zig", "elixir"]
+
+  @Test func everyCatalogLanguageIDResolves() {
+    let ids = Set(LanguageServerCatalog.all.flatMap { $0.languageIDs.values })
+    #expect(ids.contains("shellscript") && ids.contains("typescriptreact") && ids.contains("objective-cpp"))
+    for id in ids.sorted() where !Self.withoutSpec.contains(id) {
+      #expect(LexProfile.profile(forLanguage: id) != nil, "\(id)")
+    }
+    #expect(LexProfile.profile(forLanguage: "shellscript")?.spec.name == "Shell")
+    #expect(LexProfile.profile(forLanguage: "typescriptreact")?.spec.name == "TypeScript")
+    #expect(LexProfile.profile(forLanguage: "javascriptreact")?.spec.name == "JavaScript")
+    #expect(LexProfile.profile(forLanguage: "objective-cpp")?.spec.name == "Objective-C")
   }
 }
