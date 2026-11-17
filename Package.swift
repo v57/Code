@@ -58,6 +58,8 @@ func v57(_ name: String) -> Package.Dependency {
 ///   and a project's virtual environment from source, builtins and C modules from generated stubs.
 /// - CodeRustModel: Rust's code model on CodeModel: crates and modules from Cargo.toml and `mod` items, cfg as this machine
 ///   builds, dependencies from Cargo's registry on disk, the standard library from a hand-written stub.
+/// - CodeJavaModel: Java's code model on CodeModel: packages from the file tree and Gradle/Maven source roots, the
+///   platform's sources (a JDK's src.zip or the Android SDK's stubs) and dependencies' -sources.jars read in place.
 /// - CodeSimulator: a booted iOS Simulator's screen and input from Xcode's own frameworks (CoreSimulator and
 ///   SimulatorKit, private, loaded at run time), with the SwiftUI view that shows it (macOS; empty elsewhere).
 /// - CodeKit: all of the above, plus what connects them (an editor for a
@@ -102,6 +104,7 @@ let package = Package(
     .library(name: "CodeClangModel", targets: ["CodeClangModel"]),
     .library(name: "CodePythonModel", targets: ["CodePythonModel"]),
     .library(name: "CodeRustModel", targets: ["CodeRustModel"]),
+    .library(name: "CodeJavaModel", targets: ["CodeJavaModel"]),
     .library(name: "CodeSimulator", targets: ["CodeSimulator"]),
     .executable(name: "code-lsp", targets: ["code-lsp"]),
     .executable(name: "code-pretty", targets: ["code-pretty"]),
@@ -139,11 +142,13 @@ let package = Package(
     .target(name: "CodeClangModel", dependencies: ["CodeHighlighting", "CodeScan", "CodeModel"], swiftSettings: swiftSettings + [.swiftLanguageMode(.v5)]),
     .target(name: "CodePythonModel", dependencies: ["CodeScan", "CodeModel"], swiftSettings: swiftSettings + [.swiftLanguageMode(.v5)]),
     .target(name: "CodeRustModel", dependencies: ["CodeScan", "CodeModel"], swiftSettings: swiftSettings + [.swiftLanguageMode(.v5)]),
+    .target(name: "CodeJavaModel", dependencies: ["CodeScan", "CodeModel"], swiftSettings: swiftSettings + [.swiftLanguageMode(.v5)]),
     // Every language's model, by file extension or --language: the language-neutral swift-model.
     .executableTarget(
       name: "code-model",
       dependencies: [
         "CodeModel", "CodeSwiftModel", "CodeGoModel", "CodeTypeScriptModel", "CodeClangModel", "CodePythonModel", "CodeRustModel",
+        "CodeJavaModel",
       ],
       swiftSettings: swiftSettings + [.swiftLanguageMode(.v5)]),
     .target(name: "CodeSimulatorPrivate", exclude: simulatorPrivateExcludes),
@@ -162,7 +167,7 @@ let package = Package(
       dependencies: [
         "CodeHighlighting", "CodeWorkspace", "CodeEditor", "CodeActions", "CodeLSP", "CodeMinimap",
         "CodeFormatting", "CodeAutocompletion", "CodeIcons", "CodeProgress", "CodeFolders", "CodeScan", "CodePretty", "CodeSwiftModel",
-        "CodeGoModel", "CodeTypeScriptModel", "CodeClangModel", "CodePythonModel", "CodeRustModel",
+        "CodeGoModel", "CodeTypeScriptModel", "CodeClangModel", "CodePythonModel", "CodeRustModel", "CodeJavaModel",
       ],
       swiftSettings: swiftSettings),
 
@@ -183,6 +188,8 @@ let package = Package(
       name: "CodePythonModelTests", dependencies: ["CodePythonModel"], swiftSettings: swiftSettings + [.swiftLanguageMode(.v5)]),
     .testTarget(
       name: "CodeRustModelTests", dependencies: ["CodeRustModel"], swiftSettings: swiftSettings + [.swiftLanguageMode(.v5)]),
+    .testTarget(
+      name: "CodeJavaModelTests", dependencies: ["CodeJavaModel"], swiftSettings: swiftSettings + [.swiftLanguageMode(.v5)]),
     .testTarget(
       name: "CodeClangModelTests", dependencies: ["CodeClangModel"], swiftSettings: swiftSettings + [.swiftLanguageMode(.v5)]),
     .testTarget(
