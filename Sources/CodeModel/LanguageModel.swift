@@ -66,6 +66,14 @@ public struct ModelLanguage: Sendable {
     self.make = make
   }
 
+  /// Whether a file name (or a path's last part) is one of `manifests`; `*.csproj` matches by extension.
+  public func isManifest(_ path: String) -> Bool {
+    let file = path.split(separator: "/").last.map(String.init) ?? path
+    if manifests.contains(file) { return true }
+    guard let dot = file.lastIndex(of: ".") else { return false }
+    return manifests.contains("*" + file[dot...])
+  }
+
   /// Whether a path is one of this language's files.
   public func handles(_ path: String) -> Bool {
     guard let dot = path.lastIndex(of: "."), !path[dot...].contains("/") else { return false }

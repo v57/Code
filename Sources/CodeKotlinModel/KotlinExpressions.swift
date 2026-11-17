@@ -55,7 +55,7 @@ extension KotlinModel {
       }
       if k > s, token.kind == .punctuation {
         if isAssignment(unit, k) { return expressionType(unitIndex: unitIndex, start: start, end: Int32(k)) }
-        if unit.ktStartsWith(k, 0x3C), let after = unit.ktTypeArgumentsEnd(k, limit: limit), unit.isByte(after, 0x28) || unit.isByte(after, 0x7B) || unit.isToken(after, "::") || unit.isByte(after, 0x2E) {
+        if unit.startsWith(k, 0x3C), let after = unit.ktTypeArgumentsEnd(k, limit: limit), unit.isByte(after, 0x28) || unit.isByte(after, 0x7B) || unit.isToken(after, "::") || unit.isByte(after, 0x2E) {
           k = after
           continue
         }
@@ -124,7 +124,7 @@ extension KotlinModel {
     }
     // Prefix operators.
     if unit.tokens[s].kind == .punctuation {
-      if unit.ktStartsWith(s, 0x21), !unit.isToken(s, "!!") { return kotlinNominal("Boolean") }
+      if unit.startsWith(s, 0x21), !unit.isToken(s, "!!") { return kotlinNominal("Boolean") }
       if unit.isToken(s, "-") || unit.isToken(s, "+") || unit.isToken(s, "++") || unit.isToken(s, "--") {
         return expressionType(unitIndex: unitIndex, start: start + 1, end: end)
       }
@@ -151,7 +151,7 @@ extension KotlinModel {
     let kind = unit.tokens[k].kind
     if kind == .identifier || kind == .number || kind == .string || kind == .close { return true }
     return unit.isToken(k, "this") || unit.isToken(k, "null") || unit.isToken(k, "true") || unit.isToken(k, "false") || unit.isToken(k, "!!") || unit.ktIsName(k)
-      || unit.tokens[k].kind == .punctuation && unit.ktOnly(k, ">?") && unit.isByte(k + 1, 0x28) == false && false
+      || unit.tokens[k].kind == .punctuation && unit.punctuation(k, madeOf: ">?") && unit.isByte(k + 1, 0x28) == false && false
   }
 
   // MARK: Postfix chains
@@ -338,7 +338,7 @@ extension KotlinModel {
       if unit.isToken(i, "super") {
         let at = i
         i += 1
-        if i < end, unit.tokens[i].kind == .punctuation, unit.ktStartsWith(i, 0x3C), let after = unit.ktTypeArgumentsEnd(i, limit: end) {
+        if i < end, unit.tokens[i].kind == .punctuation, unit.startsWith(i, 0x3C), let after = unit.ktTypeArgumentsEnd(i, limit: end) {
           let ty = parseType(unitIndex: unitIndex, start: Int32(i + 1), end: Int32(after - 1), scope: Int32(at))
           i = after
           return ty
@@ -397,7 +397,7 @@ extension KotlinModel {
       let nameToken = i
       i += 1
       // `List<String>::class`, `Foo<T>.Bar`: a type with arguments.
-      if i < end, unit.tokens[i].kind == .punctuation, unit.ktStartsWith(i, 0x3C), let after = unit.ktTypeArgumentsEnd(i, limit: end), unit.isToken(after, "::") {
+      if i < end, unit.tokens[i].kind == .punctuation, unit.startsWith(i, 0x3C), let after = unit.ktTypeArgumentsEnd(i, limit: end), unit.isToken(after, "::") {
         i = after
         return .unknown
       }
@@ -576,7 +576,7 @@ extension KotlinModel {
             end = unit.skipBalanced(end)
             continue
           }
-          if unit.tokens[end].kind == .punctuation, unit.ktStartsWith(end, 0x3C), let after = unit.ktTypeArgumentsEnd(end, limit: close),
+          if unit.tokens[end].kind == .punctuation, unit.startsWith(end, 0x3C), let after = unit.ktTypeArgumentsEnd(end, limit: close),
             unit.isByte(after, 0x28) || unit.isByte(after, 0x7B) || unit.isToken(after, "::") || unit.isByte(after, 0x2E)
           {
             end = after
@@ -878,7 +878,7 @@ extension KotlinModel {
     var named: Name = 0
     if unit.isByte(before, 0x29), let open = unit.matchingOpen(before), isTrailingLambda(unit, brace) {
       nameToken = callNameBefore(unit, open)
-    } else if unit.ktIsName(before) || unit.tokens[before].kind == .punctuation && unit.ktOnly(before, ">"), isTrailingLambda(unit, brace) {
+    } else if unit.ktIsName(before) || unit.tokens[before].kind == .punctuation && unit.punctuation(before, madeOf: ">"), isTrailingLambda(unit, brace) {
       nameToken = unit.ktIsName(before) ? before : callNameBefore(unit, brace)
     } else if unit.isByte(before, 0x28) || unit.isByte(before, 0x2C) || unit.isToken(before, "="), let open = unit.isByte(before, 0x28) ? before : unit.matchingOpenBefore(before), unit.isByte(open, 0x28) {
       nameToken = callNameBefore(unit, open)
@@ -907,7 +907,7 @@ extension KotlinModel {
   /// The name a call's `(` or trailing `{` belongs to, past explicit type arguments.
   private func callNameBefore(_ unit: Unit, _ open: Int) -> Int {
     var k = open - 1
-    if k >= 0, unit.tokens[k].kind == .punctuation, unit.ktOnly(k, ">") {
+    if k >= 0, unit.tokens[k].kind == .punctuation, unit.punctuation(k, madeOf: ">") {
       var depth = 0
       while k >= 0 {
         if unit.tokens[k].kind == .punctuation {
@@ -1092,14 +1092,14 @@ extension KotlinModel {
         if unit.isByte(open, 0x7B) {
           // A trailing lambda: part of the call before it.
           let before = open - 1
-          if before >= 0, !unit.startsLine(open), unit.isByte(before, 0x29) || unit.ktIsName(before) || unit.tokens[before].kind == .punctuation && unit.ktOnly(before, ">") {
+          if before >= 0, !unit.startsLine(open), unit.isByte(before, 0x29) || unit.ktIsName(before) || unit.tokens[before].kind == .punctuation && unit.punctuation(before, madeOf: ">") {
             i = before
             continue
           }
           return open
         }
         i = open
-        if i > 0, unit.ktIsName(i - 1) || unit.tokens[i - 1].kind == .close || unit.isToken(i - 1, "this") || unit.isToken(i - 1, "super") || unit.tokens[i - 1].kind == .punctuation && unit.ktOnly(i - 1, ">") && unit.isByte(open, 0x28) {
+        if i > 0, unit.ktIsName(i - 1) || unit.tokens[i - 1].kind == .close || unit.isToken(i - 1, "this") || unit.isToken(i - 1, "super") || unit.tokens[i - 1].kind == .punctuation && unit.punctuation(i - 1, madeOf: ">") && unit.isByte(open, 0x28) {
           if unit.isByte(open, 0x28), unit.tokens[i - 1].kind == .punctuation {
             // `name<T>(`.
             let name = callNameBefore(unit, open)

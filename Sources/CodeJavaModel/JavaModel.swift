@@ -8,7 +8,7 @@ import Foundation
 /// supertypes, the file's own, single-type imports, the package, on-demand imports, `java.lang`; then packages.
 /// Members go through the receiver's static type and its supertypes, generics substituted; overloads are chosen by
 /// argument count and the argument types that are known, else given as candidates.
-public final class JavaModel: LanguageModel {
+public final class JavaModel: LanguageModel, NominalTypes {
   public let project: Project
   let layout: JavaLayout
   var tables: [DeclRef: [Name: [MemberEntry]]] = [:]
@@ -180,12 +180,12 @@ public final class JavaModel: LanguageModel {
     let after = token + 1
     if unit.javaIsName(after) || unit.isToken(after, "...") || unit.isToken(after, "::") && unit.isToken(after + 1, "new") { return true }
     if unit.isByte(after, 0x5B), unit.isByte(after + 1, 0x5D) { return true }
-    if unit.tokens.indices.contains(after), unit.tokens[after].kind == .punctuation, unit.javaStartsWith(after, 0x3C), let end = unit.javaTypeArgumentsEnd(after),
+    if unit.tokens.indices.contains(after), unit.tokens[after].kind == .punctuation, unit.startsWith(after, 0x3C), let end = unit.javaTypeArgumentsEnd(after),
       unit.javaIsName(end) || unit.isByte(end, 0x29) || unit.isToken(end, "::") || unit.isByte(end, 0x28) && unit.isToken(before, "new")
     {
       return true
     }
-    if unit.tokens.indices.contains(before), unit.tokens[before].kind == .punctuation, unit.javaOnly(before, "<?,&") {
+    if unit.tokens.indices.contains(before), unit.tokens[before].kind == .punctuation, unit.punctuation(before, madeOf: "<?,&") {
       // In type arguments: `List<Name>`, `Map<K, Name>`.
       return !unit.isByte(before, 0x2C) || isInTypeArguments(unit, before)
     }
@@ -207,7 +207,7 @@ public final class JavaModel: LanguageModel {
     var budget = 40
     while k >= 0, budget > 0 {
       budget -= 1
-      if unit.tokens[k].kind == .punctuation, unit.javaStartsWith(k, 0x3C) { return k > 0 && unit.javaIsName(k - 1) }
+      if unit.tokens[k].kind == .punctuation, unit.startsWith(k, 0x3C) { return k > 0 && unit.javaIsName(k - 1) }
       if unit.tokens[k].kind == .open || unit.isByte(k, 0x3B) || unit.isToken(k, "=") { return false }
       k -= 1
     }

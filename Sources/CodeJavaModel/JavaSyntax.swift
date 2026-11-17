@@ -57,28 +57,10 @@ extension Unit {
     return tokens[i].kind == .keyword && JavaWord.contextual.contains(hash(i))
   }
 
-  /// Whether a punctuation token is made only of these bytes (`>>`, `<?`, `?>`).
-  func javaOnly(_ i: Int, _ allowed: StaticString) -> Bool {
-    guard i >= 0, i < tokens.count, tokens[i].kind == .punctuation else { return false }
-    let token = tokens[i]
-    for k in 0..<token.length {
-      let byte = source.text[token.start + k]
-      var found = false
-      for b in 0..<allowed.utf8CodeUnitCount where allowed.utf8Start[b] == byte { found = true }
-      if !found { return false }
-    }
-    return true
-  }
-
-  func javaStartsWith(_ i: Int, _ byte: UInt8) -> Bool {
-    guard i >= 0, i < tokens.count else { return false }
-    return source.text[tokens[i].start] == byte
-  }
-
   /// The end of type arguments `<…>` starting at token `i` (the token after the closing `>`), when what's inside reads
   /// as types; nil otherwise (`a < b`).
   func javaTypeArgumentsEnd(_ i: Int, limit: Int? = nil) -> Int? {
-    guard i < tokens.count, tokens[i].kind == .punctuation, javaStartsWith(i, 0x3C) else { return nil }
+    guard i < tokens.count, tokens[i].kind == .punctuation, startsWith(i, 0x3C) else { return nil }
     let end = limit ?? tokens.count
     var depth = 0
     var k = i
@@ -88,7 +70,7 @@ extension Unit {
       let token = tokens[k]
       switch token.kind {
       case .punctuation:
-        guard javaOnly(k, "<>?&,.") || isToken(k, "...") else { return nil }
+        guard punctuation(k, madeOf: "<>?&,.") || isToken(k, "...") else { return nil }
         if isToken(k, "...") { break }
         for b in 0..<token.length {
           let byte = source.text[token.start + b]
@@ -131,7 +113,7 @@ extension Unit {
     } else if javaIsName(i) {
       i += 1
       while i < end {
-        if tokens[i].kind == .punctuation, javaStartsWith(i, 0x3C), let after = javaTypeArgumentsEnd(i, limit: end) {
+        if tokens[i].kind == .punctuation, startsWith(i, 0x3C), let after = javaTypeArgumentsEnd(i, limit: end) {
           i = after
           continue
         }
@@ -301,7 +283,7 @@ struct JavaParser {
     if unit.isToken(i, "class") { return unit.javaIsName(i + 1) ? .classType : nil }
     if unit.isToken(i, "interface") || unit.isToken(i, "@interface") { return unit.javaIsName(i + 1) ? .protocolType : nil }
     if unit.isToken(i, "enum") { return unit.javaIsName(i + 1) ? .enumeration : nil }
-    if unit.isToken(i, "record"), unit.javaIsName(i + 1), unit.isByte(i + 2, 0x28) || unit.javaStartsWith(i + 2, 0x3C) { return .structure }
+    if unit.isToken(i, "record"), unit.javaIsName(i + 1), unit.isByte(i + 2, 0x28) || unit.startsWith(i + 2, 0x3C) { return .structure }
     return nil
   }
 
@@ -319,7 +301,7 @@ struct JavaParser {
     decl.access = mods.access
     if parent >= 0, unit.decls[Int(parent)].kind == .protocolType, mods.access == .package { decl.access = .isPublic }
     i = nameToken + 1
-    if unit.javaStartsWith(i, 0x3C), unit.tokens[i].kind == .punctuation {
+    if unit.startsWith(i, 0x3C), unit.tokens[i].kind == .punctuation {
       i = typeParameters(i, into: &decl)
     }
     let index = Int32(unit.decls.count)
@@ -388,7 +370,7 @@ struct JavaParser {
           let byte = unit.source.text[unit.tokens[i].start + k]
           if byte == 0x3C { depth += 1 } else if byte == 0x3E { depth -= 1 }
         }
-      } else if depth == 1, unit.javaIsName(i), unit.javaStartsWith(i - 1, 0x3C) || unit.isByte(i - 1, 0x2C) || unit.tokens[i - 1].kind == .attribute {
+      } else if depth == 1, unit.javaIsName(i), unit.startsWith(i - 1, 0x3C) || unit.isByte(i - 1, 0x2C) || unit.tokens[i - 1].kind == .attribute {
         unit.generics.append(Generic(name: unit.hash(i), token: Int32(i)))
         decl.genericCount += 1
       }
@@ -473,7 +455,7 @@ struct JavaParser {
       return typeDeclaration(at, parent: owner, isLocal: isLocal, limit: close)
     }
     var generic = Decl(kind: .function, name: 0, nameToken: -1, first: Int32(at), parent: owner)
-    if unit.tokens[i].kind == .punctuation, unit.javaStartsWith(i, 0x3C) {
+    if unit.tokens[i].kind == .punctuation, unit.startsWith(i, 0x3C) {
       i = typeParameters(i, into: &generic)
     }
     i = unit.javaSkipAnnotations(i, limit: close)
@@ -583,7 +565,7 @@ struct JavaParser {
       }
       if unit.tokens[i].kind == .close { return i }
       if unit.isByte(i, 0x2C) || unit.isByte(i, 0x3B) { return i }
-      if unit.tokens[i].kind == .punctuation, unit.javaStartsWith(i, 0x3C), i > 0, unit.javaIsName(i - 1), let after = unit.javaTypeArgumentsEnd(i, limit: limit) {
+      if unit.tokens[i].kind == .punctuation, unit.startsWith(i, 0x3C), i > 0, unit.javaIsName(i - 1), let after = unit.javaTypeArgumentsEnd(i, limit: limit) {
         i = after
         continue
       }

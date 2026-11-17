@@ -658,12 +658,7 @@ public final class TSModel: LanguageModel {
       line = at.line + 1
     }
     if let lib = layout.libDirectory, path.hasPrefix(lib + "/") { return ("lib:" + path.dropFirst(lib.count + 1), line) }
-    let root = project.root.split(separator: "/")
-    let parts = path.split(separator: "/")
-    var common = 0
-    while common < root.count, common < parts.count, root[common] == parts[common] { common += 1 }
-    let relative = Array(repeating: "..", count: root.count - common) + parts[common...].map(String.init)
-    return (relative.joined(separator: "/"), line)
+    return (project.rootRelative(path), line)
   }
 }
 

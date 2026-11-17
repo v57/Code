@@ -195,11 +195,6 @@ extension GoModel {
     let environment = layout.environment
     if !environment.goroot.isEmpty, path.hasPrefix(environment.goroot + "/src/") { return ("goroot:" + path.dropFirst(environment.goroot.count + 5), at.line + 1) }
     if !environment.modcache.isEmpty, path.hasPrefix(environment.modcache + "/") { return ("mod:" + path.dropFirst(environment.modcache.count + 1), at.line + 1) }
-    let root = project.root.split(separator: "/")
-    let parts = path.split(separator: "/")
-    var common = 0
-    while common < root.count, common < parts.count, root[common] == parts[common] { common += 1 }
-    let relative = Array(repeating: "..", count: root.count - common) + parts[common...].map(String.init)
-    return (relative.joined(separator: "/"), at.line + 1)
+    return (project.rootRelative(path), at.line + 1)
   }
 }

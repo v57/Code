@@ -291,7 +291,7 @@ final class KotlinBody: BodyFacts {
         k = unit.skipBalanced(k)
         continue
       }
-      if unit.ktIsName(k) || unit.isByte(k, 0x2C) || unit.isToken(k, ":") || unit.tokens[k].kind == .punctuation && unit.ktOnly(k, "<>?.*") {
+      if unit.ktIsName(k) || unit.isByte(k, 0x2C) || unit.isToken(k, ":") || unit.tokens[k].kind == .punctuation && unit.punctuation(k, madeOf: "<>?.*") {
         k += 1
         continue
       }

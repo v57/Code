@@ -35,7 +35,7 @@ extension JavaModel {
       }
       if unit.isToken(k, "instanceof") { return primitive(JavaWord.boolean) }
       if token.kind == .punctuation {
-        if unit.isByte(k, 0x2E), unit.tokens.indices.contains(k + 1), unit.tokens[k + 1].kind == .punctuation, unit.javaStartsWith(k + 1, 0x3C),
+        if unit.isByte(k, 0x2E), unit.tokens.indices.contains(k + 1), unit.tokens[k + 1].kind == .punctuation, unit.startsWith(k + 1, 0x3C),
           let after = unit.javaTypeArgumentsEnd(k + 1, limit: limit)
         {
           k = after
@@ -75,8 +75,8 @@ extension JavaModel {
     if !operators.isEmpty { return binaryType(unitIndex: unitIndex, start: s, end: limit, operators: operators) }
     // Prefix operators.
     if unit.tokens[s].kind == .punctuation {
-      if unit.javaStartsWith(s, 0x21) { return primitive(JavaWord.boolean) }
-      if unit.javaStartsWith(s, 0x2D) || unit.javaStartsWith(s, 0x2B) || unit.javaStartsWith(s, 0x7E) {
+      if unit.startsWith(s, 0x21) { return primitive(JavaWord.boolean) }
+      if unit.startsWith(s, 0x2D) || unit.startsWith(s, 0x2B) || unit.startsWith(s, 0x7E) {
         let inner = unbox(expressionType(unitIndex: unitIndex, start: start + 1, end: end))
         if unit.isToken(s, "++") || unit.isToken(s, "--") { return inner }
         return promoted(inner)
@@ -167,7 +167,7 @@ extension JavaModel {
       if unit.isByte(i, 0x2E), i + 1 < end {
         var nameToken = i + 1
         var explicit: [Ty] = []
-        if unit.tokens[nameToken].kind == .punctuation, unit.javaStartsWith(nameToken, 0x3C), let after = unit.javaTypeArgumentsEnd(nameToken, limit: end) {
+        if unit.tokens[nameToken].kind == .punctuation, unit.startsWith(nameToken, 0x3C), let after = unit.javaTypeArgumentsEnd(nameToken, limit: end) {
           explicit = typeArguments(unitIndex: unitIndex, open: nameToken, end: after)
           nameToken = after
         }
@@ -373,7 +373,7 @@ extension JavaModel {
         return ty
       }
       // `Type[]::new`, `Type<A>::m`, `Type[].class`.
-      if unit.tokens.indices.contains(i + 1), unit.isByte(i + 1, 0x5B), unit.isByte(i + 2, 0x5D) || unit.tokens[i + 1].kind == .punctuation && unit.javaStartsWith(i + 1, 0x3C) {
+      if unit.tokens.indices.contains(i + 1), unit.isByte(i + 1, 0x5B), unit.isByte(i + 2, 0x5D) || unit.tokens[i + 1].kind == .punctuation && unit.startsWith(i + 1, 0x3C) {
         if let typeEnd = unit.javaTypeEnd(i, limit: end), typeEnd > i + 1, unit.isToken(typeEnd, "::") || unit.isByte(typeEnd, 0x2E) {
           let ty = parseType(unitIndex: unitIndex, start: Int32(i), end: Int32(typeEnd), scope: Int32(i))
           i = typeEnd
@@ -413,8 +413,8 @@ extension JavaModel {
       return unit.isToken(k, "this") || unit.isToken(k, "super") || unit.isToken(k, "new") || unit.isToken(k, "true") || unit.isToken(k, "false")
         || unit.isToken(k, "null") || unit.isToken(k, "switch") || unit.javaIsName(k) || JavaWord.primitives.contains(unit.hash(k))
     case .punctuation:
-      if unit.javaStartsWith(k, 0x21) || unit.javaStartsWith(k, 0x7E) { return true }
-      return primitiveCast && (unit.javaStartsWith(k, 0x2D) || unit.javaStartsWith(k, 0x2B))
+      if unit.startsWith(k, 0x21) || unit.startsWith(k, 0x7E) { return true }
+      return primitiveCast && (unit.startsWith(k, 0x2D) || unit.startsWith(k, 0x2B))
     default: return false
     }
   }
@@ -508,7 +508,7 @@ extension JavaModel {
           // `new T[] {…}` or an anonymous class: back to `new`.
           var k = open - 1
           if k >= 0, unit.tokens[k].kind == .close, let o = unit.matchingOpen(k) { k = o - 1 }
-          while k >= 0, unit.javaIsName(k) || unit.isByte(k, 0x2E) || unit.tokens[k].kind == .punctuation && unit.javaOnly(k, "<>?,") || unit.isByte(k, 0x5B) || unit.isByte(k, 0x5D) || unit.tokens[k].kind == .keyword && JavaWord.primitives.contains(unit.hash(k)) {
+          while k >= 0, unit.javaIsName(k) || unit.isByte(k, 0x2E) || unit.tokens[k].kind == .punctuation && unit.punctuation(k, madeOf: "<>?,") || unit.isByte(k, 0x5B) || unit.isByte(k, 0x5D) || unit.tokens[k].kind == .keyword && JavaWord.primitives.contains(unit.hash(k)) {
             k -= 1
           }
           if k >= 0, unit.isToken(k, "new") { return backOverQualifier(unit, k) }
@@ -523,7 +523,7 @@ extension JavaModel {
               continue
             }
             // `.<T>name(`.
-            if i > 0, unit.tokens[i - 1].kind == .punctuation, unit.javaOnly(i - 1, ">"), let dot = explicitArgumentsDot(unit, i - 1) {
+            if i > 0, unit.tokens[i - 1].kind == .punctuation, unit.punctuation(i - 1, madeOf: ">"), let dot = explicitArgumentsDot(unit, i - 1) {
               i = dot - 1
               continue
             }
@@ -531,7 +531,7 @@ extension JavaModel {
           }
           continue
         }
-        if i > 0, unit.tokens[i - 1].kind == .punctuation, unit.javaOnly(i - 1, ">"), let start = newStart(unit, i - 1) {
+        if i > 0, unit.tokens[i - 1].kind == .punctuation, unit.punctuation(i - 1, madeOf: ">"), let start = newStart(unit, i - 1) {
           // `new Foo<Bar>()`.
           return start
         }
@@ -547,7 +547,7 @@ extension JavaModel {
         return i
       }
       // `String[]::new`, `List<String>::size`: the type before.
-      if token.kind == .punctuation, unit.javaOnly(i, ">") {
+      if token.kind == .punctuation, unit.punctuation(i, madeOf: ">") {
         var depth = 0
         var k = i
         while k >= 0 {
@@ -610,7 +610,7 @@ extension JavaModel {
     var budget = 40
     while k > 0, budget > 0 {
       budget -= 1
-      if unit.tokens[k].kind == .punctuation, unit.javaStartsWith(k, 0x3C) { return unit.isByte(k - 1, 0x2E) ? k - 1 : nil }
+      if unit.tokens[k].kind == .punctuation, unit.startsWith(k, 0x3C) { return unit.isByte(k - 1, 0x2E) ? k - 1 : nil }
       k -= 1
     }
     return nil

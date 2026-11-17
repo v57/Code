@@ -282,7 +282,7 @@ final class JavaBody: BodyFacts {
         var itemEnd = i
         while itemEnd < close, !unit.isByte(itemEnd, 0x2C) {
           if unit.tokens[itemEnd].kind == .open { itemEnd = unit.skipBalanced(itemEnd); continue }
-          if unit.tokens[itemEnd].kind == .punctuation, unit.javaStartsWith(itemEnd, 0x3C), let after = unit.javaTypeArgumentsEnd(itemEnd, limit: close) {
+          if unit.tokens[itemEnd].kind == .punctuation, unit.startsWith(itemEnd, 0x3C), let after = unit.javaTypeArgumentsEnd(itemEnd, limit: close) {
             itemEnd = after
             continue
           }

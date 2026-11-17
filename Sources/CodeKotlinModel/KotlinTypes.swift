@@ -164,7 +164,7 @@ extension KotlinModel {
           end = unit.skipBalanced(end)
           continue
         }
-        if unit.tokens[end].kind == .punctuation, unit.ktStartsWith(end, 0x3C), let after = unit.ktTypeArgumentsEnd(end, limit: close) {
+        if unit.tokens[end].kind == .punctuation, unit.startsWith(end, 0x3C), let after = unit.ktTypeArgumentsEnd(end, limit: close) {
           end = after
           continue
         }
@@ -191,7 +191,7 @@ extension KotlinModel {
         return args
       }
       let before = (c.i, c.sub)
-      if c.sub == 0, unit.isToken(c.i, "in") || unit.isToken(c.i, "out"), c.i + 1 < end, !unit.isByte(c.i + 1, 0x2C), !unit.ktOnly(c.i + 1, ">") { c.i += 1 }
+      if c.sub == 0, unit.isToken(c.i, "in") || unit.isToken(c.i, "out"), c.i + 1 < end, !unit.isByte(c.i + 1, 0x2C), !unit.punctuation(c.i + 1, madeOf: ">") { c.i += 1 }
       args.append(readType(unitIndex, &c, end, scope))
       if char(unit, c, end) == 0x2C {
         advance(unit, &c)
@@ -210,7 +210,7 @@ extension KotlinModel {
   func explicitTypeArguments(unitIndex: Int32, nameToken: Int) -> [Ty] {
     let unit = project.units[Int(unitIndex)]
     let open = nameToken + 1
-    guard nameToken >= 0, open < unit.tokens.count, unit.tokens[open].kind == .punctuation, unit.ktStartsWith(open, 0x3C), let end = unit.ktTypeArgumentsEnd(open) else { return [] }
+    guard nameToken >= 0, open < unit.tokens.count, unit.tokens[open].kind == .punctuation, unit.startsWith(open, 0x3C), let end = unit.ktTypeArgumentsEnd(open) else { return [] }
     var c = Cursor(i: open)
     advance(unit, &c)
     return readArguments(unitIndex, &c, end, Int32(nameToken))
@@ -282,7 +282,7 @@ extension KotlinModel {
   func anyType() -> Ty { kotlinType("kotlin", "Any").map { .nominal($0, []) } ?? .unknown }
 
   /// What a type's members are looked up in: a type parameter's bound, a function type's `Function`.
-  func memberBase(_ ty: Ty, depth: Int = 0) -> Ty {
+  package func memberBase(_ ty: Ty, depth: Int = 0) -> Ty {
     switch ty {
     case .param:
       guard depth < 6, let found = bound(of: ty) else { return anyType() }
@@ -368,7 +368,7 @@ extension KotlinModel {
 
   /// A class's direct supertypes as written, in terms of its own parameters, or the implicit ones (`Any`, `Enum<E>`;
   /// an enum entry's body extends its enum).
-  func supertypes(of ref: DeclRef) -> [Ty] {
+  package func supertypes(of ref: DeclRef) -> [Ty] {
     if let known = supertypeCache[ref] { return known }
     supertypeCache[ref] = []
     let item = decl(ref)
@@ -406,55 +406,9 @@ extension KotlinModel {
     return result
   }
 
-  /// The supertype of `ty` that's declared by `target`, with arguments, if `ty` is or extends it.
-  func asSupertype(_ ty: Ty, _ target: DeclRef, depth: Int = 0) -> Ty? {
-    guard depth < 16, case .nominal(let ref, let args) = memberBase(ty) else { return nil }
-    if ref == target { return .nominal(ref, args) }
-    let map = parameterMap(ref, args)
-    for parent in supertypes(of: ref) {
-      if let found = asSupertype(substitute(parent, map), target, depth: depth + 1) { return found }
-    }
-    return nil
-  }
 
-  /// Every class a type is or extends, nearest first, each with how far up it is.
-  func hierarchy(of ty: Ty) -> [(DeclRef, Int)] {
-    guard case .nominal(let start, _) = memberBase(ty) else { return [] }
-    var result: [(DeclRef, Int)] = [(start, 0)]
-    var seen: Set<DeclRef> = [start]
-    var index = 0
-    while index < result.count, result.count < 200 {
-      let (ref, distance) = result[index]
-      index += 1
-      for parent in supertypes(of: ref) {
-        guard case .nominal(let next, _) = parent, seen.insert(next).inserted else { continue }
-        result.append((next, distance + 1))
-      }
-    }
-    return result
-  }
 
-  func parameterMap(_ ref: DeclRef, _ args: [Ty]) -> [Name: Ty] {
-    guard !args.isEmpty else { return [:] }
-    let item = decl(ref)
-    let holder = unit(ref)
-    var map: [Name: Ty] = [:]
-    for g in 0..<min(Int(item.genericCount), args.count) { map[holder.generics[Int(item.genericStart) + g].name] = args[g] }
-    return map
-  }
 
-  func substitute(_ ty: Ty, _ map: [Name: Ty]) -> Ty {
-    guard !map.isEmpty else { return ty }
-    switch ty {
-    case .param(let word, _): return map[word] ?? ty
-    case .nominal(let ref, let args): return args.isEmpty ? ty : .nominal(ref, args.map { substitute($0, map) })
-    case .constructed(let kind, let args): return args.isEmpty ? ty : .constructed(kind, args.map { substitute($0, map) })
-    case .function(let params, let result): return .function(params.map { substitute($0, map) }, substitute(result, map))
-    case .meta(let inner): return .meta(substitute(inner, map))
-    case .optional(let inner): return .optional(substitute(inner, map))
-    default: return ty
-    }
-  }
 
   /// A type's members by name: its own, then each supertype's that it doesn't override, nearest first.
   func memberTable(of ref: DeclRef) -> [Name: [KMember]] {
@@ -730,28 +684,6 @@ extension KotlinModel {
     return own
   }
 
-  /// Binds `own` parameters in `pattern` from `actual`.
-  func unify(_ pattern: Ty, _ actual: Ty, _ own: Set<Name>, _ bindings: inout [Name: Ty], depth: Int = 0) {
-    guard depth < 8, actual != .unknown else { return }
-    switch pattern {
-    case .param(let word, _):
-      if own.contains(word), bindings[word] == nil { bindings[word] = actual }
-    case .nominal(let ref, let args):
-      guard !args.isEmpty, case .nominal(_, let actualArgs)? = asSupertype(actual, ref) else { return }
-      for (a, b) in zip(args, actualArgs) { unify(a, b, own, &bindings, depth: depth + 1) }
-    case .function(let params, let result):
-      if case .function(let actualParams, let actualResult) = actual {
-        for (a, b) in zip(params, actualParams) { unify(a, b, own, &bindings, depth: depth + 1) }
-        unify(result, actualResult, own, &bindings, depth: depth + 1)
-      }
-    case .constructed(let kind, let args) where kind == KotlinTy.receiverFunction:
-      if case .constructed(let other, let actualArgs) = actual, other == kind {
-        for (a, b) in zip(args, actualArgs) { unify(a, b, own, &bindings, depth: depth + 1) }
-      }
-    default:
-      break
-    }
-  }
 
   // MARK: Calls
 
@@ -837,7 +769,7 @@ extension KotlinModel {
   private func hasPrimaryAfterGenerics(_ ref: DeclRef) -> Bool {
     let holder = unit(ref)
     let k = Int(decl(ref).nameToken) + 1
-    guard holder.tokens.indices.contains(k), holder.tokens[k].kind == .punctuation, holder.ktStartsWith(k, 0x3C), let after = holder.ktTypeArgumentsEnd(k) else { return false }
+    guard holder.tokens.indices.contains(k), holder.tokens[k].kind == .punctuation, holder.startsWith(k, 0x3C), let after = holder.ktTypeArgumentsEnd(k) else { return false }
     return holder.isByte(after, 0x28)
   }
 

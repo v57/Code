@@ -69,24 +69,6 @@ extension Unit {
     return (tokens[i].kind == .keyword || tokens[i].kind == .declarationKeyword) && !KotlinWord.hard.contains(hash(i))
   }
 
-  func ktStartsWith(_ i: Int, _ byte: UInt8) -> Bool {
-    guard i >= 0, i < tokens.count else { return false }
-    return source.text[tokens[i].start] == byte
-  }
-
-  /// Whether a punctuation token is made only of these bytes.
-  func ktOnly(_ i: Int, _ allowed: StaticString) -> Bool {
-    guard i >= 0, i < tokens.count, tokens[i].kind == .punctuation else { return false }
-    let token = tokens[i]
-    for k in 0..<token.length {
-      let byte = source.text[token.start + k]
-      var found = false
-      for b in 0..<allowed.utf8CodeUnitCount where allowed.utf8Start[b] == byte { found = true }
-      if !found { return false }
-    }
-    return true
-  }
-
   /// `.`, `?.` or `!!.`: a member access.
   func ktIsDot(_ i: Int) -> Bool { isByte(i, 0x2E) || isToken(i, "?.") || isToken(i, "!!.") }
 
@@ -126,7 +108,7 @@ extension Unit {
   /// what's inside reads as types; nil otherwise (`a < b`).
   /// A declaration's type parameters (`declaration`) may also have bounds: `<T : Any, reified R>`.
   func ktTypeArgumentsEnd(_ i: Int, limit: Int? = nil, declaration: Bool = false) -> Int? {
-    guard i < tokens.count, tokens[i].kind == .punctuation, ktStartsWith(i, 0x3C) else { return nil }
+    guard i < tokens.count, tokens[i].kind == .punctuation, startsWith(i, 0x3C) else { return nil }
     let end = limit ?? tokens.count
     var depth = 0
     var k = i
@@ -138,7 +120,7 @@ extension Unit {
       case .punctuation:
         if isToken(k, "->") { break }
         if declaration, isToken(k, ":") { break }
-        guard ktOnly(k, "<>?*,.") else { return nil }
+        guard punctuation(k, madeOf: "<>?*,.") else { return nil }
         for b in 0..<token.length {
           let byte = source.text[token.start + b]
           if byte == 0x3C { depth += 1 } else if byte == 0x3E {
@@ -183,7 +165,7 @@ extension Unit {
     } else if ktIsName(i) || isToken(i, "dynamic") {
       i += 1
       while i < end {
-        if tokens[i].kind == .punctuation, ktStartsWith(i, 0x3C), let after = ktTypeArgumentsEnd(i, limit: end) {
+        if tokens[i].kind == .punctuation, startsWith(i, 0x3C), let after = ktTypeArgumentsEnd(i, limit: end) {
           i = after
           continue
         }
@@ -198,7 +180,7 @@ extension Unit {
     } else {
       return nil
     }
-    while i < end, ktOnly(i, "?") { i += 1 }
+    while i < end, punctuation(i, madeOf: "?") { i += 1 }
     // `R.(A) -> B`: a receiver.
     if i + 1 < end, isByte(i, 0x2E), isByte(i + 1, 0x28) {
       let close = skipBalanced(i + 1)
@@ -277,7 +259,7 @@ extension Unit {
       guard ktIsName(i) else { break }
       last = i
       i += 1
-      if i < end, tokens[i].kind == .punctuation, ktStartsWith(i, 0x3C), let after = ktTypeArgumentsEnd(i, limit: end) { i = after }
+      if i < end, tokens[i].kind == .punctuation, startsWith(i, 0x3C), let after = ktTypeArgumentsEnd(i, limit: end) { i = after }
       if i < end, isByte(i, 0x2E) { i += 1 } else { break }
     }
     return last
@@ -432,7 +414,7 @@ struct KotlinParser {
       decl.access = mods.access
       decl.isLocal = isLocal
       var k = i + 2
-      if unit.ktStartsWith(k, 0x3C), unit.tokens[k].kind == .punctuation { k = typeParameters(k, into: &decl) }
+      if unit.startsWith(k, 0x3C), unit.tokens[k].kind == .punctuation { k = typeParameters(k, into: &decl) }
       if unit.isToken(k, "="), let end = unit.ktTypeEnd(k + 1, limit: limit) {
         decl.typeStart = Int32(k + 1)
         decl.typeEnd = Int32(end)
@@ -505,7 +487,7 @@ struct KotlinParser {
           }
         }
         if unit.isByte(i, 0x2C), depth == 1 { expectsName = true }
-      } else if depth == 1, expectsName, unit.ktIsName(i), !unit.isToken(i, "in") && !unit.isToken(i, "out") && !unit.isToken(i, "reified") || unit.ktIsName(i) && (unit.isToken(i + 1, ":") || unit.isByte(i + 1, 0x2C) || unit.ktStartsWith(i + 1, 0x3E)) {
+      } else if depth == 1, expectsName, unit.ktIsName(i), !unit.isToken(i, "in") && !unit.isToken(i, "out") && !unit.isToken(i, "reified") || unit.ktIsName(i) && (unit.isToken(i + 1, ":") || unit.isByte(i + 1, 0x2C) || unit.startsWith(i + 1, 0x3E)) {
         unit.generics.append(Generic(name: unit.hash(i), token: Int32(i)))
         decl.genericCount += 1
         expectsName = false
@@ -544,7 +526,7 @@ struct KotlinParser {
     decl.isLocal = isLocal
     decl.access = mods.access
     decl.isStatic = isObject
-    if unit.ktStartsWith(i, 0x3C), unit.tokens[i].kind == .punctuation { i = typeParameters(i, into: &decl) }
+    if unit.startsWith(i, 0x3C), unit.tokens[i].kind == .punctuation { i = typeParameters(i, into: &decl) }
     let index = Int32(unit.decls.count)
     unit.decls.append(decl)
     // The primary constructor: `(…)`, `private constructor(…)`, `@Inject constructor(…)`.
@@ -708,7 +690,7 @@ struct KotlinParser {
         }
         break
       }
-      if unit.tokens[i].kind == .punctuation, unit.ktStartsWith(i, 0x3C), let after = unit.ktTypeArgumentsEnd(i, limit: limit) {
+      if unit.tokens[i].kind == .punctuation, unit.startsWith(i, 0x3C), let after = unit.ktTypeArgumentsEnd(i, limit: limit) {
         i = after
         // `A<T>.name`: the dot is the last byte of the `>.` token.
         if unit.ktEndsWithDot(after - 1) { lastDot = after - 1 }
@@ -720,7 +702,7 @@ struct KotlinParser {
         i += 1
         continue
       }
-      if unit.ktOnly(i, "?") {
+      if unit.punctuation(i, madeOf: "?") {
         i += 1
         continue
       }
@@ -761,7 +743,7 @@ struct KotlinParser {
   private mutating func function(_ at: Int, keyword: Int, mods: Modifiers, parent: Int32, isLocal: Bool, limit: Int) -> Int {
     var decl = Decl(kind: .function, name: 0, nameToken: -1, first: Int32(at), parent: parent)
     var i = keyword + 1
-    if unit.ktStartsWith(i, 0x3C), unit.tokens[i].kind == .punctuation { i = typeParameters(i, into: &decl) }
+    if unit.startsWith(i, 0x3C), unit.tokens[i].kind == .punctuation { i = typeParameters(i, into: &decl) }
     guard let found = receiverAndName(i, limit: limit, isFunction: true), unit.isByte(found.name + 1, 0x28) else { return keyword + 1 }
     var owner = parent
     var holder: Int32 = -1
@@ -813,7 +795,7 @@ struct KotlinParser {
   private mutating func property(_ at: Int, keyword: Int, mods: Modifiers, parent: Int32, isLocal: Bool, limit: Int) -> Int {
     var decl = Decl(kind: .variable, name: 0, nameToken: -1, first: Int32(at), parent: parent)
     var i = keyword + 1
-    if unit.ktStartsWith(i, 0x3C), unit.tokens[i].kind == .punctuation { i = typeParameters(i, into: &decl) }
+    if unit.startsWith(i, 0x3C), unit.tokens[i].kind == .punctuation { i = typeParameters(i, into: &decl) }
     // `val (a, b) = …`: a destructuring, only in bodies.
     guard let found = receiverAndName(i, limit: limit, isFunction: false) else { return keyword + 1 }
     var holder: Int32 = -1
@@ -966,7 +948,7 @@ struct KotlinParser {
           continue
         }
       }
-      if unit.isToken(i, "fun") || unit.isToken(i, "class") || unit.isToken(i, "interface") || unit.isToken(i, "object"), unit.ktIsName(i + 1) || unit.ktStartsWith(i + 1, 0x3C) {
+      if unit.isToken(i, "fun") || unit.isToken(i, "class") || unit.isToken(i, "interface") || unit.isToken(i, "object"), unit.ktIsName(i + 1) || unit.startsWith(i + 1, 0x3C) {
         var start = i
         while start - 1 >= from, unit.tokens[start - 1].kind == .keyword || unit.tokens[start - 1].kind == .declarationKeyword || unit.tokens[start - 1].kind == .attribute,
           KotlinWord.modifiers.contains(unit.hash(start - 1)) || unit.tokens[start - 1].kind == .attribute

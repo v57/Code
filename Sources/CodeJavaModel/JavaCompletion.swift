@@ -64,7 +64,7 @@ extension JavaModel {
       let isDeclarationType = unit.javaIsName(before) && !unit.isToken(before, "yield") && !unit.isToken(before, "var") || unit.isToken(before, "var")
         || unit.tokens[before].kind == .keyword && JavaWord.primitives.contains(unit.hash(before))
         || unit.isByte(before, 0x5D) && unit.isByte(before - 1, 0x5B)
-        || unit.tokens[before].kind == .punctuation && unit.javaOnly(before, ">") && before > 0 && isTypeArgumentsClose(unit, before)
+        || unit.tokens[before].kind == .punctuation && unit.punctuation(before, madeOf: ">") && before > 0 && isTypeArgumentsClose(unit, before)
       if isDeclarationType, !site.splitDot { return nothing(prefix, site.replaceStart) }
     }
     if before >= 0, unit.isByte(before, 0x2E) || site.splitDot {

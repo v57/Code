@@ -35,6 +35,25 @@ extension Unit {
     return nil
   }
 
+  /// Whether a token's text starts with a byte.
+  @inlinable package func startsWith(_ i: Int, _ byte: UInt8) -> Bool {
+    guard i >= 0, i < tokens.count else { return false }
+    return source.text[tokens[i].start] == byte
+  }
+
+  /// Whether a punctuation token is made only of these bytes: `>>` and `>` close type arguments, `<?` opens them.
+  @inlinable package func punctuation(_ i: Int, madeOf allowed: StaticString) -> Bool {
+    guard i >= 0, i < tokens.count, tokens[i].kind == .punctuation else { return false }
+    let token = tokens[i]
+    for k in 0..<token.length {
+      let byte = source.text[token.start + k]
+      var found = false
+      for b in 0..<allowed.utf8CodeUnitCount where allowed.utf8Start[b] == byte { found = true }
+      if !found { return false }
+    }
+    return true
+  }
+
   /// Tokens' text as written, on one line.
   package func text(from start: Int, to end: Int) -> String {
     guard start >= 0, end > start, end <= tokens.count else { return "" }

@@ -3,12 +3,8 @@ import CodeModel
 import CodeScan
 import Foundation
 
-/// A member found through a type's hierarchy: the declaration, and how the declaring type's parameters read in terms
-/// of the type the table is for.
-struct KMember {
-  var ref: DeclRef
-  var substitution: [Name: Ty]
-}
+/// A member found through a type's hierarchy (the core's `MemberEntry`).
+typealias KMember = MemberEntry
 
 /// Kotlin's model: definitions, references, completion and details from source, on CodeModel's core and Java's
 /// layout (`JavaLayout` with Kotlin's extensions and syntax: packages from `package` lines whatever the folders, Gradle
@@ -21,7 +17,7 @@ struct KMember {
 /// the argument types that are known, else given as candidates. A mixed project's `.java` files are read with Java's
 /// parser into the same packages: Kotlin sees Java (getters as properties, Java's types as Kotlin's), and Java's model
 /// (`java`, answering for `.java` files) sees Kotlin's classes.
-public final class KotlinModel: LanguageModel {
+public final class KotlinModel: LanguageModel, NominalTypes {
   public let project: Project
   let layout: JavaLayout
   /// Java's model of the same project: Java declarations' types, and questions in `.java` files.
@@ -251,7 +247,7 @@ public final class KotlinModel: LanguageModel {
   /// Where a call's arguments start when a name is called: `name(`, `name<T>(`, `name {` (a trailing lambda).
   func callOpen(_ unit: Unit, _ token: Int) -> Int? {
     var k = token + 1
-    if k < unit.tokens.count, unit.tokens[k].kind == .punctuation, unit.ktStartsWith(k, 0x3C), let after = unit.ktTypeArgumentsEnd(k),
+    if k < unit.tokens.count, unit.tokens[k].kind == .punctuation, unit.startsWith(k, 0x3C), let after = unit.ktTypeArgumentsEnd(k),
       unit.isByte(after, 0x28) || unit.isByte(after, 0x7B) && !unit.startsLine(after)
     {
       // `name<T> {`: a lambda unless it's a declaration's (`class A<T> {`).
@@ -276,7 +272,7 @@ public final class KotlinModel: LanguageModel {
       {
         return false
       }
-      if unit.ktIsName(head) || unit.tokens[head].kind == .punctuation && unit.ktOnly(head, ">") {
+      if unit.ktIsName(head) || unit.tokens[head].kind == .punctuation && unit.punctuation(head, madeOf: ">") {
         if isDeclarationName(unit, head) { return false }
         return true
       }
@@ -339,7 +335,7 @@ public final class KotlinModel: LanguageModel {
     guard before >= 0 else { return false }
     if unit.isToken(before, "is") || unit.isToken(before, "as") || unit.isToken(before, "?") && unit.isToken(before - 1, "as") && unit.touchesPrevious(before) { return true }
     if unit.isToken(before, ":") { return isTypeColon(unit, before) }
-    if unit.tokens[before].kind == .punctuation, unit.ktOnly(before, "<,") || unit.isToken(before, "->") || unit.isToken(before, "out") || unit.isToken(before, "in") {
+    if unit.tokens[before].kind == .punctuation, unit.punctuation(before, madeOf: "<,") || unit.isToken(before, "->") || unit.isToken(before, "out") || unit.isToken(before, "in") {
       return isInTypeArguments(unit, before)
     }
     if unit.isToken(before, "out") || unit.isToken(before, "in") || unit.isToken(before, "reified") { return isInTypeArguments(unit, before) }
@@ -354,7 +350,7 @@ public final class KotlinModel: LanguageModel {
   /// call before a `when` branch's arrow (`x.isEmpty() -> y`).
   private func isFunctionType(_ unit: Unit, open: Int) -> Bool {
     guard unit.isByte(open, 0x28), unit.isToken(unit.skipBalanced(open), "->"), !isLambdaHeader(unit, before: open) else { return false }
-    return open == 0 || !(unit.ktIsName(open - 1) && !unit.isToken(open - 1, "suspend") || unit.tokens[open - 1].kind == .close || unit.ktOnly(open - 1, ">"))
+    return open == 0 || !(unit.ktIsName(open - 1) && !unit.isToken(open - 1, "suspend") || unit.tokens[open - 1].kind == .close || unit.punctuation(open - 1, madeOf: ">"))
   }
 
   /// A `:` that comes before a type: a declaration's, a parameter's, a function's result, a supertype list (not a
@@ -363,7 +359,7 @@ public final class KotlinModel: LanguageModel {
     guard colon > 0 else { return false }
     let left = colon - 1
     if unit.tokens[left].kind == .close { return true }
-    if unit.ktIsName(left) || unit.tokens[left].kind == .punctuation && unit.ktOnly(left, ">") { return true }
+    if unit.ktIsName(left) || unit.tokens[left].kind == .punctuation && unit.punctuation(left, madeOf: ">") { return true }
     return false
   }
 
@@ -372,7 +368,7 @@ public final class KotlinModel: LanguageModel {
     var budget = 60
     while k >= 0, budget > 0 {
       budget -= 1
-      if unit.tokens[k].kind == .punctuation, unit.ktStartsWith(k, 0x3C), let end = unit.ktTypeArgumentsEnd(k), end > at { return true }
+      if unit.tokens[k].kind == .punctuation, unit.startsWith(k, 0x3C), let end = unit.ktTypeArgumentsEnd(k), end > at { return true }
       if unit.tokens[k].kind == .open || unit.isByte(k, 0x3B) || unit.isToken(k, "=") || unit.startsLine(k) && k < at {
         return isFunctionType(unit, open: k)
       }

@@ -2,13 +2,6 @@ import CodeModel
 import CodeScan
 import Foundation
 
-/// A member found through a type's hierarchy: the declaration, and how the declaring type's parameters read in terms
-/// of the type the table is for.
-struct MemberEntry {
-  var ref: DeclRef
-  var substitution: [Name: Ty]
-}
-
 /// Java's types (`Ty`, the core's): classes, interfaces, enums and records are `nominal` with their arguments, a type
 /// parameter `param` (with the declaration that has it, for its bounds), primitives and arrays `constructed`, a type
 /// used for its static members `meta`, a package `module`. Wildcards read as their bound.
@@ -207,7 +200,7 @@ extension JavaModel {
   }
 
   /// What a type's members are looked up in: a type parameter's bound, a union's first.
-  func memberBase(_ ty: Ty, depth: Int = 0) -> Ty {
+  package func memberBase(_ ty: Ty, depth: Int = 0) -> Ty {
     switch ty {
     case .param:
       guard depth < 6, let found = bound(of: ty) else { return langType(JavaWord.object).map { .nominal($0, []) } ?? .unknown }
@@ -259,37 +252,8 @@ extension JavaModel {
     return result
   }
 
-  /// The supertype of `ty` that's declared by `target`, with arguments, if `ty` is or extends it.
-  func asSupertype(_ ty: Ty, _ target: DeclRef, depth: Int = 0) -> Ty? {
-    guard depth < 16, case .nominal(let ref, let args) = memberBase(ty) else { return nil }
-    if ref == target { return .nominal(ref, args) }
-    let map = parameterMap(ref, args)
-    for parent in supertypes(of: ref) {
-      if let found = asSupertype(substitute(parent, map), target, depth: depth + 1) { return found }
-    }
-    return nil
-  }
 
-  /// A class's parameters to the arguments given (none for a raw type).
-  func parameterMap(_ ref: DeclRef, _ args: [Ty]) -> [Name: Ty] {
-    guard !args.isEmpty else { return [:] }
-    let item = decl(ref)
-    let holder = unit(ref)
-    var map: [Name: Ty] = [:]
-    for g in 0..<min(Int(item.genericCount), args.count) { map[holder.generics[Int(item.genericStart) + g].name] = args[g] }
-    return map
-  }
 
-  func substitute(_ ty: Ty, _ map: [Name: Ty]) -> Ty {
-    guard !map.isEmpty else { return ty }
-    switch ty {
-    case .param(let word, _): return map[word] ?? ty
-    case .nominal(let ref, let args): return args.isEmpty ? ty : .nominal(ref, args.map { substitute($0, map) })
-    case .constructed(let kind, let args): return args.isEmpty ? ty : .constructed(kind, args.map { substitute($0, map) })
-    case .meta(let inner): return .meta(substitute(inner, map))
-    default: return ty
-    }
-  }
 
   /// A type's members by name: its own, then each supertype's that it doesn't override or hide, nearest first.
   func memberTable(of ref: DeclRef) -> [Name: [MemberEntry]] {
@@ -779,13 +743,13 @@ extension JavaModel {
     let nameToken = open - 1
     guard unit.javaIsName(nameToken) else { return nil }
     let word = unit.hash(nameToken)
-    if unit.isToken(nameToken - 1, "new") || (unit.tokens[nameToken - 1].kind == .punctuation && unit.javaStartsWith(nameToken - 1, 0x2E) == false && false) {
+    if unit.isToken(nameToken - 1, "new") || (unit.tokens[nameToken - 1].kind == .punctuation && unit.startsWith(nameToken - 1, 0x2E) == false && false) {
       return nil
     }
     // Explicit type arguments: `x.<T>name(`.
     var dot = nameToken - 1
-    if dot >= 0, unit.tokens[dot].kind == .punctuation, unit.javaOnly(dot, ">"), var k = Optional(dot) {
-      while k > 0, !(unit.tokens[k].kind == .punctuation && unit.javaStartsWith(k, 0x3C)) { k -= 1 }
+    if dot >= 0, unit.tokens[dot].kind == .punctuation, unit.punctuation(dot, madeOf: ">"), var k = Optional(dot) {
+      while k > 0, !(unit.tokens[k].kind == .punctuation && unit.startsWith(k, 0x3C)) { k -= 1 }
       dot = k - 1
     }
     if unit.isByte(dot, 0x2E) {
@@ -832,21 +796,6 @@ extension JavaModel {
     return bindings
   }
 
-  /// Binds `own` parameters in `pattern` from `actual`.
-  func unify(_ pattern: Ty, _ actual: Ty, _ own: Set<Name>, _ bindings: inout [Name: Ty], depth: Int = 0) {
-    guard depth < 8, actual != .unknown else { return }
-    switch pattern {
-    case .param(let word, _):
-      if own.contains(word), bindings[word] == nil { bindings[word] = actual }
-    case .nominal(let ref, let args):
-      guard !args.isEmpty, case .nominal(_, let actualArgs)? = asSupertype(actual, ref) else { return }
-      for (a, b) in zip(args, actualArgs) { unify(a, b, own, &bindings, depth: depth + 1) }
-    case .constructed(let kind, let args) where kind == Ty.array:
-      if case .constructed(let other, let actualArgs) = actual, other == Ty.array, let a = args.first, let b = actualArgs.first { unify(a, b, own, &bindings, depth: depth + 1) }
-    default:
-      break
-    }
-  }
 
   /// A lambda parameter's type: its interface's method's parameter.
   func lambdaParameterType(unitIndex: Int32, arrow: Int32, index: Int32, body: JavaBody) -> Ty {

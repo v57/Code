@@ -180,12 +180,7 @@ extension JavaModel {
       }
     }
     guard let at = project.location(of: site) else { return nil }
-    let root = project.root.split(separator: "/")
-    let parts = at.path.split(separator: "/")
-    var common = 0
-    while common < root.count, common < parts.count, root[common] == parts[common] { common += 1 }
-    let relative = Array(repeating: "..", count: root.count - common) + parts[common...].map(String.init)
-    return (relative.joined(separator: "/"), at.line + 1)
+    return (project.rootRelative(at.path), at.line + 1)
   }
 
   /// `java.util.Map.Entry`, `java.util.List.of(2)`, `java.lang.String.<init>(1)`.

@@ -101,6 +101,15 @@ extension Project {
     return ("sdk:" + URL(fileURLWithPath: unit.path).lastPathComponent, line)
   }
 
+  /// A path as the references write it: relative to the root, with `..` for each folder above it.
+  package func rootRelative(_ path: String) -> String {
+    let root = self.root.split(separator: "/")
+    let parts = path.split(separator: "/")
+    var common = 0
+    while common < root.count, common < parts.count, root[common] == parts[common] { common += 1 }
+    return (Array(repeating: "..", count: root.count - common) + parts[common...].map(String.init)).joined(separator: "/")
+  }
+
   /// A name filter over the project's files (or one of them), then each hit resolved by `answer`: a reference is only
   /// what lands on one of `targets`.
   package func references(named names: Set<Name>, in restrict: Int32?, landingOn targets: Set<Site>, answer: (_ unitIndex: Int32, _ token: Int) -> Answer)
