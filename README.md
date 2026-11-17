@@ -85,6 +85,13 @@ Libraries
                        TypeScript's lib files (never downloaded); definitions,
                        completions, references and details (numbers in
                        ../Demos/CodeModelBench/ts)
+    CodeClangModel     a C, C++ and Objective-C code model on CodeModel from
+                       source: includes, macros and #if as this Mac builds,
+                       compile_commands.json, the SDK's and clang's headers
+                       and frameworks (their module maps are also Swift's
+                       Clang importer's); definitions, completions,
+                       references and details (numbers in
+                       ../Demos/CodeModelBench/c)
     CodeKit            re-exports them all; CodeEditorView(document:) edits a
                        workspace document (autosave, reload, ⌘S trimming,
                        minimap, issues, breakpoints); ProjectServices connects

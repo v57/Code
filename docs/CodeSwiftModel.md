@@ -163,14 +163,14 @@ model the same way ([CodeGoModel](CodeGoModel.md)).
 ## CodeModel, the core
 
 What isn't Swift lives in its own library, `CodeModel` (`.product(name: "CodeModel", package: "Code")`), which
-CodeSwiftModel, CodeGoModel and CodeTypeScriptModel re-export. Its public part is what the models' API returns and what an editor asks any
+CodeSwiftModel, CodeGoModel, CodeTypeScriptModel and CodeClangModel re-export. Its public part is what the models' API returns and what an editor asks any
 language through:
 
 - `LanguageModel`: what every model answers (`answer`, `references(of:)`, `complete`, `details`, `referenceCount`,
   `allFindings`, `place(of:)`, `location(of:)`), with a `project`. Not thread-safe: one serial queue per model.
 - `ModelLanguage(name:extensions:manifests:make:)`: a language's file extensions, manifests and how to make its model
   for a folder (`make(root, trusted)`); `handles(_:)`. CodeKit's model tier and the `code-model` tool list
-  `ModelLanguage.swift`, `ModelLanguage.go` and `ModelLanguage.typeScript`.
+  `ModelLanguage.swift`, `ModelLanguage.go`, `ModelLanguage.typeScript` and `ModelLanguage.clang`.
 - `Project` (`root`, `units`, `projectUnits`, `loadedBytes`, `update(path:text:)`), `Unit` (one file: `path`,
   `source`, `tokens` without comments, `decls`, `imports`, `shape`), the declaration tables (`Decl`, `Param`, `Import`,
   `DeclRef`, `DeclKind` (`namespace` for TypeScript's namespaces and `declare module` blocks), `Access`, `Name`; an
@@ -181,18 +181,21 @@ language through:
 
 ```swift
 import CodeModel
+import CodeClangModel
 import CodeGoModel
 import CodeSwiftModel
 import CodeTypeScriptModel
 
-let languages: [ModelLanguage] = [.swift, .go, .typeScript]
+let languages: [ModelLanguage] = [.swift, .go, .typeScript, .clang]
 func model(for file: String, root: String, trusted: Bool) -> (any LanguageModel)? {
   languages.first { $0.handles(file) }?.make(root, trusted)
 }
 ```
 
 A front end gives the core two objects: a `LanguageSyntax` (its lexer profile, a parser that fills a unit's tables and
-returns its shape, and how a condition of conditional compilation reads) and a `ProjectLayout` (its source files, a
+returns its shape, how a condition of conditional compilation reads, which directives open, continue and close a
+conditional block (`#if`/`#elseif` for Swift, `#if`/`#ifdef`/`#elif` for C) and, for C, a directive's line read again as
+words) and a `ProjectLayout` (its source files, a
 file's module, where a module an import names is found, the modules every file sees). These, and the rest of what
 front ends share (`Ty`, with `Ty.union` and `Ty.intersection` among the constructed types, `Module`, a unit's token
 navigation (`Navigation.swift`: the token at an offset, the bracket a token is in, text between tokens, whether an
@@ -200,7 +203,9 @@ offset is in a comment or string, an answer summarizing sites) and conditional b
 the anchor, the typed prefix, where the replacement starts, a `.` split from a number) and ranking with
 `ModelCompletionHit`, `membersNamed`, `Unit.chain`, doc comments above a declaration), are `package` declarations: a
 new language's model is a target in this package. Swift's front end is `SwiftSyntax` and `SwiftLayout` (a package's
-manifest, sibling packages, the SDK's interfaces and Clang headers); Go's is in [CodeGoModel](CodeGoModel.md), TypeScript's in [CodeTypeScriptModel](CodeTypeScriptModel.md). The
+manifest, sibling packages, the SDK's interfaces and Clang headers); Go's is in [CodeGoModel](CodeGoModel.md), TypeScript's in [CodeTypeScriptModel](CodeTypeScriptModel.md), C's, C++'s and
+Objective-C's in [CodeClangModel](CodeClangModel.md). Swift's Clang importer finds module maps and frameworks with
+CodeClangModel's `ClangModuleMap`, so CodeSwiftModel depends on it and there is one header locator. The
 resolver, member tables, completion contexts and the type of an expression stay in each front end: Swift's follow its
 rules (conditional conformances, raw values, `@dynamicMemberLookup`, argument labels), Go's its own (method sets
 through embedding, package-qualified names, build constraints), TypeScript's its own (declaration merging, exports
