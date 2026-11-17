@@ -6,6 +6,7 @@
   import CodeGoModel
   import CodeJavaModel
   import CodeKotlinModel
+  import CodeLuaModel
   import CodePHPModel
   import CodePythonModel
   import CodeRubyModel
@@ -17,11 +18,11 @@
   import Foundation
 
   /// The fast tiers of one workspace, in this process: Code's scanner for every language, and a language's model
-  /// (CodeModel's front ends: Swift, Go, TypeScript, C/C++/Objective-C, Python, Rust, Java, Kotlin, C#, Dart, PHP, Ruby, Scala) for its files. Each works on its own serial queue, built on first use, and
+  /// (CodeModel's front ends: Swift, Go, TypeScript, C/C++/Objective-C, Python, Rust, Java, Kotlin, C#, Dart, PHP, Ruby, Scala, Lua) for its files. Each works on its own serial queue, built on first use, and
   /// answers with the editor's current text.
   final class CodeTiers: @unchecked Sendable {
     /// The languages with a model, by file extension.
-    static let languages: [ModelLanguage] = [.swift, .go, .typeScript, .clang, .python, .rust, .java, .kotlin, .cSharp, .dart, .php, .ruby, .scala]
+    static let languages: [ModelLanguage] = [.swift, .go, .typeScript, .clang, .python, .rust, .java, .kotlin, .cSharp, .dart, .php, .ruby, .scala, .lua]
 
     let root: URL
     private let scanner: ScannerTier
