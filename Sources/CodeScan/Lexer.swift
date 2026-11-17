@@ -63,6 +63,8 @@ public final class LexProfile: @unchecked Sendable {
     var interpolation: Int = -1
     /// The escape byte doesn't hide the interpolation's opener (a raw f-string).
     var rawCode = false
+    /// Closes only where its line's text starts (`LanguageRules.heredocsCloseAtLineStart`).
+    var closesAtLineStart = false
   }
 
   struct CompiledInterpolation {
@@ -106,6 +108,10 @@ public final class LexProfile: @unchecked Sendable {
   let whitespaceEscape: UInt8
   let trailingDotNumbers: Bool
   let symbolOperators: Bool
+  let tildeSigils: Bool
+  let questionCharacters: Bool
+  let suffixesBeforeEquals: Bool
+  let quotedSymbols: Bool
 
   // Keywords: open addressing over the word's first 16 bytes, its length and whether it declares.
   private let keywordWords: UnsafeMutablePointer<UInt64>
@@ -184,10 +190,12 @@ public final class LexProfile: @unchecked Sendable {
           break
         }
       }
+      let heredoc = rules.heredocsCloseAtLineStart && delim.open.utf8.count == 3 && delim.open == delim.close
       add(
         Opener(
           kind: .string, open: Array(delim.open.utf8), close: Array(delim.close.utf8), escape: escaped,
-          multiline: delim.multiline || rules.multilineStrings, interpolation: interpolation, rawCode: rawCode))
+          multiline: delim.multiline || rules.multilineStrings, interpolation: interpolation, rawCode: rawCode,
+          closesAtLineStart: heredoc))
     }
     if rules.swiftRawStrings { add(Opener(kind: .swiftRaw, open: [0x23])) }
     if rules.rustRawStrings {
@@ -244,6 +252,12 @@ public final class LexProfile: @unchecked Sendable {
     whitespaceEscape = rules.whitespaceEscape
     trailingDotNumbers = rules.trailingDotNumbers
     symbolOperators = rules.symbolOperators
+    tildeSigils = rules.tildeSigils
+    if tildeSigils { cls[0x7E] = ByteClass.opener }
+    questionCharacters = rules.questionCharacters
+    suffixesBeforeEquals = rules.suffixesBeforeEquals
+    if questionCharacters { cls[0x3F] = ByteClass.opener }
+    quotedSymbols = rules.quotedSymbols
     openers = table
 
     // Keywords: the spec's, and every declaration word of the rules. Kinds come from the rules, else the spec's.
@@ -442,7 +456,7 @@ public func scan(
       if profile.colonJoinsOperators, j &- i > 1, t[j &- 1] == 0x5F {
         while j < n, isScalaOperatorByte(t[j]) { j &+= 1 }
       }
-      if profile.hasSuffixes, profile.suffix[Int(t[j])] != 0, t[j &+ 1] != 0x3D { j &+= 1 }
+      if profile.hasSuffixes, profile.suffix[Int(t[j])] != 0, t[j &+ 1] != 0x3D || profile.suffixesBeforeEquals { j &+= 1 }
       let length = j &- i
       var tokenKind = TokenKind.identifier
       if length <= profile.maxKeyword {
@@ -829,6 +843,21 @@ private func opener(
     guard let end = sigilEnd(t, n, i, profile) else { return nil }
     out[count] = Token(.identifier, i, end)
     return (end, count &+ 1)
+  case 0x7E where profile.tildeSigils:
+    guard let end = tildeSigilEnd(t, n, i) else { return nil }
+    out[count] = Token(.string, i, end)
+    return (end, count &+ 1)
+  case 0x3F where profile.questionCharacters:
+    // `?a`, `?\n`, `?"`: a character. A `?` that ends a name was taken with the name.
+    guard i &+ 1 < n, t[i &+ 1] > 0x20 else { return nil }
+    var end = i &+ 2
+    if t[i &+ 1] == 0x5C {
+      guard i &+ 2 < n, t[i &+ 2] != 0x0A, t[i &+ 2] != 0x0D else { return nil }
+      end = i &+ 3
+    }
+    while end < n, t[end] & 0xC0 == 0x80 { end &+= 1 }
+    out[count] = Token(.string, i, end)
+    return (end, count &+ 1)
   case 0x25 where profile.percentLiterals:
     guard !(profile.keywordsAsNames && namesMethod(t, count > 0 ? out[count &- 1] : nil)), let end = percentLiteralEnd(t, n, i, profile, count > 0 ? out[count &- 1] : nil) else { return nil }
     out[count] = Token(.string, i, end)
@@ -1056,6 +1085,20 @@ private func symbolEnd(_ t: UnsafePointer<UInt8>, _ n: Int, _ i: Int, _ profile:
   if next == 0x40 || next == 0x24 {
     return sigilEnd(t, n, i &+ 1, profile)
   }
+  if profile.quotedSymbols, next == 0x22 || next == 0x27 {
+    // `:"a b"`, `:"x#{y}"`: to its quote.
+    var k = i &+ 2
+    while k < n, t[k] != next {
+      if t[k] == 0x5C {
+        k &+= 2
+      } else if t[k] == 0x23, t[k &+ 1] == 0x7B {
+        k = interpolationEnd(t, n, k &+ 2)
+      } else {
+        k &+= 1
+      }
+    }
+    return min(n, k &+ 1)
+  }
   // `:+`, `:[]=`, `:<=>`: an operator method's name, when no value follows it (`x ?1 :-1` stays a ternary).
   for op in symbolOperators where profile.ident[Int(next)] == 0 && next > 0x20 && n &- i > op.utf8.count && memcmp(t + (i &+ 1), op, op.utf8.count) == 0 {
     let after = i &+ 1 &+ op.utf8.count
@@ -1065,13 +1108,95 @@ private func symbolEnd(_ t: UnsafePointer<UInt8>, _ n: Int, _ i: Int, _ profile:
   guard profile.ident[Int(next)] != 0, next > 0x39 || next < 0x30 else { return nil }
   var j = i &+ 2
   while j < n, profile.ident[Int(t[j])] != 0 { j &+= 1 }
-  if profile.suffix[Int(t[j])] != 0, t[j &+ 1] != 0x3D {
+  if profile.suffix[Int(t[j])] != 0, t[j &+ 1] != 0x3D || profile.suffixesBeforeEquals {
     j &+= 1
-  } else if t[j] == 0x3D, t[j &+ 1] != 0x3D, t[j &+ 1] != 0x7E, t[j &+ 1] != 0x3E {
-    // `:name=`, a setter's name; not `:a=>1` or `:a==b`.
+  } else if t[j] == 0x3D, t[j &+ 1] != 0x3D, t[j &+ 1] != 0x7E, t[j &+ 1] != 0x3E, !profile.quotedSymbols {
+    // `:name=`, a setter's name; not `:a=>1` or `:a==b`. Elixir has no setters: `:ok=f()` is a match.
     j &+= 1
   }
   return j
+}
+
+/// The end of a sigil at `i` (`LanguageRules.tildeSigils`): `~` with one lowercase letter or uppercase letters and
+/// digits, its delimited text and its modifiers; nil when no delimiter follows.
+private func tildeSigilEnd(_ t: UnsafePointer<UInt8>, _ n: Int, _ i: Int) -> Int? {
+  var j = i &+ 1
+  let first = t[j]
+  let lower = first >= 0x61 && first <= 0x7A
+  if lower {
+    j &+= 1
+  } else {
+    guard first >= 0x41, first <= 0x5A else { return nil }
+    while j < n, t[j] >= 0x41 && t[j] <= 0x5A || t[j] >= 0x30 && t[j] <= 0x39 { j &+= 1 }
+  }
+  let open = t[j]
+  var k: Int
+  if open == 0x22 || open == 0x27, t[j &+ 1] == open, t[j &+ 2] == open {
+    // A heredoc: up to the line whose text starts with the three quotes.
+    k = n
+    var line = j &+ 3
+    while line < n {
+      guard let found = memchr(t + line, 0x0A, n &- line) else { break }
+      line = UnsafePointer(found.assumingMemoryBound(to: UInt8.self)) - t &+ 1
+      var first = line
+      while first < n, t[first] == 0x20 || t[first] == 0x09 { first &+= 1 }
+      if first &+ 2 < n, t[first] == open, t[first &+ 1] == open, t[first &+ 2] == open {
+        k = first &+ 3
+        break
+      }
+    }
+  } else {
+    let close: UInt8
+    switch open {
+    case 0x28: close = 0x29
+    case 0x5B: close = 0x5D
+    case 0x7B: close = 0x7D
+    case 0x3C: close = 0x3E
+    case 0x2F, 0x7C, 0x22, 0x27: close = open
+    default: return nil
+    }
+    k = j &+ 1
+    while k < n {
+      let b = t[k]
+      if b == 0x5C {
+        k &+= 2
+        continue
+      }
+      if lower, b == 0x23, t[k &+ 1] == 0x7B {
+        k = interpolationEnd(t, n, k &+ 2)
+        continue
+      }
+      if b == close { break }
+      k &+= 1
+    }
+    k = min(n, k &+ 1)
+  }
+  // Modifiers: `~r/a/iu`, `~w[a b]a`.
+  while k < n, t[k] >= 0x61 && t[k] <= 0x7A || t[k] >= 0x41 && t[k] <= 0x5A || t[k] >= 0x30 && t[k] <= 0x39 { k &+= 1 }
+  return k
+}
+
+/// The offset after the `}` that closes an interpolation whose code starts at `i`, skipping quoted text in it.
+private func interpolationEnd(_ t: UnsafePointer<UInt8>, _ n: Int, _ i: Int) -> Int {
+  var k = i
+  var depth = 0
+  while k < n {
+    let b = t[k]
+    if b == 0x22 || b == 0x27 {
+      k &+= 1
+      while k < n, t[k] != b { k &+= t[k] == 0x5C ? 2 : 1 }
+      k &+= 1
+      continue
+    }
+    if b == 0x7B {
+      depth &+= 1
+    } else if b == 0x7D {
+      if depth == 0 { return k &+ 1 }
+      depth &-= 1
+    }
+    k &+= 1
+  }
+  return n
 }
 
 /// The end of a percent literal at `i` (`LanguageRules.percentLiterals`), nil for the `%` operator.
@@ -1288,11 +1413,7 @@ private func continueString(
       i &+= 2
       continue
     }
-    if c == closeByte, matches(t, i, close) {
-      let end = i &+ close.count
-      out[count] = Token(.string, begin, end)
-      return (end, count &+ 1)
-    }
+    // A line break ends a single-line string before anything, a close that is one too (Zig's `\\` lines).
     if c == 0x0A, !entry.multiline {
       var end = i
       if end > begin, t[end &- 1] == 0x0D { end &-= 1 }
@@ -1302,6 +1423,11 @@ private func continueString(
       }
       return (end, count)
     }
+    if c == closeByte, matches(t, i, close), !entry.closesAtLineStart || startsItsLine(t, i, after: begin) {
+      let end = i &+ close.count
+      out[count] = Token(.string, begin, end)
+      return (end, count &+ 1)
+    }
     i &+= 1
   }
   let end = min(i, n)
@@ -1310,6 +1436,13 @@ private func continueString(
     count &+= 1
   }
   return (end, count)
+}
+
+/// Whether only spaces and tabs come before `i` on its line, after `begin` (the string's opener).
+@inline(__always) private func startsItsLine(_ t: UnsafePointer<UInt8>, _ i: Int, after begin: Int) -> Bool {
+  var k = i
+  while k > begin, t[k &- 1] == 0x20 || t[k &- 1] == 0x09 { k &-= 1 }
+  return k > begin && t[k &- 1] == 0x0A
 }
 
 /// Scala's operator characters (`!#%&*+-/:<=>?@\^|~`), which follow a `_` in a name.

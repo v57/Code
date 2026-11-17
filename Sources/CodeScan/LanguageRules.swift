@@ -162,6 +162,26 @@ public struct LanguageRules: Sendable {
   public var preservesOperatorSpacing = false
   /// Bracket mismatches are reported. Off where tokens can't see through the language.
   public var reportsBrackets = true
+  /// `~r/…/i`, `~s(…)`, `~w[…]a`, `~S"""…"""`, `~HTML"…"`: one string token, its delimiters not nesting, `\` skipping
+  /// the next byte and a `#{…}` in a lowercase one skipped whole (Elixir).
+  public var tildeSigils = false
+  /// `?a`, `?\n`, `?"`: a character, one string token, wherever `?` doesn't end a name (Elixir).
+  public var questionCharacters = false
+  /// A name's `?` or `!` is its own before `=` too: `a?=b` is `a?`, `=` and `b`, and `a!=b` is `a!`, `=` and `b`
+  /// (Elixir; Ruby reads `a!=b` as `a != b`).
+  public var suffixesBeforeEquals = false
+  /// `:"…"` and `:'…'` are symbols too, one string token with any `#{…}` in it, and `:a=` is `:a` and `=`, not a
+  /// setter's name (Elixir's atoms).
+  public var quotedSymbols = false
+  /// A string opened by three quotes ends only at a line whose text starts with them (Elixir's heredocs).
+  public var heredocsCloseAtLineStart = false
+  /// `const Name = struct {`: a constant whose value starts with one of these words (after `extern` or `packed`)
+  /// declares a type of this kind, and its braces are its body (Zig).
+  public var typeValues: [String: SymbolKind] = [:]
+  /// A `{}` holds a comma list or statements, never `case` labels: a `switch`'s prongs are its content, and a comma in
+  /// braces ends an element. A one-element list keeps the spaces inside its braces as written: zig fmt writes `.{x}`
+  /// and `error{A}`, but `.{ .x = 1 }` and `.{ a, b }` (Zig).
+  public var bracesHoldLists = false
 
   public enum TrailingCommas: Sendable { case never, allowed, required }
 
@@ -415,6 +435,48 @@ public struct LanguageRules: Sendable {
         "module": .module,
       ]
       $0.reportsBrackets = false
+    },
+    "Zig": LanguageRules {
+      // `zig fmt` is canonical and whitespace is never content outside a `\\` line, which is one token to its line's
+      // end: the formatter may lay it all out.
+      $0.layout = .full
+      $0.parameters = .nameFirst
+      $0.declarations = ["fn": .function, "const": .constant, "var": .variable]
+      $0.typeValues = ["struct": .struct, "enum": .enum, "union": .struct, "opaque": .struct, "error": .enum]
+      // `x: u32,` in a struct's body is a field.
+      $0.bareMembers = true
+      $0.trailingCommas = .allowed
+      $0.colonHugsLeft = true
+      $0.spacesInsideBraces = true
+      $0.bracesHoldLists = true
+      // `Point{ .x = 1 }` and `[_]u8{ 1, 2 }` are literals, `fn f() void {` a body: tokens can't tell them apart.
+      $0.bracesFollowTightly = true
+    },
+    "Elixir": LanguageRules {
+      $0.blocks = .indentation
+      // Spaces within a line only: newlines end expressions, and `do … end` blocks can't be told from `do:` by tokens
+      // alone for a re-indent. Where a space is meaning (`f (x)`, `f -1`, `%Point{`, `if(a, b)`), it stays as written.
+      $0.layout = .spacing
+      $0.parameters = .nameFirst
+      $0.assignmentDeclares = true
+      $0.declarations = [
+        "defmodule": .module, "def": .function, "defp": .function, "defmacro": .function, "defmacrop": .function,
+        "defguard": .function, "defguardp": .function, "defdelegate": .function, "defprotocol": .interface,
+        "defimpl": .extension, "defstruct": .struct, "defexception": .struct, "@type": .typeAlias, "@typep": .typeAlias,
+        "@opaque": .typeAlias, "@callback": .function, "@macrocallback": .function,
+      ]
+      $0.multilineStrings = true
+      $0.identifierSuffixes = "!?"
+      $0.colonSymbols = true
+      $0.quotedSymbols = true
+      $0.heredocsCloseAtLineStart = true
+      $0.keywordsAsNames = true
+      $0.tildeSigils = true
+      $0.questionCharacters = true
+      $0.suffixesBeforeEquals = true
+      $0.interpolations = [Interpolation(open: "#{", close: 0x7D)]
+      $0.bracesFollowTightly = true
+      $0.spacesAfterControlWords = false
     },
     "JSON": LanguageRules {
       $0.layout = .full

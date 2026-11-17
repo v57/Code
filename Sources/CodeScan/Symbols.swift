@@ -449,6 +449,9 @@ private struct SymbolExtractor {
     case "typedef":
       typedefName(from: next, keywordIndex: i)
       return
+    case "defstruct", "defexception":
+      structFields(from: next)
+      return
     default:
       break
     }
@@ -542,6 +545,12 @@ private struct SymbolExtractor {
       consumedUntil = end
       return
     }
+    if !rules.typeValues.isEmpty, isSingleAssignment(next &+ 1), let value = typeValue(after: next &+ 2) {
+      // Zig's `const Point = struct {`: a type, whose braces are its body.
+      pendingOwner = add(name: tokens[next], kind: value.kind, local: false, start: start)
+      consumedUntil = value.index
+      return
+    }
     let symbol = add(name: tokens[next], kind: kind, local: local, start: start)
     consumedUntil = next
     // `var x: Int { ... }`: a computed property's body is its scope.
@@ -576,6 +585,45 @@ private struct SymbolExtractor {
       }
       i &+= 1
     }
+  }
+
+  /// The word at `index` (after `extern`, `packed` and the like) that makes a value a type (`LanguageRules.typeValues`):
+  /// `struct`, `union(enum)`, `error{ … }` but not `error.Name`.
+  func typeValue(after index: Int) -> (index: Int, kind: SymbolKind)? {
+    var i = index
+    while i < tokens.count, i < index &+ 3, tokens[i].kind == .keyword {
+      if let kind = rules.typeValues[word(tokens[i])] {
+        if equals(tokens[i], "error"), !isByte(i &+ 1, 0x7B) { return nil }
+        return (i, kind)
+      }
+      i &+= 1
+    }
+    return nil
+  }
+
+  /// Elixir's `defstruct [:a, b: 1]` and `defstruct a: nil, b: 0`: the struct's fields, its atoms and keys at the list's
+  /// own level. Without brackets the list goes on over lines that end in a comma.
+  mutating func structFields(from first: Int) {
+    let bracketed = isByte(first, 0x5B)
+    let end = bracketed ? afterBalanced(first) &- 1 : tokens.count
+    var i = bracketed ? first &+ 1 : first
+    var depth = 0
+    while i < end {
+      let token = tokens[i]
+      if !bracketed, i > first, startsLine(i), !isByte(i &- 1, 0x2C) { break }
+      switch token.kind {
+      case .open: depth &+= 1
+      case .close:
+        if depth > 0 { depth &-= 1 }
+      case .string where depth == 0 && token.length > 1 && t[token.start] == 0x3A && profile.ident[Int(t[token.start &+ 1])] != 0:
+        add(name: Token(.identifier, token.start &+ 1, token.end), kind: .field, local: false, start: token.start)
+      case .identifier where depth == 0 && isByte(i &+ 1, 0x3A):
+        add(name: token, kind: .field, local: false, start: token.start)
+      default: break
+      }
+      i &+= 1
+    }
+    consumedUntil = max(consumedUntil, i &- 1)
   }
 
   /// `case a, b(Int)` inside an enum declares; in a `switch` it uses, and its `let`s declare on their own.
