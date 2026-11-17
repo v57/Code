@@ -1,5 +1,6 @@
 import CodeCSharpModel
 import CodeClangModel
+import CodeDartModel
 import CodeGoModel
 import CodeJavaModel
 import CodeKotlinModel
@@ -28,7 +29,7 @@ import Foundation
 // manifest (go.mod, Package.swift, tsconfig.json).
 
 /// Every language with a model. A new front end adds itself here and in CodeKit's `CodeTiers.languages`.
-let languages: [ModelLanguage] = [.swift, .go, .typeScript, .clang, .python, .rust, .java, .kotlin, .cSharp]
+let languages: [ModelLanguage] = [.swift, .go, .typeScript, .clang, .python, .rust, .java, .kotlin, .cSharp, .dart]
 
 func option(_ flag: String) -> String? {
   guard let at = CommandLine.arguments.firstIndex(of: flag), at + 1 < CommandLine.arguments.count else { return nil }
@@ -240,7 +241,8 @@ case "bench":
     language.name == "Go" ? "\nfunc addedByBench(value int) int { return value }\n"
     : language.name == "C" ? "\nint addedByBench(int value) { return value; }\n"
     : language.name == "Rust" ? "\nfn added_by_bench(value: i32) -> i32 { value }\n"
-    : language.name == "Java" ? "\nclass AddedByBench { static int addedByBench(int value) { return value; } }\n" : "\nfunc addedByBench(_ value: Int) -> Int { value }\n"
+    : language.name == "Java" ? "\nclass AddedByBench { static int addedByBench(int value) { return value; } }\n"
+    : language.name == "Dart" ? "\nint addedByBench(int value) => value;\n" : "\nfunc addedByBench(_ value: Int) -> Int { value }\n"
   edit(text + added, "signature edit")
   print(String(format: "peak RSS %.1f MB", peakRSS()))
 

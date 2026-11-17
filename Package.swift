@@ -64,6 +64,8 @@ func v57(_ name: String) -> Package.Dependency {
 ///   are Java's units), the standard library from a generated stub of its declarations.
 /// - CodeCSharpModel: C#'s code model on CodeModel: projects from .csproj files (ProjectReference, implicit and global
 ///   usings, DefineConstants), namespaces whatever the folders, the .NET base library from a generated stub.
+/// - CodeDartModel: Dart's code model on CodeModel: libraries and parts, packages from package_config.json or
+///   pubspec.lock and the pub cache read in place, the dart: libraries from an SDK on disk or a hand-written stub.
 /// - CodeSimulator: a booted iOS Simulator's screen and input from Xcode's own frameworks (CoreSimulator and
 ///   SimulatorKit, private, loaded at run time), with the SwiftUI view that shows it (macOS; empty elsewhere).
 /// - CodeKit: all of the above, plus what connects them (an editor for a
@@ -111,6 +113,7 @@ let package = Package(
     .library(name: "CodeJavaModel", targets: ["CodeJavaModel"]),
     .library(name: "CodeKotlinModel", targets: ["CodeKotlinModel"]),
     .library(name: "CodeCSharpModel", targets: ["CodeCSharpModel"]),
+    .library(name: "CodeDartModel", targets: ["CodeDartModel"]),
     .library(name: "CodeSimulator", targets: ["CodeSimulator"]),
     .executable(name: "code-lsp", targets: ["code-lsp"]),
     .executable(name: "code-pretty", targets: ["code-pretty"]),
@@ -152,12 +155,13 @@ let package = Package(
     // Kotlin reads its project's Java files, the platform and the Gradle layout with Java's model.
     .target(name: "CodeKotlinModel", dependencies: ["CodeScan", "CodeModel", "CodeJavaModel"], swiftSettings: swiftSettings + [.swiftLanguageMode(.v5)]),
     .target(name: "CodeCSharpModel", dependencies: ["CodeScan", "CodeModel"], swiftSettings: swiftSettings + [.swiftLanguageMode(.v5)]),
+    .target(name: "CodeDartModel", dependencies: ["CodeScan", "CodeModel"], swiftSettings: swiftSettings + [.swiftLanguageMode(.v5)]),
     // Every language's model, by file extension or --language: the language-neutral swift-model.
     .executableTarget(
       name: "code-model",
       dependencies: [
         "CodeModel", "CodeSwiftModel", "CodeGoModel", "CodeTypeScriptModel", "CodeClangModel", "CodePythonModel", "CodeRustModel",
-        "CodeJavaModel", "CodeKotlinModel", "CodeCSharpModel",
+        "CodeJavaModel", "CodeKotlinModel", "CodeCSharpModel", "CodeDartModel",
       ],
       swiftSettings: swiftSettings + [.swiftLanguageMode(.v5)]),
     .target(name: "CodeSimulatorPrivate", exclude: simulatorPrivateExcludes),
@@ -177,7 +181,7 @@ let package = Package(
         "CodeHighlighting", "CodeWorkspace", "CodeEditor", "CodeActions", "CodeLSP", "CodeMinimap",
         "CodeFormatting", "CodeAutocompletion", "CodeIcons", "CodeProgress", "CodeFolders", "CodeScan", "CodePretty", "CodeSwiftModel",
         "CodeGoModel", "CodeTypeScriptModel", "CodeClangModel", "CodePythonModel", "CodeRustModel", "CodeJavaModel", "CodeKotlinModel",
-        "CodeCSharpModel",
+        "CodeCSharpModel", "CodeDartModel",
       ],
       swiftSettings: swiftSettings),
 
@@ -204,6 +208,8 @@ let package = Package(
       name: "CodeKotlinModelTests", dependencies: ["CodeKotlinModel"], swiftSettings: swiftSettings + [.swiftLanguageMode(.v5)]),
     .testTarget(
       name: "CodeCSharpModelTests", dependencies: ["CodeCSharpModel"], swiftSettings: swiftSettings + [.swiftLanguageMode(.v5)]),
+    .testTarget(
+      name: "CodeDartModelTests", dependencies: ["CodeDartModel"], swiftSettings: swiftSettings + [.swiftLanguageMode(.v5)]),
     .testTarget(
       name: "CodeClangModelTests", dependencies: ["CodeClangModel"], swiftSettings: swiftSettings + [.swiftLanguageMode(.v5)]),
     .testTarget(
