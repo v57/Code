@@ -126,6 +126,46 @@ private func names(_ text: String, _ language: String) -> [String] {
     #expect(tokens.contains { $0 == ("// c ", .comment) })
   }
 
+  @Test func rubySigilsSymbolsLiteralsAndOperators() {
+    let text = #"""
+      x ||= y != z
+      a = %w[one two] + :sym + :<=> + :[]=
+      def %(other) = @a / 2
+      h = { key: $stdout, "s#{@b}" => ?c, d: x ? a : b }
+      v.class.then { |q| q }
+      class << self; end
+      f = `ls #{dir}`
+      r = /a
+      b/x if /\s*/ === s
+      list.split(/=/, 2)
+      call(&->(n) { n })
+      =begin
+      not code
+      =end
+      self.
+      end
+      __END__
+      data here
+      """#
+    let tokens = kinds(text, "Ruby")
+    #expect(tokens.contains { $0 == ("||=", .punctuation) } && tokens.contains { $0 == ("!=", .punctuation) })
+    #expect(tokens.contains { $0 == ("%w[one two]", .string) } && tokens.contains { $0 == (":sym", .string) })
+    #expect(tokens.contains { $0 == (":<=>", .string) } && tokens.contains { $0 == (":[]=", .string) })
+    // A method named `%`, then a division.
+    #expect(tokens.contains { $0 == ("%", .punctuation) } && tokens.contains { $0 == ("/", .punctuation) })
+    #expect(tokens.contains { $0 == ("@a", .identifier) } && tokens.contains { $0 == ("$stdout", .identifier) } && tokens.contains { $0 == ("@b", .identifier) })
+    #expect(tokens.contains { $0 == ("?c", .string) } && tokens.contains { $0 == ("?", .punctuation) })
+    #expect(tokens.contains { $0 == ("class", .identifier) } && tokens.contains { $0 == ("then", .identifier) })
+    #expect(tokens.contains { $0 == ("<<", .punctuation) })
+    #expect(tokens.contains { $0 == ("dir", .identifier) } && !tokens.contains { $0.0 == "ls" })
+    #expect(tokens.contains { $0 == ("/a\nb/x", .string) } && tokens.contains { $0 == ("/\\s*/", .string) } && tokens.contains { $0 == ("/=/", .string) })
+    #expect(tokens.contains { $0 == ("&", .punctuation) } && tokens.contains { $0 == ("->", .punctuation) })
+    #expect(!tokens.contains { $0.0 == "not" || $0.0 == "data" })
+    // `self.` being typed above an `end`: the `end` closes.
+    let dot = tokens.lastIndex { $0 == (".", .punctuation) }!
+    #expect(tokens[dot + 1] == ("end", .keyword))
+  }
+
   @Test func nestedComments() {
     #expect(kinds("/* a /* b */ c */ d", "Swift").map(\.0).last == "d")
   }

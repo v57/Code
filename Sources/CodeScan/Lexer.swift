@@ -89,6 +89,15 @@ public final class LexProfile: @unchecked Sendable {
   let inlineMarkup: Bool
   let regexLiterals: Bool
   let backtickIdentifiers: Bool
+  /// Bytes that may end an identifier (`LanguageRules.identifierSuffixes`), 1 for each.
+  let suffix: UnsafeMutablePointer<UInt8>
+  let hasSuffixes: Bool
+  let sigilNames: Bool
+  let colonSymbols: Bool
+  let keywordsAsNames: Bool
+  let percentLiterals: Bool
+  let hereDocumentsAfterOperators: Bool
+  let embeddedDocuments: Bool
 
   // Keywords: open addressing over the word's first 16 bytes, its length and whether it declares.
   private let keywordWords: UnsafeMutablePointer<UInt64>
@@ -134,6 +143,10 @@ public final class LexProfile: @unchecked Sendable {
       ident[byte] = isIdent
     }
     for byte in rules.extraIdentifierBytes.utf8 { ident[Int(byte)] = 1 }
+    suffix = .allocate(capacity: 256)
+    suffix.initialize(repeating: 0, count: 256)
+    for byte in rules.identifierSuffixes.utf8 { suffix[Int(byte)] = 1 }
+    hasSuffixes = !rules.identifierSuffixes.isEmpty
     fallback.update(from: cls, count: 256)
 
     // Openers: comments, then strings, longest first per first byte.
@@ -197,6 +210,21 @@ public final class LexProfile: @unchecked Sendable {
     backtickIdentifiers = rules.backtickIdentifiers
     if backtickIdentifiers { cls[0x60] = ByteClass.opener }
     commentsNeedWordStart = rules.commentsNeedWordStart || spec.lineCommentsAtLineStartOnly
+    sigilNames = rules.sigilNames
+    if sigilNames {
+      cls[0x40] = ByteClass.opener
+      cls[0x24] = ByteClass.opener
+    }
+    colonSymbols = rules.colonSymbols
+    keywordsAsNames = rules.keywordsAsNames
+    percentLiterals = rules.percentLiterals
+    if percentLiterals {
+      cls[0x25] = ByteClass.opener
+      cls[0x3F] = ByteClass.opener
+    }
+    hereDocumentsAfterOperators = rules.hereDocumentsAfterOperators
+    embeddedDocuments = rules.embeddedDocuments
+    if embeddedDocuments { cls[0x3D] = ByteClass.opener }
     openers = table
 
     // Keywords: the spec's, and every declaration word of the rules. Kinds come from the rules, else the spec's.
@@ -373,7 +401,17 @@ public func scan(
         hereDocument.pending = false
       }
     case ByteClass.ident:
-      let j = identifierEnd(i)
+      if profile.embeddedDocuments, c == 0x5F, i == 0 || t[i &- 1] == 0x0A, n &- i >= 7, memcmp(t + i, "__END__", 7) == 0,
+        t[i &+ 7] == 0x0A || t[i &+ 7] == 0x0D || t[i &+ 7] == 0
+      {
+        // Data, not code, to the end.
+        out[count] = Token(.comment, i, n)
+        count &+= 1
+        i = n
+        continue
+      }
+      var j = identifierEnd(i)
+      if profile.hasSuffixes, profile.suffix[Int(t[j])] != 0, t[j &+ 1] != 0x3D { j &+= 1 }
       let length = j &- i
       var tokenKind = TokenKind.identifier
       if length <= profile.maxKeyword {
@@ -383,6 +421,7 @@ public func scan(
         default: break
         }
       }
+      if tokenKind != .identifier, profile.keywordsAsNames, keywordIsName(t, i, j, count > 0 ? out[count &- 1] : nil) { tokenKind = .identifier }
       out[count] = Token(tokenKind, i, j)
       count &+= 1
       i = j
@@ -425,6 +464,12 @@ public func scan(
       count &+= 1
       i &+= 1
     case ByteClass.colon:
+      if profile.colonSymbols, let end = symbolEnd(t, n, i, profile) {
+        out[count] = Token(.string, i, end)
+        count &+= 1
+        i = end
+        continue
+      }
       if let frame = frames.top, frame.depth == 0, t[i &+ 1] != 0x3D,
         case let code = profile.openers[Int(frame.firstByte)][Int(frame.opener)].interpolation, code >= 0, profile.interpolations[code].formatSpec
       {
@@ -462,7 +507,13 @@ public func scan(
       }
       // A run of operator bytes is one token, up to anything that may start something else.
       var j = i &+ 1
-      while j < n, cls[Int(t[j])] == ByteClass.punct { j &+= 1 }
+      // An `=` there is an operator's (`||=`, `!=`) even where it may open `=begin` at a line's start, and a `<` one's
+      // (`<<`, `<=>`) where it may open a here-document.
+      // Ruby's lambda `->` stays its own (`&->(x) { }`).
+      while j < n, cls[Int(t[j])] == ByteClass.punct || t[j] == 0x3D && profile.embeddedDocuments || t[j] == 0x3C && profile.hereDocumentsAfterOperators {
+        if profile.hereDocumentsAfterOperators, t[j] == 0x2D, t[j &+ 1] == 0x3E { break }
+        j &+= 1
+      }
       out[count] = Token(.punctuation, i, j)
       count &+= 1
       i = j
@@ -655,6 +706,43 @@ private func opener(
     }
   }
   switch c {
+  case 0x40 where profile.sigilNames, 0x24 where profile.sigilNames:
+    guard let end = sigilEnd(t, n, i, profile) else { return nil }
+    out[count] = Token(.identifier, i, end)
+    return (end, count &+ 1)
+  case 0x25 where profile.percentLiterals:
+    guard !(profile.keywordsAsNames && namesMethod(t, count > 0 ? out[count &- 1] : nil)), let end = percentLiteralEnd(t, n, i, profile, count > 0 ? out[count &- 1] : nil) else { return nil }
+    out[count] = Token(.string, i, end)
+    return (end, count &+ 1)
+  case 0x3F where profile.percentLiterals:
+    // `?a`, `?\n`: a character where a value starts (`x ? a : b` and `a ?b :c` stay the operator).
+    if let previous = count > 0 ? out[count &- 1] : nil, isValueEnd(previous) || previous.kind == .keyword && previous.end == i { return nil }
+    guard i &+ 1 < n, t[i &+ 1] > 0x20, t[i &+ 1] < 0x7F else { return nil }
+    var end = i &+ 2
+    if t[i &+ 1] == 0x5C {
+      guard i &+ 2 < n, t[i &+ 2] > 0x20 else { return nil }
+      end = i &+ 3
+    }
+    guard end >= n || profile.ident[Int(t[end])] == 0 && t[end] != 0x3F && t[end] != 0x21, t[i &+ 1] != 0x3A || end >= n || t[end] != 0x3A else { return nil }
+    out[count] = Token(.string, i, end)
+    return (end, count &+ 1)
+  case 0x3D where profile.embeddedDocuments:
+    // `=begin` at a line's start, to the line of `=end`.
+    guard i == 0 || t[i &- 1] == 0x0A, n &- i >= 6, memcmp(t + i, "=begin", 6) == 0,
+      t[i &+ 6] == 0x0A || t[i &+ 6] == 0x0D || t[i &+ 6] == 0x20 || t[i &+ 6] == 0x09 || t[i &+ 6] == 0
+    else { return nil }
+    var line = i
+    var end = n
+    while line < n {
+      guard let found = memchr(t + line, 0x0A, n &- line) else { break }
+      line = UnsafePointer(found.assumingMemoryBound(to: UInt8.self)) - t &+ 1
+      if n &- line >= 4, memcmp(t + line, "=end", 4) == 0, line &+ 4 >= n || t[line &+ 4] == 0x0A || t[line &+ 4] == 0x0D || t[line &+ 4] == 0x20 || t[line &+ 4] == 0x09 {
+        end = lineEnd(t, n, line)
+        break
+      }
+    }
+    out[count] = Token(.comment, i, end)
+    return (end, count &+ 1)
   case 0x27 where profile.charLiteral:
     // 'x', '\n', '\''; not 'a in Rust or Scala: a lifetime or symbol stays plain.
     let next = t[i &+ 1]
@@ -722,14 +810,27 @@ private func opener(
     out[count] = Token(.attribute, i, j)
     return (j, count &+ 1)
   case 0x2F where profile.regexLiterals:
-    guard regexMayStart(t, i, count > 0 ? out[count &- 1] : nil) else { return nil }
+    guard regexMayStart(t, i, count > 0 ? out[count &- 1] : nil, ruby: profile.percentLiterals), !(profile.keywordsAsNames && namesMethod(t, count > 0 ? out[count &- 1] : nil)) else { return nil }
     var j = i &+ 1
     var inClass = false
     while j < n {
       let b = t[j]
-      if b == 0x0A { return nil }
+      // Ruby's (`percentLiterals`) may span lines (`/…/x`), and a `#{…}` in one is skipped whole.
+      if b == 0x0A, !profile.percentLiterals { return nil }
       if b == 0x5C {
         j &+= 2
+        continue
+      }
+      if b == 0x23, profile.percentLiterals, t[j &+ 1] == 0x7B {
+        var depth = 0
+        while j < n {
+          if t[j] == 0x7B { depth &+= 1 } else if t[j] == 0x7D {
+            depth &-= 1
+            if depth == 0 { break }
+          }
+          j &+= 1
+        }
+        j &+= 1
         continue
       }
       if b == 0x5B { inClass = true } else if b == 0x5D { inClass = false } else if b == 0x2F && !inClass { break }
@@ -743,6 +844,12 @@ private func opener(
   case 0x3C where profile.hereDocuments:
     guard t[i &+ 1] == 0x3C else { return nil }
     if i > 0, t[i &- 1] >= 0x30, t[i &- 1] <= 0x39 { return nil }
+    if profile.hereDocumentsAfterOperators, count > 0 {
+      // `a<<b` shifts; `puts <<EOS` and `x = <<~EOS` start one; `class <<self` opens a singleton class.
+      let previous = out[count &- 1]
+      if previous.kind == .keyword || previous.kind == .declarationKeyword, previous.length == 5, memcmp(t + previous.start, "class", 5) == 0 { return nil }
+      if isValueEnd(previous), previous.end == i { return nil }
+    }
     var j = i &+ 2
     if t[j] == 0x3C { j &+= 1 }
     let indented = t[j] == 0x2D || t[j] == 0x7E
@@ -763,11 +870,151 @@ private func opener(
   }
 }
 
+/// Whether a token ends a value: a name, number, string or closing bracket.
+@inline(__always) private func isValueEnd(_ token: Token) -> Bool {
+  switch token.kind {
+  case .identifier, .number, .string, .close, .interpolationClose: return true
+  default: return false
+  }
+}
+
+/// Whether what follows names a method (`def %(other)`, `a./(b)`): an operator there is no literal's start.
+@inline(__always) private func namesMethod(_ t: UnsafePointer<UInt8>, _ previous: Token?) -> Bool {
+  guard let previous else { return false }
+  if previous.kind == .declarationKeyword, previous.length == 3, memcmp(t + previous.start, "def", 3) == 0 { return true }
+  return previous.kind == .punctuation && t[previous.end &- 1] == 0x2E && (previous.length == 1 || previous.length == 2 && t[previous.start] == 0x26)
+}
+
+/// A keyword that is a name here (`LanguageRules.keywordsAsNames`): a label (`end:`), after `.` or `&.`, or after `def`.
+@inline(__always) private func keywordIsName(_ t: UnsafePointer<UInt8>, _ start: Int, _ end: Int, _ previous: Token?) -> Bool {
+  if t[end] == 0x3A, t[end &+ 1] != 0x3A { return true }
+  guard let previous else { return false }
+  if previous.kind == .punctuation, t[previous.end &- 1] == 0x2E,
+    previous.length == 1 || (previous.length == 2 && t[previous.start] == 0x26)
+  {
+    // `self.` with `end` on the next line is being typed: the `end` closes the method, as an editor needs.
+    if end &- start == 3, memcmp(t + start, "end", 3) == 0, memchr(t + previous.end, 0x0A, start &- previous.end) != nil { return false }
+    return true
+  }
+  if previous.kind == .declarationKeyword, previous.length == 3, memcmp(t + previous.start, "def", 3) == 0 {
+    return !(end &- start == 4 && memcmp(t + start, "self", 4) == 0)
+  }
+  return false
+}
+
+/// The end of `@name`, `@@name`, `$name`, `$-w` or `$!` at `i`, nil when no name follows the sign.
+private func sigilEnd(_ t: UnsafePointer<UInt8>, _ n: Int, _ i: Int, _ profile: LexProfile) -> Int? {
+  var j = i &+ 1
+  if t[i] == 0x40 {
+    if t[j] == 0x40 { j &+= 1 }
+    guard profile.ident[Int(t[j])] != 0, t[j] > 0x39 || t[j] < 0x30 else { return nil }
+  } else {
+    let next = t[j]
+    if profile.ident[Int(next)] == 0 {
+      if next == 0x2D, profile.ident[Int(t[j &+ 1])] != 0 { return min(n, j &+ 2) }
+      // `$!`, `$@`, `$&`, `$~`, `$:`, `$0`'s kin: one byte names them.
+      switch next {
+      case 0x21, 0x40, 0x26, 0x60, 0x27, 0x2B, 0x7E, 0x3D, 0x2F, 0x5C, 0x2C, 0x3B, 0x2E, 0x3C, 0x3E, 0x2A, 0x24, 0x3F, 0x3A, 0x22:
+        return min(n, j &+ 1)
+      default:
+        return nil
+      }
+    }
+  }
+  while j < n, profile.ident[Int(t[j])] != 0 { j &+= 1 }
+  return j
+}
+
+/// The end of a symbol `:name` at `i` (`LanguageRules.colonSymbols`), nil for a colon.
+/// Ruby's operator methods, longest first.
+private let symbolOperators = ["[]=", "===", "<=>", "**", "==", "=~", "!=", "!~", "<=", ">=", "<<", ">>", "[]", "+@", "-@", "+", "-", "*", "/", "%", "<", ">", "!", "&", "|", "^", "~"]
+
+private func symbolEnd(_ t: UnsafePointer<UInt8>, _ n: Int, _ i: Int, _ profile: LexProfile) -> Int? {
+  let next = t[i &+ 1]
+  if next == 0x3A { return nil }
+  // `a:b` is a label and a name; `x ? a :b` a symbol, as Ruby reads it.
+  if i > 0, profile.ident[Int(t[i &- 1])] != 0 || t[i &- 1] == 0x3A || profile.suffix[Int(t[i &- 1])] != 0 && i > 1 && profile.ident[Int(t[i &- 2])] != 0 { return nil }
+  if next == 0x40 || next == 0x24 {
+    return sigilEnd(t, n, i &+ 1, profile)
+  }
+  // `:+`, `:[]=`, `:<=>`: an operator method's name, when no value follows it (`x ?1 :-1` stays a ternary).
+  for op in symbolOperators where profile.ident[Int(next)] == 0 && next > 0x20 && n &- i > op.utf8.count && memcmp(t + (i &+ 1), op, op.utf8.count) == 0 {
+    let after = i &+ 1 &+ op.utf8.count
+    guard after >= n || profile.ident[Int(t[after])] == 0 && t[after] != 0x40 && t[after] != 0x3A && t[after] != 0x22 && t[after] != 0x27 else { return nil }
+    return after
+  }
+  guard profile.ident[Int(next)] != 0, next > 0x39 || next < 0x30 else { return nil }
+  var j = i &+ 2
+  while j < n, profile.ident[Int(t[j])] != 0 { j &+= 1 }
+  if profile.suffix[Int(t[j])] != 0, t[j &+ 1] != 0x3D {
+    j &+= 1
+  } else if t[j] == 0x3D, t[j &+ 1] != 0x3D, t[j &+ 1] != 0x7E, t[j &+ 1] != 0x3E {
+    // `:name=`, a setter's name; not `:a=>1` or `:a==b`.
+    j &+= 1
+  }
+  return j
+}
+
+/// The end of a percent literal at `i` (`LanguageRules.percentLiterals`), nil for the `%` operator.
+private func percentLiteralEnd(_ t: UnsafePointer<UInt8>, _ n: Int, _ i: Int, _ profile: LexProfile, _ previous: Token?) -> Int? {
+  var j = i &+ 1
+  var letter: UInt8 = 0
+  switch t[j] {
+  case 0x71, 0x51, 0x77, 0x57, 0x69, 0x49, 0x72, 0x73, 0x78:  // q Q w W i I r s x
+    letter = t[j]
+    j &+= 1
+  default:
+    break
+  }
+  let open = t[j]
+  if letter == 0 {
+    // `%(…)`, `%[…]`, `%{…}`, `%<…>`, `%|…|`, `%!…!`.
+    guard open == 0x28 || open == 0x5B || open == 0x7B || open == 0x3C || open == 0x7C || open == 0x21 else { return nil }
+  } else {
+    guard open > 0x20, open < 0x7F, profile.ident[Int(open)] == 0, open != 0x3D else { return nil }
+  }
+  // Where a value starts: not after a value, unless spaced like an argument (`puts %w[a]`, not `a % b` or `a%b`).
+  if let previous, isValueEnd(previous) {
+    guard previous.end < i, t[j &+ 1] != 0x20 else { return nil }
+  }
+  let close: UInt8
+  switch open {
+  case 0x28: close = 0x29
+  case 0x5B: close = 0x5D
+  case 0x7B: close = 0x7D
+  case 0x3C: close = 0x3E
+  default: close = open
+  }
+  var depth = 0
+  var k = j &+ 1
+  while k < n {
+    let b = t[k]
+    if b == 0x5C {
+      k &+= 2
+      continue
+    }
+    if b == close {
+      if depth == 0 { break }
+      depth &-= 1
+    } else if b == open {
+      depth &+= 1
+    }
+    k &+= 1
+  }
+  guard k < n else { return n }
+  k &+= 1
+  if letter == 0x72 { while k < n, profile.ident[Int(t[k])] != 0 { k &+= 1 } }
+  return k
+}
+
 /// Whether a `/` here starts a regex: not after a value or `<` (a closing tag).
-private func regexMayStart(_ t: UnsafePointer<UInt8>, _ i: Int, _ previous: Token?) -> Bool {
-  // `a / b`: a regex doesn't start with a space.
-  if t[i &+ 1] == 0x20 || t[i &+ 1] == 0x3D { return false }
+private func regexMayStart(_ t: UnsafePointer<UInt8>, _ i: Int, _ previous: Token?, ruby: Bool = false) -> Bool {
+  // `a / b`: a regex doesn't start with a space, nor `a /= 2`; in Ruby `split(/=/)` and `x = / /` do, where a value
+  // starts (after a value, below, `/` divides).
+  if !ruby, t[i &+ 1] == 0x20 || t[i &+ 1] == 0x3D { return false }
   guard let previous else { return true }
+  // A Ruby line starting with `/` (`/\s*/ === rest`) starts a value.
+  if ruby, t[i &+ 1] != 0x20, memchr(t + previous.end, 0x0A, i &- previous.end) != nil { return true }
   switch previous.kind {
   case .identifier, .number, .string, .close, .interpolationClose: return false
   case .keyword, .declarationKeyword:

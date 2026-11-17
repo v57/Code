@@ -99,8 +99,23 @@ public struct LanguageRules: Sendable {
   public var cppRawStrings = false
   /// `$` ends an identifier, so `$name` and `name` are one name (Shell, Makefile, PHP, Ruby).
   public var dollarIsPunctuation = false
-  /// Identifier bytes besides letters, digits and `_` (`-` in CSS, `!` and `?` in Ruby).
+  /// Identifier bytes besides letters, digits and `_` (`-` in CSS).
   public var extraIdentifierBytes = ""
+  /// Bytes that may end an identifier, once, when no `=` follows (Ruby's `empty?` and `save!`; `a!=b` is `a != b`).
+  public var identifierSuffixes = ""
+  /// `@name`, `@@name`, `$name` and `$!`-style globals are one identifier, the sign included (Ruby).
+  public var sigilNames = false
+  /// `:name` (also `:name?`, `:name=`, `:@name`) is a symbol, one string token, where a value starts: not right after a
+  /// name (`a:b` is a label and a name), and `::` stays a separator (Ruby).
+  public var colonSymbols = false
+  /// A keyword written as a label (`end:`), after `.` or `&.` (`x.class`) or after `def` is a name (Ruby).
+  public var keywordsAsNames = false
+  /// `%w[a b]`, `%i(a)`, `%q{…}`, `%r{…}i`, `%(…)`: one string token where a value starts (Ruby).
+  public var percentLiterals = false
+  /// A here-document's `<<WORD` can't follow a value directly (`a<<b` shifts) or `class` (`class <<self`) (Ruby).
+  public var hereDocumentsAfterOperators = false
+  /// `=begin` … `=end` at a line's start are a comment, and `__END__` alone on a line ends the code (Ruby).
+  public var embeddedDocuments = false
   /// `.`, `?.` and these reach into a value.
   public var memberOperators: Set<String> = []
   /// The language's trailing comma where a list breaks: required (Go) or welcome.
@@ -255,9 +270,17 @@ public struct LanguageRules: Sendable {
       $0.hereDocuments = true
       $0.multilineStrings = true
       $0.regexLiterals = true
+      $0.hereDocumentsAfterOperators = true
       $0.dollarIsPunctuation = true
-      $0.extraIdentifierBytes = "!?"
-      $0.interpolations = [Interpolation(open: "#{", close: 0x7D, strings: ["\""])]
+      $0.identifierSuffixes = "!?"
+      $0.sigilNames = true
+      $0.colonSymbols = true
+      $0.keywordsAsNames = true
+      $0.percentLiterals = true
+      $0.embeddedDocuments = true
+      // `` `ls #{dir}` ``: a command's text.
+      $0.extraStrings = [StringDelim(open: "`", multiline: true)]
+      $0.interpolations = [Interpolation(open: "#{", close: 0x7D, strings: ["\"", "`"])]
       $0.memberOperators = ["::"]
     },
     "Rust": LanguageRules {
