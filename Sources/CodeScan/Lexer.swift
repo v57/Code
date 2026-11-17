@@ -32,6 +32,9 @@ public struct Token: Sendable, Equatable {
     bits = UInt32(truncatingIfNeeded: end &- start) << 8 | UInt32(kind.rawValue)
   }
 
+  /// A token a front end makes when it reads a range again in its own terms (the words of a C directive).
+  @inline(__always) package init(kind: TokenKind, start: Int, end: Int) { self.init(kind, start, end) }
+
   @inline(__always) public var kind: TokenKind { TokenKind(rawValue: UInt8(truncatingIfNeeded: bits))! }
   @inline(__always) public var length: Int { Int(bits >> 8) }
   @inline(__always) public var start: Int { Int(offset) }

@@ -38,10 +38,7 @@ public final class Unit {
     self.source = source
     self.isInterface = isInterface
     self.focusOffset = focusOffset
-    var kept = [Token]()
-    kept.reserveCapacity(source.tokens.count)
-    for token in source.tokens where token.kind != .comment && token.kind != .docComment { kept.append(token) }
-    tokens = kept
+    tokens = syntax.codeTokens(source)
     if let focusOffset {
       var low = 0
       var high = tokens.count
@@ -219,15 +216,16 @@ public final class Unit {
   }
 
   private func takeDirective(_ at: Int, focused: Bool) -> Int {
-    if isToken(at, "#if") || isToken(at, "#elseif") {
-      if isToken(at, "#elseif") { return skipToEndif(at + 1) }
+    let role = syntax.conditional(self, at)
+    if role == .opens || role == .alternative {
+      if role == .alternative { return skipToEndif(at + 1) }
       if focused, focusToken > at, let branch = focusedBranch(at) { return branch }
       var i = at + 1
       let taken = evaluateCondition(&i)
       if taken { return i }
       return skipToBranch(i)
     }
-    if isToken(at, "#else") { return skipToEndif(at + 1) }
+    if role == .otherwise { return skipToEndif(at + 1) }
     return at + 1
   }
 
@@ -238,12 +236,13 @@ public final class Unit {
     var branch = at
     while i < tokens.count, i <= focusToken {
       if tokens[i].kind == .directive {
-        if isToken(i, "#if") {
+        let role = syntax.conditional(self, i)
+        if role == .opens {
           depth += 1
-        } else if isToken(i, "#endif") {
+        } else if role == .closes {
           if depth == 0 { return nil }
           depth -= 1
-        } else if depth == 0, isToken(i, "#else") || isToken(i, "#elseif") {
+        } else if depth == 0, role == .otherwise || role == .alternative {
           branch = i
         }
       }
@@ -255,9 +254,10 @@ public final class Unit {
     var closed = false
     while end < tokens.count {
       if tokens[end].kind == .directive {
-        if isToken(end, "#if") {
+        let role = syntax.conditional(self, end)
+        if role == .opens {
           depth += 1
-        } else if isToken(end, "#endif") {
+        } else if role == .closes {
           if depth == 0 {
             closed = true
             break
@@ -269,7 +269,7 @@ public final class Unit {
     }
     guard closed else { return nil }
     var start = branch + 1
-    if !isToken(branch, "#else") { _ = evaluateCondition(&start) }
+    if syntax.conditional(self, branch) != .otherwise { _ = evaluateCondition(&start) }
     return start
   }
 
@@ -286,7 +286,7 @@ public final class Unit {
       if next > i + 1, next >= tokens.count || offset < tokens[next].start {
         // In what was stepped over, unless that's the condition of a branch that's taken.
         var condition = i + 1
-        if isToken(i, "#if") {
+        if syntax.conditional(self, i) == .opens {
           let taken = evaluateCondition(&condition)
           if taken { return false }
         }
@@ -303,14 +303,15 @@ public final class Unit {
     var depth = 0
     while i < tokens.count {
       if tokens[i].kind == .directive {
-        if isToken(i, "#if") {
+        let role = syntax.conditional(self, i)
+        if role == .opens {
           depth += 1
-        } else if isToken(i, "#endif") {
+        } else if role == .closes {
           if depth == 0 { return i + 1 }
           depth -= 1
-        } else if depth == 0, isToken(i, "#else") {
+        } else if depth == 0, role == .otherwise {
           return i + 1
-        } else if depth == 0, isToken(i, "#elseif") {
+        } else if depth == 0, role == .alternative {
           var j = i + 1
           if evaluateCondition(&j) { return j }
           i = j
@@ -328,9 +329,10 @@ public final class Unit {
     var depth = 0
     while i < tokens.count {
       if tokens[i].kind == .directive {
-        if isToken(i, "#if") {
+        let role = syntax.conditional(self, i)
+        if role == .opens {
           depth += 1
-        } else if isToken(i, "#endif") {
+        } else if role == .closes {
           if depth == 0 { return i + 1 }
           depth -= 1
         }

@@ -12,6 +12,35 @@ package protocol LanguageSyntax: AnyObject {
   func evaluateCondition(_ unit: Unit, _ i: inout Int) -> Bool
   /// Whether a parameter's name can follow an argument label (`label name`): that word is the same parameter's.
   var parametersHaveLabels: Bool { get }
+  /// The tokens a unit reads: the source's without comments, unless the language reads some again (a C directive's
+  /// line becomes its words).
+  func codeTokens(_ source: SourceFile) -> [Token]
+  /// Which part of conditional compilation a directive token is.
+  func conditional(_ unit: Unit, _ i: Int) -> ConditionalDirective
+}
+
+/// A directive's part in conditional compilation: `#if` (C's `#ifdef` and `#ifndef` too), `#elseif` (C's `#elif`),
+/// `#else`, `#endif`, or none of them.
+package enum ConditionalDirective {
+  case none, opens, alternative, otherwise, closes
+}
+
+extension LanguageSyntax {
+  package func codeTokens(_ source: SourceFile) -> [Token] {
+    var kept = [Token]()
+    kept.reserveCapacity(source.tokens.count)
+    for token in source.tokens where token.kind != .comment && token.kind != .docComment { kept.append(token) }
+    return kept
+  }
+
+  /// Swift's spellings.
+  package func conditional(_ unit: Unit, _ i: Int) -> ConditionalDirective {
+    if unit.isToken(i, "#if") { return .opens }
+    if unit.isToken(i, "#endif") { return .closes }
+    if unit.isToken(i, "#else") { return .otherwise }
+    if unit.isToken(i, "#elseif") { return .alternative }
+    return .none
+  }
 }
 
 /// What a language's front end gives the core about a project: which files make which module, and where a module an
