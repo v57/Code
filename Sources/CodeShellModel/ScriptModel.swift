@@ -110,7 +110,7 @@ public final class ScriptModel: LanguageModel {
         if decl.name != 0 { made.functions[decl.name, default: []].append(at) }
       case .typeAlias:
         made.aliases[decl.name, default: []].append(at)
-      case .variable where decl.isLocal || parameters.contains(at):
+      case .variable where decl.isLocal || (parameters.contains(at) && decl.parent >= 0):
         made.locals[decl.parent, default: [:]][decl.name, default: []].append(at)
       case .variable where decl.parent < 0:
         made.globals[decl.name, default: []].append(at)
@@ -251,7 +251,8 @@ public final class ScriptModel: LanguageModel {
         let values = sites.compactMap { facts.values[$0] }
         if values.count == 1, let value = values.first, value.start < value.end, Int(value.end) <= holder.tokens.count {
           let written = holder.source.string(from: holder.tokens[Int(value.start)].start, to: holder.tokens[Int(value.end) - 1].end)
-          guard var pattern = ShellParser.pathPattern(written, dialect: dialect) else { return nil }
+          let read = dialect == .shell ? ShellParser.pathPattern(written, dialect: .shell) : PowerShellParser.valuePattern(written)
+          guard var pattern = read else { return nil }
           // A value relative to its own script's folder, read from another file: made absolute there.
           if pattern.hasPrefix("\u{1}"), next != unitIndex {
             pattern = (holder.path as NSString).deletingLastPathComponent + pattern.dropFirst()
@@ -279,7 +280,10 @@ public final class ScriptModel: LanguageModel {
       guard seen.insert(next).inserted else { continue }
       order.append(next)
       if order.count > 400 { break }
-      for target in targets(next) { if let target { queue.append(target) } }
+      let sources = file(next)?.sources ?? []
+      for (k, target) in targets(next).enumerated() where k < sources.count && sources[k].kind == .source {
+        if let target { queue.append(target) }
+      }
     }
     forwardCache[unitIndex] = order
     return order
@@ -298,7 +302,8 @@ public final class ScriptModel: LanguageModel {
       var u: Int32 = 0
       while Int(u) < project.units.count {
         if !project.units[Int(u)].isInterface {
-          for target in targets(u) {
+          let sources = file(u)?.sources ?? []
+          for (k, target) in targets(u).enumerated() where k < sources.count && sources[k].kind == .source {
             if let target, target != u, !(map[target]?.contains(u) ?? false) { map[target, default: []].append(u) }
           }
           // zsh's function files in the folders a script adds to `fpath`: read as its functions.
@@ -367,7 +372,9 @@ public final class ScriptModel: LanguageModel {
         guard Int(source) < facts.sources.count, let target = targets(unitIndex)[Int(source)] else { return Self.unknown }
         return Answer(state: .exact, sites: [.local(unit: target, token: -1)])
       case .parameter(let command):
-        return parameterAnswer(holder.key(token, dialect), command: Int(command), in: unitIndex)
+        return parameterAnswer(token, command: Int(command), in: unitIndex)
+      case .this(let type):
+        return Answer(state: .exact, sites: [.decl(DeclRef(unit: unitIndex, decl: type))])
       case .member(let receiver):
         return memberAnswer(holder.key(token, dialect), receiver: receiver, in: unitIndex)
       case .staticMember(let type):
@@ -385,7 +392,7 @@ public final class ScriptModel: LanguageModel {
   /// A declaration's own name: itself, or a variable's every assignment.
   func declarationAnswer(_ ref: DeclRef) -> Answer {
     let found = decl(ref)
-    if found.kind == .variable, !found.isLocal, found.parent < 0, !(file(ref.unit)?.parameters.contains(ref.decl) ?? false) {
+    if found.kind == .variable, !found.isLocal, found.parent < 0 {
       let all = globalAnswer(found.name, in: ref.unit)
       if all.state != .unknown { return all }
     }
@@ -536,7 +543,8 @@ public final class ScriptModel: LanguageModel {
       switch site {
       case .decl(let ref):
         keys.insert(decl(ref).name)
-        if decl(ref).isLocal, answer.sites.count == 1 { restrict = ref.unit }
+        // A local is read only in its file, except a parameter: its name is also `-Name` at calls in other files.
+        if decl(ref).isLocal, answer.sites.count == 1, !(file(ref.unit)?.parameters.contains(ref.decl) ?? false) { restrict = ref.unit }
       case .local(let unitIndex, -1):
         if let key = functionFiles[unitIndex] { keys.insert(key) }
       default:
@@ -597,6 +605,7 @@ public final class ScriptModel: LanguageModel {
     let holder = unit(ref)
     let found = decl(ref)
     let own = holder.string(Int(found.nameToken))
+    if dialect == .powerShell, found.name == lowerName("env:" + own) { return "env:" + own }
     guard found.parent >= 0 else { return own }
     return holder.string(Int(holder.decls[Int(found.parent)].nameToken)) + "." + own
   }

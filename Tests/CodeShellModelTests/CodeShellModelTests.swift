@@ -265,3 +265,152 @@ final class Scripts {
     #expect(s.complete("de7", typed: 2).isEmpty)
   }
 }
+
+@Suite struct PowerShellDefinitions {
+  @Test func functionsParametersAndScopes() throws {
+    let s = try Scripts(
+      [
+        "helpers.ps1": "<#\n.SYNOPSIS\nFormats a name.\n.PARAMETER Value\nThe name.\n#>\nfunction Format-Name { param($Value) \"[$Value]\" }\n",
+        "main.ps1": """
+          param([string]$Config = "Debug")
+          . "$PSScriptRoot/^^helpers.ps1"
+          $script:Count = 0
+          function Invoke-Step {
+              [CmdletBinding()]
+              param($Name)
+              $script:^^Count++
+              $label = "$^^Name/$^^Config"
+              Invoke-Command -ScriptBlock { Write-Output $using:^^label }
+              ^^Show-Label
+          }
+          function Show-Label { Write-Output $^^label }
+          ^^Invoke-Step -^^N one -^^Verbose
+          $env:BUILD_MODE = 'ci'
+          ^^Write-Output $env:^^BUILD_MODE $^^Count $^^Unset
+          ^^Format-Name -^^Value x
+          ^^gci | ^^Get-Thing
+          """,
+      ], dialect: .powerShell)
+    #expect(s.exact("helpers") == "helpers.ps1:1")
+    #expect(s.exact("Count") == "main.ps1:3")
+    #expect(s.exact("Count2") == "main.ps1:3")
+    #expect(s.exact("Name") == "main.ps1:6")
+    #expect(s.exact("Config") == "main.ps1:1")
+    #expect(s.exact("label") == "main.ps1:8")
+    #expect(s.exact("Show-Label") == "main.ps1:12")
+    // Show-Label's $label: Invoke-Step's local when it calls, else nothing in the script: a candidate, never exact.
+    #expect(s.answer("label2").state != .exact)
+    #expect(s.exact("Invoke-Step") == "main.ps1:4")
+    // A unique prefix of a parameter, and a common parameter of an advanced function.
+    #expect(s.exact("N") == "main.ps1:6")
+    #expect(s.exact("Verbose") == "ps:CommonParameters.Verbose")
+    #expect(s.exact("BUILD_MODE") == "main.ps1:14")
+    #expect(s.answer("Unset").state == .unknown)
+    #expect(s.exact("Format-Name") == "helpers.ps1:7")
+    #expect(s.exact("Value") == "helpers.ps1:7")
+    // Cmdlets and their aliases from the marked stub.
+    #expect(s.exact("Write-Output") == "ps:Write-Output")
+    #expect(s.exact("gci") == "ps:gci")
+    #expect(s.answer("Get-Thing").state == .unknown)
+    #expect(s.details("Format-Name")?.documentation == "Formats a name.")
+    #expect(s.details("Value")?.documentation == "The name.")
+  }
+
+  @Test func modulesAndTheirExports() throws {
+    let s = try Scripts(
+      [
+        "Tools/Tools.psd1": "@{\n    RootModule = 'Tools.psm1'\n    NestedModules = @('Extra.psm1')\n    FunctionsToExport = @('Get-Tool', 'Get-Extra')\n}\n",
+        "Tools/Tools.psm1": "function Get-Tool {\n    param([string]$Name, [int]$Version)\n}\nfunction Hidden-Helper { }\n",
+        "Tools/Extra.psm1": "function Get-Extra { }\n",
+        "lib/Log.psm1": "function Write-Note { param([string]$Text) }\nfunction Write-Hidden { }\nExport-ModuleMember -Function Write-N*\n",
+        "build.ps1": """
+          Import-Module (Join-Path $PSScriptRoot 'Tools/^^Tools.psd1') -Force
+          Import-Module "$PSScriptRoot/lib/Log.psm1"
+          ^^Write-Note "start"
+          ^^Get-Tool -^^Name hammer -^^Vers 2
+          ^^Hidden-Helper
+          ^^Write-Hidden "x"
+          ^^Get-Extra
+          """,
+      ], dialect: .powerShell)
+    #expect(s.exact("Tools") == "Tools/Tools.psd1:1")
+    #expect(s.exact("Write-Note") == "lib/Log.psm1:1")
+    #expect(s.exact("Get-Tool") == "Tools/Tools.psm1:1")
+    #expect(s.exact("Name") == "Tools/Tools.psm1:2")
+    #expect(s.exact("Vers") == "Tools/Tools.psm1:2")
+    #expect(s.exact("Get-Extra") == "Tools/Extra.psm1:1")
+    // Not exported: unknown, not the module's function.
+    #expect(s.answer("Hidden-Helper").state == .unknown)
+    #expect(s.answer("Write-Hidden").state == .unknown)
+  }
+
+  @Test func classesMembersAndStatics() throws {
+    let s = try Scripts(
+      [
+        "Base.ps1": "class Task {\n    [string]$Name\n    [void] Run() { Write-Host $this.Name }\n}\n",
+        "app.ps1": """
+          . $PSScriptRoot\\Base.ps1
+          enum Level { Low; High = 5 }
+          class Job : ^^Task {
+              [Level]$Level = [^^Level]::^^Low
+              static [int]$Made = 0
+              Job([string]$name) { $this.^^Name = $name; [Job]::^^Made++ }
+              [string] Describe() { return "$($this.^^Level)" }
+          }
+          [Job]$job = [Job]::^^new("a")
+          $job.^^Run()
+          $other = New-Object Job -ArgumentList "b"
+          $other.^^Describe()
+          $copy = $job
+          $copy.^^Level
+          $unknown.^^Run()
+          [System.IO.Path]::^^GetFileName("x")
+          """,
+      ], dialect: .powerShell)
+    #expect(s.exact("Task") == "Base.ps1:1")
+    #expect(s.exact("Level") == "app.ps1:2")
+    #expect(s.exact("Low") == "app.ps1:2")
+    #expect(s.exact("Name") == "Base.ps1:2")
+    #expect(s.exact("Made") == "app.ps1:5")
+    #expect(s.exact("Level2") == "app.ps1:4")
+    #expect(s.exact("new") == "app.ps1:6")
+    #expect(s.exact("Run") == "Base.ps1:3")
+    #expect(s.exact("Describe") == "app.ps1:7")
+    #expect(s.exact("Level3") == "app.ps1:4")
+    // No type known, and .NET types aren't modelled: unknown rather than a guess.
+    #expect(s.answer("Run2").state == .unknown)
+    #expect(s.answer("GetFileName").state == .unknown)
+  }
+}
+
+@Suite struct PowerShellCompletion {
+  @Test func parametersMembersAndEnvironment() throws {
+    let s = try Scripts(
+      [
+        "c.ps1": """
+          class Box {
+              [int]$Width
+              [int] Area() { return 1 }
+              static [Box] Make() { return [Box]::new() }
+          }
+          function Get-Tool { [CmdletBinding()] param([string]$Name, [int]$Version) }
+          $env:BUILD_MODE = 'ci'
+          $box = [Box]::new()
+          Get-Tool -^^
+          $box.^^W
+          [Box]::^^M
+          $env:^^BU
+          $script:^^bo
+          ^^Get-T
+          """
+      ], dialect: .powerShell)
+    let parameters = s.complete("")
+    #expect(parameters.prefix(2).sorted() == ["Name", "Version"])
+    #expect(parameters.contains("Verbose"))
+    #expect(s.complete("W", typed: 1) == ["Width"])
+    #expect(s.complete("M", typed: 1).contains("Make"))
+    #expect(s.complete("BU", typed: 2).first == "BUILD_MODE")
+    #expect(s.complete("bo", typed: 2).first == "box")
+    #expect(s.complete("Get-T", typed: 5).first == "Get-Tool")
+  }
+}

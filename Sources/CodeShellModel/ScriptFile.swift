@@ -15,6 +15,8 @@ enum ScriptUse {
   case environment
   /// A sourced file's path (`source ./x.sh`, `. "$PSScriptRoot/x.ps1"`, `Import-Module ./M.psm1`): `ScriptFile.sources`.
   case path(Int32)
+  /// `$this` in a class's method or property: the class's declaration.
+  case this(class: Int32)
   /// A command's parameter at a call (`Get-Foo -Name x`): the command's name token.
   case parameter(command: Int32)
   /// `value.name` (PowerShell): the receiver's expression in `ScriptFile.exprs`.
@@ -27,7 +29,9 @@ enum ScriptUse {
 
 /// A file a script reads with its code: `source`, `.`, PowerShell's dot-sourcing and `Import-Module`, zsh's `fpath`.
 struct ScriptSource {
-  enum Kind: UInt8 { case source, module, functionFolder }
+  /// `source`: read into the script (its functions and variables are the script's); `module`: imported, its exported
+  /// functions only; `functionFolder`: zsh's `fpath`; `run`: a script run as a command (`& ./x.ps1`), only a path.
+  enum Kind: UInt8 { case source, module, functionFolder, run }
   var kind: Kind
   /// The path's first and last token (a word can be several).
   var first: Int32
@@ -43,7 +47,7 @@ struct ScriptSource {
 enum ScriptExpr {
   /// `$x`: the name token.
   case variable(Int32)
-  /// `$this`.
+  /// `$this`: the class's declaration.
   case this(Int32)
   /// `base.name` or `base.name(…)`: the base expression and the name's token.
   case member(Int32, Int32)
@@ -80,6 +84,10 @@ final class ScriptFile: BodyFacts {
   var declaredTypes: [Int32: (Int32, Int32)] = [:]
   /// PowerShell's `Export-ModuleMember -Function a, b` (names lowercased, hashed); nil when the module exports all.
   var exportedFunctions: Set<Name>?
+  /// `Export-ModuleMember -Function Get-*`: wildcard patterns, lowercased.
+  var exportPatterns: [String] = []
+  /// A class's base and interfaces: their name tokens (first, last).
+  var bases: [Int32: [(Int32, Int32)]] = [:]
   /// A module manifest's (`.psd1`) `RootModule`/`NestedModules` and `FunctionsToExport`.
   var manifestModules: [String] = []
   var manifestFunctions: Set<Name>?

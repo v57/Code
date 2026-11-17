@@ -58,6 +58,7 @@ extension ScriptModel {
     }
     // `for name`, `select name`: a name being declared.
     if dialect == .shell, let anchor = site.anchor, anchor > 0, holder.isToken(anchor - 1, "for") || holder.isToken(anchor - 1, "select") { return nothing }
+    if dialect == .powerShell, let list = powerShellCompletion(unitIndex, facts: facts, site: site, typed: typed, finish: finish) { return list }
     if followsDollar(holder, start) { return finish(variableHits(unitIndex, token: token, typed: typed), .scope) }
     if let anchor = site.anchor, let use = facts.uses[Int32(anchor)] {
       switch use {
@@ -131,7 +132,10 @@ extension ScriptModel {
     let word = holder.string(before)
     switch token.kind {
     case .punctuation:
-      if let last = word.utf8.last, last == 0x3B || last == 0x7C || last == 0x26 || last == 0x60 { return true }
+      // A backtick is shell's command substitution, PowerShell's line continuation.
+      if let last = word.utf8.last, last == 0x3B || last == 0x7C || last == 0x26 || (last == 0x60 && dialect == .shell) { return true }
+      // PowerShell: after an assignment (`$x = Get-…`).
+      if dialect == .powerShell, ["=", "+=", "-=", "*=", "/=", "%=", "??="].contains(word) { return true }
       if word == "!" { return startsCommand(holder, before: before - 1, offset: token.start) }
     case .close:
       // A `case` pattern's `)`: it has no `(`.
@@ -142,11 +146,15 @@ extension ScriptModel {
       if before > 0, tokens[before - 1].end == token.start, holder.string(before - 1) == "$", word == "{" { return false }
       if before > 0, tokens[before - 1].end == token.start, holder.string(before - 1) == "(" { return false }
       return true
+    case .interpolationOpen:
+      // `"…$(cmd…"`.
+      return word == "$(" || word == "@("
     case .keyword, .declarationKeyword:
-      if Self.commandLeaders.contains(word) { return true }
+      if Self.commandLeaders.contains(word) || (dialect == .powerShell && ["return", "throw"].contains(word.lowercased())) { return true }
     default:
       break
     }
+    guard dialect == .shell else { return false }
     // An assignment before the command (`FOO=1 cmd`): the word it's in, then what's before that.
     var first = before
     var depth = 0
@@ -235,14 +243,17 @@ extension ScriptModel {
         for ref in localsOfCallers(key, of: own) { add(ref, score: 80, typed: typed, kind: .variable, into: &hits, seen: &seen) }
       }
     }
+    // `$env:X` is listed after `$env:` only.
     for u in program(unitIndex) {
       for (_, sites) in index(u).globals {
-        if let at = sites.first { add(DeclRef(unit: u, decl: at), score: u == unitIndex ? 50 : 100, typed: typed, kind: .variable, into: &hits, seen: &seen) }
+        if let at = sites.first, !isEnvironment(DeclRef(unit: u, decl: at)) {
+          add(DeclRef(unit: u, decl: at), score: u == unitIndex ? 50 : 100, typed: typed, kind: .variable, into: &hits, seen: &seen)
+        }
       }
     }
     if let stub = stubUnit {
       for (_, sites) in index(stub).globals {
-        guard let at = sites.first, stubFits(DeclRef(unit: stub, decl: at), unitIndex) else { continue }
+        guard let at = sites.first, stubFits(DeclRef(unit: stub, decl: at), unitIndex), !isEnvironment(DeclRef(unit: stub, decl: at)) else { continue }
         add(DeclRef(unit: stub, decl: at), score: 200, typed: typed, kind: .variable, into: &hits, seen: &seen)
       }
     }
@@ -287,6 +298,16 @@ extension ScriptModel {
         }
       }
     }
+    if dialect == .powerShell {
+      // What the imported modules export.
+      for module in importedModules(unitIndex) {
+        for u in moduleFiles(module) {
+          for (key, sites) in index(u).functions where !exportedFunctions(key, of: module).isEmpty {
+            if let at = sites.first { add(DeclRef(unit: u, decl: at), score: 60, typed: typed, kind: .function, into: &hits, seen: &seen) }
+          }
+        }
+      }
+    }
     for u in program {
       for (_, sites) in index(u).aliases {
         if let at = sites.first { add(DeclRef(unit: u, decl: at), score: 70, typed: typed, kind: .function, into: &hits, seen: &seen) }
@@ -301,9 +322,9 @@ extension ScriptModel {
         if let at = sites.first { add(DeclRef(unit: stub, decl: at), score: 210, typed: typed, kind: .function, into: &hits, seen: &seen) }
       }
     }
-    if dialect == .shell {
+    do {
       let isZsh = file(unitIndex)?.isZsh ?? false
-      for word in Self.shellKeywords + (isZsh ? Self.zshKeywords : []) {
+      for word in dialect == .powerShell ? Self.powerShellKeywords : Self.shellKeywords + (isZsh ? Self.zshKeywords : []) {
         if let match = matchClass(typed, word.utf8[...]) { hits.append(ModelCompletionHit(name: word, match: match, score: 250, ref: nil, kind: .keyword)) }
       }
     }
@@ -316,10 +337,14 @@ extension ScriptModel {
     if let ref = hit.ref {
       let holder = unit(ref)
       module = moduleText(holder)
-      switch decl(ref).kind {
+      let found = decl(ref)
+      let inClass = found.parent >= 0 && holder.decls[Int(found.parent)].kind == .classType
+      switch found.kind {
       case .typeAlias: detail = "alias"
-      case .function: detail = holder.isInterface ? (dialect == .shell ? "builtin" : "cmdlet") : "function"
-      default: detail = decl(ref).isLocal ? "local" : ""
+      case .function: detail = inClass ? "method" : holder.isInterface ? (dialect == .shell ? "builtin" : "cmdlet") : "function"
+      case .enumCase: detail = ""
+      default:
+        detail = file(ref.unit)?.parameters.contains(ref.decl) == true ? "parameter" : inClass ? "property" : found.isLocal ? "local" : ""
       }
     }
     return ModelCompletionEntry(
