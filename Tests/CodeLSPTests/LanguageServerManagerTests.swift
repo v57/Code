@@ -53,4 +53,24 @@ import Testing
     #expect(FolderTrust.contains([FolderTrust.path(real)], link))
     #expect(!FolderTrust.contains([link.path], real))
   }
+
+  /// A server's command is looked up on the environment's PATH as the system's shell does (";" and `.exe` on Windows).
+  @Test func serverCommandOnThePath() throws {
+    let bin = FileManager.default.temporaryDirectory.appendingPathComponent("Path-\(UUID().uuidString)")
+    defer { try? FileManager.default.removeItem(at: bin) }
+    try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+    #if os(Windows)
+      let tool = bin.appendingPathComponent("gopls.exe")
+      let path = #"C:\nowhere;"# + bin.path
+    #else
+      let tool = bin.appendingPathComponent("gopls")
+      let path = "/nowhere:" + bin.path
+    #endif
+    try "".write(to: tool, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: tool.path)
+    let manager = LanguageServerManager(workspace: bin, environment: ["PATH": path])
+    let gopls = try #require(LanguageServerCatalog.all.first { $0.id == "gopls" })
+    #expect(manager.executable(for: gopls) == tool.path)
+    #expect(ExecutableSearch.find("gopls", environment: ["PATH": "/nowhere"]) == nil)
+  }
 }

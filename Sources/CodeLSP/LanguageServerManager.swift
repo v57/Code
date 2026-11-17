@@ -73,15 +73,7 @@
     /// The full path of a server's command, or nil when it isn't installed.
     public func executable(for configuration: LanguageServerConfiguration) -> String? {
       if configuration.install == .builtIn { return Self.builtInExecutable }
-      return Self.which(configuration.command, path: environment["PATH"] ?? "")
-    }
-
-    nonisolated static func which(_ command: String, path: String) -> String? {
-      for directory in path.split(separator: ":") {
-        let candidate = "\(directory)/\(command)"
-        if FileManager.default.isExecutableFile(atPath: candidate) { return candidate }
-      }
-      return nil
+      return ExecutableSearch.find(configuration.command, environment: environment)
     }
 
     /// The server configuration for a file, when servers are on: the first enabled one that's installed (the built-in

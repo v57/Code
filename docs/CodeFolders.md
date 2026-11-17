@@ -2,7 +2,7 @@
 
 ## Purpose
 
-CodeFolders holds three small things that [CodeActions](CodeActions.md), [CodeWorkspace](CodeWorkspace.md),
+CodeFolders holds the small things that [CodeActions](CodeActions.md), [CodeWorkspace](CodeWorkspace.md),
 [CodeLSP](CodeLSP.md) and [CodeKit](CodeKit.md) share about a folder:
 
 - **Folder trust** (`FolderTrust`): whether a folder's own code may run. A cloned repository can name tools that run
@@ -12,6 +12,8 @@ CodeFolders holds three small things that [CodeActions](CodeActions.md), [CodeWo
 - **Folder scope** (`FolderScope`): the home folder and the folders above it are never walked.
 - **Project containers** (`ProjectContainer`): a folder's Xcode workspaces, projects and Swift package, one of which
   its schemes and dependencies come from.
+- **Commands on the PATH** (`ExecutableSearch`): where a tool is, as the system's shell finds it, for CodeActions'
+  `ShellEnvironment` and CodeLSP's servers.
 
 CodeFolders is not a sandbox: it decides nothing on its own and blocks nothing itself. The other libraries ask it
 before they run a folder's code. It doesn't store anything either: the host gives trust a store. It has no
@@ -95,6 +97,17 @@ each with a `title` and `symbolName`), `name` (the file's name without its exten
 ```swift
 let containers = ProjectContainer.list(entries: ["App.xcodeproj", "Package.swift", "README.md"], in: folder)
 let used = ProjectContainer.effective(picked: nil, in: containers)  // App.xcodeproj
+```
+
+### Commands on the PATH
+
+`ExecutableSearch.find(_:in:)` returns the full path of a tool in the first folder that has it, or nil;
+`find(_:environment:)` searches an environment's PATH. `pathValue(in:)` reads the PATH (`Path`, in any case, on
+Windows) and `folders(inPath:)` splits it (`;` on Windows, `:` elsewhere). On Windows a name also matches with `.exe`,
+`.cmd` or `.bat` after it; elsewhere the file must be executable. A path is taken as it is when it exists.
+
+```swift
+ExecutableSearch.find("gopls", environment: ProcessInfo.processInfo.environment)  // "/opt/homebrew/bin/gopls"
 ```
 
 ## Testing

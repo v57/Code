@@ -1,3 +1,4 @@
+import CodeFolders
 import Foundation
 
 #if os(Windows) || os(Linux)
@@ -22,40 +23,10 @@ public final class ShellEnvironment: @unchecked Sendable {
     self.init(variables: Self.load())
   }
 
-  public var path: [String] {
-    #if os(Windows)
-      // Windows names it Path, and separates folders with ";".
-      let value = variables.first { $0.key.uppercased() == "PATH" }?.value ?? ""
-      return value.split(separator: ";").map(String.init)
-    #else
-      return (variables["PATH"] ?? "").split(separator: ":").map(String.init)
-    #endif
-  }
+  public var path: [String] { ExecutableSearch.folders(inPath: ExecutableSearch.pathValue(in: variables)) }
 
   /// The full path of `tool` on the PATH, or nil.
-  public func which(_ tool: String) -> String? {
-    #if os(Windows)
-      let fileManager = FileManager.default
-      if tool.contains("\\") || tool.contains(":") { return fileManager.fileExists(atPath: tool) ? tool : nil }
-      for directory in path {
-        for suffix in ["", ".exe", ".cmd", ".bat"] {
-          let candidate = URL(fileURLWithPath: directory).appendingPathComponent(tool + suffix).path
-          var isDirectory: ObjCBool = false
-          if fileManager.fileExists(atPath: candidate, isDirectory: &isDirectory), !isDirectory.boolValue {
-            return candidate
-          }
-        }
-      }
-      return nil
-    #else
-      if tool.hasPrefix("/") { return FileManager.default.isExecutableFile(atPath: tool) ? tool : nil }
-      for directory in path {
-        let candidate = directory + "/" + tool
-        if FileManager.default.isExecutableFile(atPath: candidate) { return candidate }
-      }
-      return nil
-    #endif
-  }
+  public func which(_ tool: String) -> String? { ExecutableSearch.find(tool, in: path) }
 
   /// The Android SDK: $ANDROID_HOME, $ANDROID_SDK_ROOT or Android Studio's
   /// default location.
