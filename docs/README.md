@@ -95,10 +95,11 @@ tests.
 | [CodePHPModel](CodePHPModel.md) | A PHP code model from source (namespaces, Composer's autoloading read in place, a stub of PHP's functions and classes): definitions, completions, references | macOS, Linux, Windows, iOS | `import CodePHPModel` |
 | [CodeRubyModel](CodeRubyModel.md) | A Ruby code model from source (classes reopened across files, gems from `Gemfile.lock` read in place, a stub of the core classes generated from rbs): definitions, completions, references | macOS, Linux, Windows, iOS | `import CodeRubyModel` |
 | [CodeScalaModel](CodeScalaModel.md) | A Scala 2 and 3 code model from source (sbt, Mill and scala-cli layouts on Java's, mixed Java files, a hand-written stub of the standard library): definitions, completions, references | macOS, Linux, Windows, iOS | `import CodeScalaModel` |
+| [CodeLuaModel](CodeLuaModel.md) | A Lua 5.1-5.4 code model from source (locals by Lua's scoping, globals over the program, `require` through `.luarc.json`'s paths, metatables and `__index`, LuaLS annotations, a hand-written stub of the standard library): definitions, completions, references | macOS, Linux, Windows, iOS | `import CodeLuaModel` |
 
 The package also builds four tools: `code-lsp` (CodeServer's server on standard input and output), `code-pretty`
 (CodePretty over files and folders), `swift-model` (measures CodeSwiftModel on a project) and `code-model` (measures
-any language's model, Swift's, Go's, TypeScript's, C's, Python's, Rust's, Java's, Kotlin's, C#'s, Dart's, PHP's, Ruby's or Scala's, chosen by the files or `--language`). Android is not supported
+any language's model, Swift's, Go's, TypeScript's, C's, Python's, Rust's, Java's, Kotlin's, C#'s, Dart's, PHP's, Ruby's, Scala's or Lua's, chosen by the files or `--language`). Android is not supported
 yet by any library.
 
 Run every test with `swift test` at the repository root.

@@ -163,6 +163,16 @@ Libraries
                        standard library; definitions, completions,
                        references and details (numbers in
                        ../Demos/CodeModelBench/scala)
+    CodeLuaModel       a Lua 5.1-5.4 code model on CodeModel from source:
+                       locals by Lua's scoping, globals over the program,
+                       require through .luarc.json's paths and the usual
+                       ones, tables, setmetatable and __index chains as
+                       classes, self in methods, LuaLS annotations
+                       (---@class, ---@type, ---@return); host globals
+                       (love, game) left unknown; a hand-written stub of
+                       the standard library; definitions, completions,
+                       references and details (numbers in
+                       ../Demos/CodeModelBench/lua)
     CodeKit            re-exports them all; CodeEditorView(document:) edits a
                        workspace document (autosave, reload, ⌘S trimming,
                        minimap, issues, breakpoints); ProjectServices connects
