@@ -1,3 +1,4 @@
+import CodeFolders
 import CodeHighlighting
 import Foundation
 import Observation
@@ -472,8 +473,8 @@ import Observation
   }
 
   private func watchPackageCheckouts() {
-    let derivedData = URL(fileURLWithPath: NSHomeDirectory())
-      .appendingPathComponent("Library/Developer/Xcode/DerivedData")
+    // Where Xcode's Settings › Locations puts DerivedData, for a project in this folder.
+    let derivedData = XcodeDerivedData.root(nextTo: root)
     checkoutsWatcher = FileWatcher(root: derivedData, latency: 1, fileEvents: false) { [weak self] changes in
       guard changes.contains(where: { $0.rescan || $0.url.path.contains("/SourcePackages/checkouts") })
       else { return }

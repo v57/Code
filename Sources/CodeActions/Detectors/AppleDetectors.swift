@@ -1,10 +1,6 @@
 import CodeFolders
 import Foundation
 
-#if os(macOS)
-  import CryptoKit
-#endif
-
 /// What an Upload to App Store asks before it starts: the build number it carries, which App Store Connect wants higher
 /// than the last one uploaded. Passed to the action in its environment.
 public enum AppStoreUpload {
@@ -471,7 +467,8 @@ enum PackageCheckouts {
     guard let pins = pins(in: resolved) else { return false }
     if pins.isEmpty { return true }
     #if os(macOS)
-      let sourcePackages = derivedData(of: container, in: derivedDataRoot(for: container))
+      let sourcePackages = XcodeDerivedData.folder(
+        of: container, in: XcodeDerivedData.root(nextTo: container.deletingLastPathComponent()))
         .appendingPathComponent("SourcePackages")
       guard let state = try? Data(contentsOf: sourcePackages.appendingPathComponent("workspace-state.json")) else {
         return false
@@ -558,42 +555,6 @@ enum PackageCheckouts {
     return (state.object.artifacts ?? []).allSatisfy { files.fileExists(atPath: $0.path) }
   }
 
-  #if os(macOS)
-    /// Xcode's DerivedData folder: Settings › Locations' custom one (relative to the container's folder when
-    /// relative), else `~/Library/Developer/Xcode/DerivedData`.
-    static func derivedDataRoot(for container: URL) -> URL {
-      if let custom = UserDefaults(suiteName: "com.apple.dt.Xcode")?.string(forKey: "IDECustomDerivedDataLocation"),
-        !custom.isEmpty
-      {
-        let path = (custom as NSString).expandingTildeInPath
-        return path.hasPrefix("/")
-          ? URL(fileURLWithPath: path) : container.deletingLastPathComponent().appendingPathComponent(path)
-      }
-      return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Developer/Xcode/DerivedData")
-    }
-
-    /// The container's folder in DerivedData: its name and a hash of its standardized path (`/private/tmp` is `/tmp`),
-    /// as Xcode and xcodebuild name it.
-    static func derivedData(of container: URL, in root: URL) -> URL {
-      let path = (container.path as NSString).standardizingPath
-      let name = (path as NSString).lastPathComponent
-      return root.appendingPathComponent("\((name as NSString).deletingPathExtension)-\(derivedDataHash(path))")
-    }
-
-    /// Xcode's DerivedData hash: the path's MD5, each 64-bit half (big-endian) as 14 base-26 letters.
-    static func derivedDataHash(_ path: String) -> String {
-      let digest = Array(Insecure.MD5.hash(data: Data(path.utf8)))
-      return [digest[0..<8], digest[8..<16]].map { half in
-        var value = half.reduce(UInt64(0)) { $0 << 8 | UInt64($1) }
-        var letters = [Character](repeating: "a", count: 14)
-        for index in (0..<14).reversed() {
-          letters[index] = Character(UnicodeScalar(UInt8(97 + value % 26)))
-          value /= 26
-        }
-        return String(letters)
-      }.joined()
-    }
-  #endif
 }
 
 /// A Swift package: a scheme per executable product, or one for the whole

@@ -26,8 +26,8 @@ private final class Fixture {
     try contents.write(to: url, atomically: true, encoding: .utf8)
   }
 
-  func scan(_ environment: [String: String] = [:], container: String? = nil) -> [PackageDependency] {
-    DependencyScanner.scan(root, container: container, home: home, environment: environment)
+  func scan(_ environment: [String: String] = [:], container: String? = nil, derivedData: String? = nil) -> [PackageDependency] {
+    DependencyScanner.scan(root, container: container, home: home, environment: environment, derivedDataLocation: derivedData)
   }
 }
 
@@ -124,6 +124,25 @@ private func summary(_ dependencies: [PackageDependency]) -> [String] {
     let found = fixture.scan()
     #expect(summary(found) == ["Alamofire 5.9.0"])
     #expect(found[0].location?.path.contains("App-abc/SourcePackages/checkouts/Alamofire") == true)
+  }
+
+  /// Xcode's Settings › Locations: a custom DerivedData folder, absolute or relative to the project's folder.
+  @Test func xcodeCheckoutsInACustomDerivedData() throws {
+    for (location, derived) in [("~/Fast/DD", "~/Fast/DD/App-abc/"), ("DD", "DD/App-abc/")] {
+      let fixture = try Fixture()
+      try fixture.file("App.xcodeproj/project.pbxproj", "")
+      try fixture.file(
+        "App.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved",
+        #"{"pins": [{"identity": "kit", "location": "https://example.com/Kit.git", "state": {"version": "1.0.0"}}], "version": 2}"#)
+      let plist = try PropertyListSerialization.data(
+        fromPropertyList: ["WorkspacePath": fixture.root.appendingPathComponent("App.xcodeproj").path], format: .xml,
+        options: 0)
+      try fixture.file(derived + "info.plist", String(decoding: plist, as: UTF8.self))
+      try fixture.file(derived + "SourcePackages/checkouts/Kit/Package.swift")
+      let path = location.hasPrefix("~") ? fixture.home.path + location.dropFirst() : location
+      #expect(fixture.scan(derivedData: path)[0].location?.path.contains("App-abc/SourcePackages/checkouts/Kit") == true)
+      #expect(fixture.scan()[0].location == nil)
+    }
   }
 
   @Test func nodeRustAndGo() throws {

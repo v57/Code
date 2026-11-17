@@ -452,10 +452,17 @@ import Testing
     #expect(
       PackageCheckouts.resolvedFile(of: URL(fileURLWithPath: "/tmp/App/App.xcworkspace")).path
         == "/tmp/App/App.xcworkspace/xcshareddata/swiftpm/Package.resolved")
+    // Settings › Locations: the default, a custom absolute or ~ location, or one relative to the workspace's folder.
+    let appFolder = URL(fileURLWithPath: "/Users/me/App")
+    let home = URL(fileURLWithPath: "/Users/me")
+    #expect(XcodeDerivedData.root(nextTo: appFolder, home: home, customLocation: nil).path == "/Users/me/Library/Developer/Xcode/DerivedData")
+    #expect(XcodeDerivedData.root(nextTo: appFolder, home: home, customLocation: "/Volumes/Fast/DD").path == "/Volumes/Fast/DD")
+    #expect(XcodeDerivedData.root(nextTo: appFolder, home: home, customLocation: "~/DD").path == "/Users/me/DD")
+    #expect(XcodeDerivedData.root(nextTo: appFolder, home: home, customLocation: "DerivedData").path == "/Users/me/App/DerivedData")
     #if os(macOS)
       let root = URL(fileURLWithPath: "/DerivedData")
       #expect(
-        PackageCheckouts.derivedData(of: URL(fileURLWithPath: "/Users/me/App/App.xcodeproj"), in: root).path
+        XcodeDerivedData.folder(of: URL(fileURLWithPath: "/Users/me/App/App.xcodeproj"), in: root).path
           == "/DerivedData/App-asblhmggdmxzvhcgfanmpnmbfief")
       // xcodebuild hashes the standardized path: an existing /private/tmp/… is /tmp/….
       let temporary = try folder(["App.xcworkspace/contents.xcworkspacedata": ""])
@@ -463,8 +470,8 @@ import Testing
       let workspace = (temporary.appendingPathComponent("App.xcworkspace").path as NSString).standardizingPath
       #expect(!workspace.hasPrefix("/private/"))
       #expect(
-        PackageCheckouts.derivedData(of: URL(fileURLWithPath: "/private" + workspace), in: root)
-          == PackageCheckouts.derivedData(of: URL(fileURLWithPath: workspace), in: root))
+        XcodeDerivedData.folder(of: URL(fileURLWithPath: "/private" + workspace), in: root)
+          == XcodeDerivedData.folder(of: URL(fileURLWithPath: workspace), in: root))
     #endif
 
     let resolved = Data(

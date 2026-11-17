@@ -126,19 +126,27 @@ extension DependencyScanner {
 
   /// Xcode's DerivedData folders for any of `workspaces` (an
   /// .xcodeproj, .xcworkspace or package folder), newest first: each has
-  /// an info.plist naming the workspace it builds.
+  /// an info.plist naming the workspace it builds. DerivedData is where
+  /// Xcode's Settings › Locations puts it (`XcodeDerivedData`).
   static func derivedDataFolders(_ folder: DependencyFolder, for workspaces: [URL]) -> [URL] {
     let paths = Set(workspaces.map { $0.standardizedFileURL.path })
-    let derivedData = folder.home.appendingPathComponent("Library/Developer/Xcode/DerivedData")
+    var roots: [URL] = []
+    for workspace in workspaces {
+      let root = XcodeDerivedData.root(
+        nextTo: workspace.deletingLastPathComponent(), home: folder.home, customLocation: folder.derivedDataLocation)
+      if !roots.contains(root) { roots.append(root) }
+    }
     var found: [(url: URL, date: Date)] = []
-    for name in folder.children(derivedData) {
-      let url = derivedData.appendingPathComponent(name)
-      guard let data = try? Data(contentsOf: url.appendingPathComponent("info.plist")),
-        let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
-        let path = plist["WorkspacePath"] as? String,
-        paths.contains(URL(fileURLWithPath: path).standardizedFileURL.path)
-      else { continue }
-      found.append((url, plist["LastAccessedDate"] as? Date ?? .distantPast))
+    for derivedData in roots {
+      for name in folder.children(derivedData) {
+        let url = derivedData.appendingPathComponent(name)
+        guard let data = try? Data(contentsOf: url.appendingPathComponent("info.plist")),
+          let plist = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
+          let path = plist["WorkspacePath"] as? String,
+          paths.contains(URL(fileURLWithPath: path).standardizedFileURL.path)
+        else { continue }
+        found.append((url, plist["LastAccessedDate"] as? Date ?? .distantPast))
+      }
     }
     return found.sorted { $0.date > $1.date }.map(\.url)
   }

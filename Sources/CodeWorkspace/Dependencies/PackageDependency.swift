@@ -75,12 +75,14 @@ public enum DependencyScanner {
   /// `ProjectContainer.fileName` the project builds from (the default one when nil or gone).
   public static func scan(
     _ root: URL, container: String? = nil, home: URL = URL(fileURLWithPath: NSHomeDirectory()),
-    environment: [String: String] = ProcessInfo.processInfo.environment
+    environment: [String: String] = ProcessInfo.processInfo.environment,
+    derivedDataLocation: String? = XcodeDerivedData.customLocation
   ) -> [PackageDependency] {
     // The home folder's own .cargo, go and Library aren't a project's.
     guard !FolderScope.isBroad(root, home: home) else { return [] }
     let folder = DependencyFolder(
-      root: root.standardizedFileURL, container: container, home: home, environment: environment)
+      root: root.standardizedFileURL, container: container, home: home, environment: environment,
+      derivedDataLocation: derivedDataLocation)
     var found: [PackageDependency] = []
     found += swiftPackages(folder)
     found += nodePackages(folder)
@@ -108,6 +110,8 @@ struct DependencyFolder {
   var container: String?
   let home: URL
   let environment: [String: String]
+  /// Xcode's custom DerivedData location, nil for the default (`XcodeDerivedData.customLocation`).
+  var derivedDataLocation: String?
 
   func url(_ path: String) -> URL { root.appendingPathComponent(path) }
 

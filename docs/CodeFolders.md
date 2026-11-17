@@ -14,6 +14,8 @@ CodeFolders holds the small things that [CodeActions](CodeActions.md), [CodeWork
   its schemes and dependencies come from.
 - **Commands on the PATH** (`ExecutableSearch`): where a tool is, as the system's shell finds it, for CodeActions'
   `ShellEnvironment` and CodeLSP's servers.
+- **Xcode's DerivedData** (`XcodeDerivedData`): where Xcode keeps a workspace's builds and package checkouts, custom
+  locations included, for CodeActions' package check and CodeWorkspace's dependency list.
 
 CodeFolders is not a sandbox: it decides nothing on its own and blocks nothing itself. The other libraries ask it
 before they run a folder's code. It doesn't store anything either: the host gives trust a store. It has no
@@ -108,6 +110,18 @@ Windows) and `folders(inPath:)` splits it (`;` on Windows, `:` elsewhere). On Wi
 
 ```swift
 ExecutableSearch.find("gopls", environment: ProcessInfo.processInfo.environment)  // "/opt/homebrew/bin/gopls"
+```
+
+### Xcode's DerivedData
+
+`XcodeDerivedData.root(nextTo:home:customLocation:)` is the DerivedData folder for a workspace in a folder: Settings ›
+Locations' custom location (`customLocation`, Xcode's `IDECustomDerivedDataLocation`, nil off macOS), absolute or
+relative to that folder, else `~/Library/Developer/Xcode/DerivedData`. On macOS `folder(of:in:)` is a workspace's own
+folder in it, named as Xcode names it (`hash(_:)` of the standardized path).
+
+```swift
+let derivedData = XcodeDerivedData.root(nextTo: projectFolder)
+let app = XcodeDerivedData.folder(of: projectFolder.appendingPathComponent("App.xcodeproj"), in: derivedData)
 ```
 
 ## Testing
