@@ -7,6 +7,7 @@ import CodeKotlinModel
 import CodePHPModel
 import CodeModel
 import CodePythonModel
+import CodeRubyModel
 import CodeRustModel
 import CodeSwiftModel
 import CodeTypeScriptModel
@@ -25,12 +26,14 @@ import Foundation
 // code-model bench --root <dir> --at <relative path>:<line>:<character>
 // code-model files --root <dir> [--language go]: every file it reads, with its module
 // code-model decls --root <dir> --at <relative path>: a file's declarations as its parser read them
+// code-model tokens --root <dir> --at <relative path>[:<from line>:<to line>]: a file's tokens as the lexer read them
+// code-model tokens --root <dir> --all: every project file's names (path, line:column in bytes, text), for a lexer check
 //
 // The language: --language (a name or an extension), else the file named by --at or the queries, else the root's
 // manifest (go.mod, Package.swift, tsconfig.json).
 
 /// Every language with a model. A new front end adds itself here and in CodeKit's `CodeTiers.languages`.
-let languages: [ModelLanguage] = [.swift, .go, .typeScript, .clang, .python, .rust, .java, .kotlin, .cSharp, .dart, .php]
+let languages: [ModelLanguage] = [.swift, .go, .typeScript, .clang, .python, .rust, .java, .kotlin, .cSharp, .dart, .php, .ruby]
 
 func option(_ flag: String) -> String? {
   guard let at = CommandLine.arguments.firstIndex(of: flag), at + 1 < CommandLine.arguments.count else { return nil }
@@ -168,6 +171,32 @@ case "decls":
   }
   for item in unit.imports { print("import", item.moduleName) }
 
+case "tokens":
+  // A file's code tokens as the lexer read them (`--at path[:from line:to line]`, 1-based): line, column, kind, text.
+  if CommandLine.arguments.contains("--all") {
+    // Every project file's names, for checking the lexer against a language's own: path, line:column, text.
+    for unit in project.units.prefix(project.projectUnits) {
+      let path = project.rootRelative(unit.path)
+      for (position, token) in unit.tokens.enumerated() where token.kind == .identifier {
+        let line = unit.source.lines.line(of: token.start)
+        print(path, "\(line + 1):\(token.start - unit.source.lines.offset(line: line, character: 0, in: unit.source.text))", unit.string(position), separator: "\t")
+      }
+    }
+    exit(0)
+  }
+  guard let at = option("--at") else { exit(2) }
+  let parts = at.split(separator: ":").map(String.init)
+  guard let index = project.unitByPath[rootPath(parts[0])] else { exit(2) }
+  let unit = project.units[Int(index)]
+  let from = parts.count > 1 ? Int(parts[1]) ?? 1 : 1
+  let to = parts.count > 2 ? Int(parts[2]) ?? Int.max : Int.max
+  for (position, token) in unit.tokens.enumerated() {
+    let line = unit.source.lines.line(of: token.start) + 1
+    guard line >= from, line <= to else { continue }
+    let column = token.start - unit.source.lines.offset(line: line - 1, character: 0, in: unit.source.text)
+    print(position, "\(line):\(column)", token.kind, unit.string(position))
+  }
+
 case "complete":
   guard let at = option("--at") else { exit(2) }
   let parts = at.split(separator: ":").map(String.init)
@@ -243,7 +272,8 @@ case "bench":
     : language.name == "C" ? "\nint addedByBench(int value) { return value; }\n"
     : language.name == "Rust" ? "\nfn added_by_bench(value: i32) -> i32 { value }\n"
     : language.name == "Java" ? "\nclass AddedByBench { static int addedByBench(int value) { return value; } }\n"
-    : language.name == "Dart" ? "\nint addedByBench(int value) => value;\n" : language.name == "PHP" ? "\nfunction addedByBench(int $value): int { return $value; }\n" : "\nfunc addedByBench(_ value: Int) -> Int { value }\n"
+    : language.name == "Dart" ? "\nint addedByBench(int value) => value;\n" : language.name == "PHP" ? "\nfunction addedByBench(int $value): int { return $value; }\n"
+      : language.name == "Ruby" ? "\ndef added_by_bench(value)\n  value\nend\n" : "\nfunc addedByBench(_ value: Int) -> Int { value }\n"
   edit(text + added, "signature edit")
   print(String(format: "peak RSS %.1f MB", peakRSS()))
 

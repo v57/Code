@@ -68,6 +68,8 @@ func v57(_ name: String) -> Package.Dependency {
 ///   pubspec.lock and the pub cache read in place, the dart: libraries from an SDK on disk or a hand-written stub.
 /// - CodePHPModel: PHP's code model on CodeModel: namespaces and use imports, Composer's autoloading (PSR-4, PSR-0,
 ///   classmap, files) from composer.json and vendor/composer read in place, PHP's own declarations from a hand-written stub.
+/// - CodeRubyModel: Ruby's code model on CodeModel: constants by lexical scope and ancestors, requires through the load
+///   path, Gemfile.lock's gems and the standard library read in place, Ruby's core classes from a stub generated from rbs.
 /// - CodeSimulator: a booted iOS Simulator's screen and input from Xcode's own frameworks (CoreSimulator and
 ///   SimulatorKit, private, loaded at run time), with the SwiftUI view that shows it (macOS; empty elsewhere).
 /// - CodeKit: all of the above, plus what connects them (an editor for a
@@ -117,6 +119,7 @@ let package = Package(
     .library(name: "CodeCSharpModel", targets: ["CodeCSharpModel"]),
     .library(name: "CodeDartModel", targets: ["CodeDartModel"]),
     .library(name: "CodePHPModel", targets: ["CodePHPModel"]),
+    .library(name: "CodeRubyModel", targets: ["CodeRubyModel"]),
     .library(name: "CodeSimulator", targets: ["CodeSimulator"]),
     .executable(name: "code-lsp", targets: ["code-lsp"]),
     .executable(name: "code-pretty", targets: ["code-pretty"]),
@@ -160,12 +163,13 @@ let package = Package(
     .target(name: "CodeCSharpModel", dependencies: ["CodeScan", "CodeModel"], swiftSettings: swiftSettings + [.swiftLanguageMode(.v5)]),
     .target(name: "CodeDartModel", dependencies: ["CodeScan", "CodeModel"], swiftSettings: swiftSettings + [.swiftLanguageMode(.v5)]),
     .target(name: "CodePHPModel", dependencies: ["CodeScan", "CodeModel"], swiftSettings: swiftSettings + [.swiftLanguageMode(.v5)]),
+    .target(name: "CodeRubyModel", dependencies: ["CodeScan", "CodeModel"], swiftSettings: swiftSettings + [.swiftLanguageMode(.v5)]),
     // Every language's model, by file extension or --language: the language-neutral swift-model.
     .executableTarget(
       name: "code-model",
       dependencies: [
         "CodeModel", "CodeSwiftModel", "CodeGoModel", "CodeTypeScriptModel", "CodeClangModel", "CodePythonModel", "CodeRustModel",
-        "CodeJavaModel", "CodeKotlinModel", "CodeCSharpModel", "CodeDartModel", "CodePHPModel",
+        "CodeJavaModel", "CodeKotlinModel", "CodeCSharpModel", "CodeDartModel", "CodePHPModel", "CodeRubyModel",
       ],
       swiftSettings: swiftSettings + [.swiftLanguageMode(.v5)]),
     .target(name: "CodeSimulatorPrivate", exclude: simulatorPrivateExcludes),
@@ -185,7 +189,7 @@ let package = Package(
         "CodeHighlighting", "CodeWorkspace", "CodeEditor", "CodeActions", "CodeLSP", "CodeMinimap",
         "CodeFormatting", "CodeAutocompletion", "CodeIcons", "CodeProgress", "CodeFolders", "CodeScan", "CodePretty", "CodeSwiftModel",
         "CodeGoModel", "CodeTypeScriptModel", "CodeClangModel", "CodePythonModel", "CodeRustModel", "CodeJavaModel", "CodeKotlinModel",
-        "CodeCSharpModel", "CodeDartModel", "CodePHPModel",
+        "CodeCSharpModel", "CodeDartModel", "CodePHPModel", "CodeRubyModel",
       ],
       swiftSettings: swiftSettings),
 
@@ -216,6 +220,8 @@ let package = Package(
       name: "CodeDartModelTests", dependencies: ["CodeDartModel"], swiftSettings: swiftSettings + [.swiftLanguageMode(.v5)]),
     .testTarget(
       name: "CodePHPModelTests", dependencies: ["CodePHPModel"], swiftSettings: swiftSettings + [.swiftLanguageMode(.v5)]),
+    .testTarget(
+      name: "CodeRubyModelTests", dependencies: ["CodeRubyModel"], swiftSettings: swiftSettings + [.swiftLanguageMode(.v5)]),
     .testTarget(
       name: "CodeClangModelTests", dependencies: ["CodeClangModel"], swiftSettings: swiftSettings + [.swiftLanguageMode(.v5)]),
     .testTarget(
