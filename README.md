@@ -182,6 +182,16 @@ Libraries
                        hand-written stub of base and a few packages;
                        definitions, completions, references and details
                        (numbers in ../Demos/CodeModelBench/hs)
+    CodeShellModel     a shell (sh, bash, zsh) and PowerShell code model on
+                       CodeModel from source, one model with two syntaxes:
+                       functions, aliases, variables by dynamic scope,
+                       source and dot-sourcing, zsh's autoload from fpath;
+                       PowerShell's parameters at calls, $script:/$using:/
+                       $env: scopes, modules and their exports, classes;
+                       hand-written stubs of the builtins and cmdlets, .NET
+                       left unknown; definitions, completions, references
+                       and details (numbers in ../Demos/CodeModelBench/sh
+                       and ps1)
     CodeKit            re-exports them all; CodeEditorView(document:) edits a
                        workspace document (autosave, reload, ⌘S trimming,
                        minimap, issues, breakpoints); ProjectServices connects
