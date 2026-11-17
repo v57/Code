@@ -173,6 +173,15 @@ Libraries
                        the standard library; definitions, completions,
                        references and details (numbers in
                        ../Demos/CodeModelBench/lua)
+    CodeHaskellModel   a Haskell code model on CodeModel from source: the
+                       layout rule, locals by Haskell's scoping (where,
+                       let, do, case, guards, comprehensions), names
+                       through imports and export lists as GHC's renamer
+                       finds them, class methods, record fields and
+                       wildcards, type variables; types not inferred; a
+                       hand-written stub of base and a few packages;
+                       definitions, completions, references and details
+                       (numbers in ../Demos/CodeModelBench/hs)
     CodeKit            re-exports them all; CodeEditorView(document:) edits a
                        workspace document (autosave, reload, ⌘S trimming,
                        minimap, issues, breakpoints); ProjectServices connects
