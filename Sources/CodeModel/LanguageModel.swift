@@ -19,6 +19,9 @@ public protocol LanguageModel: AnyObject {
   func allFindings() -> [Finding]
   /// A site's place as a reference recorded by the language's own tools names it, 1-based (`code-model query`).
   func place(of site: Site) -> (path: String, line: Int)?
+  /// Where a site is, for an editor to open: the core's `Project.location(of:)` unless the language opens something
+  /// else (Rust's `mod x;` opens its file).
+  func location(of site: Site) -> (path: String, line: Int, character: Int, name: String, preview: String)?
 }
 
 extension LanguageModel {

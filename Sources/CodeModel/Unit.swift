@@ -16,6 +16,14 @@ public final class Unit {
   /// For a unit generated from headers (Clang modules read as Swift): where each of its lines came from.
   package var headerLines: [(header: Int32, line: Int32)] = []
   package var headerFiles: [String] = []
+  /// Byte ranges conditional compilation leaves out that aren't between directives (Rust's `#[cfg]` items), filled by
+  /// the parser, each with a key for its condition (0: none known): a question inside one is read with every range of
+  /// its key brought in (the focus), as with a branch of `#if`.
+  package var leftOutRanges: [(start: Int, end: Int, key: UInt64)] = []
+  /// What the focus brought in of `leftOutRanges`: another question inside one reads the same.
+  package var focusedRanges: [(start: Int, end: Int)] = []
+  /// The key of the left-out range the focus is in: the parser brings in every range of it.
+  package private(set) var focusKey: UInt64 = 0
   /// A hash of everything but body text: when it holds, an edit can't have changed what other files see.
   public package(set) var shape: UInt64 = 0
   /// Layer 4, per body and only once asked for: what a position needs, dropped with the file. Kept by the front end.
@@ -32,12 +40,13 @@ public final class Unit {
   /// What reads its declarations and evaluates its conditions.
   package let syntax: any LanguageSyntax
 
-  package init(path: String, source: SourceFile, syntax: any LanguageSyntax, isInterface: Bool = false, focusOffset: Int? = nil) {
+  package init(path: String, source: SourceFile, syntax: any LanguageSyntax, isInterface: Bool = false, focusOffset: Int? = nil, focusKey: UInt64 = 0) {
     self.path = path
     self.syntax = syntax
     self.source = source
     self.isInterface = isInterface
     self.focusOffset = focusOffset
+    self.focusKey = focusKey
     tokens = syntax.codeTokens(source)
     if let focusOffset {
       var low = 0
@@ -273,8 +282,15 @@ public final class Unit {
     return start
   }
 
-  /// Whether an offset is in code `#if` leaves out here: it would have no declarations, and no answers.
+  /// The key of the left-out range an offset is in (0: none, or no key).
+  package func leftOutKey(offset: Int) -> UInt64 {
+    leftOutRanges.first(where: { $0.start <= offset && offset < $0.end })?.key ?? 0
+  }
+
+  /// Whether an offset is in code `#if` (or a parser's left-out range) leaves out here: it would have no declarations,
+  /// and no answers.
   package func isLeftOut(offset: Int) -> Bool {
+    if !leftOutRanges.isEmpty, leftOutRanges.contains(where: { $0.start <= offset && offset < $0.end }) { return true }
     var i = 0
     while i < tokens.count {
       if tokens[i].start >= offset { return false }

@@ -204,13 +204,14 @@ public final class Project {
       install(Unit(path: other.path, source: other.source, syntax: other.syntax), at: earlier, replacing: other)
     }
     if old.focusOffset == nil, !old.isLeftOut(offset: offset) { return }
+    if old.focusOffset != nil, old.focusedRanges.contains(where: { $0.start <= offset && offset < $0.end }), !old.isLeftOut(offset: offset) { return }
     // Without a focus, is this in what's left out?
     let plain = old.focusOffset == nil ? old : Unit(path: old.path, source: old.source, syntax: old.syntax)
     let wanted = plain.isLeftOut(offset: offset) ? offset : nil
     if wanted == old.focusOffset { return }
     // Two offsets in the same branch read the same: the check on shape below keeps what's built.
     focused = wanted == nil ? nil : unitIndex
-    install(Unit(path: old.path, source: old.source, syntax: old.syntax, focusOffset: wanted), at: unitIndex, replacing: old)
+    install(Unit(path: old.path, source: old.source, syntax: old.syntax, focusOffset: wanted, focusKey: wanted == nil ? 0 : plain.leftOutKey(offset: offset)), at: unitIndex, replacing: old)
   }
 
   @discardableResult
