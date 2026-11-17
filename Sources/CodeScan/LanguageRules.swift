@@ -79,6 +79,14 @@ public struct LanguageRules: Sendable {
   public var regexLiterals = false
   /// `<<WORD` starts a here-document (Shell, Ruby, PHP).
   public var hereDocuments = false
+  /// A here-document's closing word may be indented and followed by any byte that can't continue it (PHP 7.3's
+  /// `EOT;`, `EOT,`, `EOT)`).
+  public var hereDocumentsCloseLoosely = false
+  /// Code sits between `<?php` (or `<?=`) and `?>`, which a `//` or `#` comment doesn't hide; the text around it is
+  /// markup, one string token (PHP).
+  public var inlineMarkup = false
+  /// `#[…]` is an attribute, not a `#` comment (PHP 8).
+  public var hashBracketAttributes = false
   /// `` `a name` `` is one identifier (Kotlin's test names and keywords used as names).
   public var backtickIdentifiers = false
   /// A `#` comment needs a space before it (`$#` and `${#a}` aren't comments).
@@ -215,6 +223,9 @@ public struct LanguageRules: Sendable {
         "namespace": .module, "const": .constant,
       ]
       $0.hereDocuments = true
+      $0.hereDocumentsCloseLoosely = true
+      $0.inlineMarkup = true
+      $0.hashBracketAttributes = true
       $0.multilineStrings = true
       $0.dollarIsPunctuation = true
       $0.assignmentDeclares = true

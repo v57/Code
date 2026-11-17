@@ -113,6 +113,19 @@ private func names(_ text: String, _ language: String) -> [String] {
     #expect(!tokens.contains { $0.0 == "not" })
   }
 
+  @Test func phpTagsHereDocumentsAndAttributes() {
+    let text = "<h1><?= $title ?></h1>\n<?php\n$a = f(<<<EOT\n  it's {$x}\n  EOT, 1);\n#[Attr(1)]\nfunction g() { return $a ?? $b?->c; } // c ?>\n<p>don't</p>"
+    let tokens = kinds(text, "PHP")
+    #expect(tokens.first! == ("<h1>", .string))
+    #expect(tokens.contains { $0 == ("<?=", .punctuation) } && tokens.contains { $0 == ("<?php", .punctuation) })
+    #expect(tokens.filter { $0 == ("?>", .punctuation) }.count == 2)
+    #expect(tokens.contains { $0 == ("</h1>\n", .string) } && tokens.last! == ("\n<p>don't</p>", .string))
+    #expect(tokens.contains { $0.0.hasPrefix("  it's") && $0.0.hasSuffix("EOT") && $0.1 == .string })
+    #expect(tokens.contains { $0 == ("1", .number) } && tokens.contains { $0 == ("#[Attr(1)]", .attribute) })
+    #expect(tokens.contains { $0 == ("??", .punctuation) } && tokens.contains { $0 == ("?->", .punctuation) })
+    #expect(tokens.contains { $0 == ("// c ", .comment) })
+  }
+
   @Test func nestedComments() {
     #expect(kinds("/* a /* b */ c */ d", "Swift").map(\.0).last == "d")
   }

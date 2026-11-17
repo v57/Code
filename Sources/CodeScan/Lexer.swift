@@ -85,6 +85,8 @@ public final class LexProfile: @unchecked Sendable {
   let rustAttributes: Bool
   let commentsNeedWordStart: Bool
   let hereDocuments: Bool
+  let hereDocumentsCloseLoosely: Bool
+  let inlineMarkup: Bool
   let regexLiterals: Bool
   let backtickIdentifiers: Bool
 
@@ -182,7 +184,7 @@ public final class LexProfile: @unchecked Sendable {
     if charLiteral { cls[0x27] = ByteClass.opener }
     anchoredDirectives = spec.hashDirectives && spec.hashDirectivesAnchored
     freeDirectives = spec.hashDirectives && !spec.hashDirectivesAnchored
-    rustAttributes = spec.rustAttributes
+    rustAttributes = spec.rustAttributes || rules.hashBracketAttributes
     atWords = spec.atWords
     if anchoredDirectives || freeDirectives || rustAttributes { cls[0x23] = ByteClass.opener }
     if atWords { cls[0x40] = ByteClass.opener }
@@ -190,6 +192,8 @@ public final class LexProfile: @unchecked Sendable {
     if regexLiterals { cls[0x2F] = ByteClass.opener }
     hereDocuments = rules.hereDocuments
     if hereDocuments { cls[0x3C] = ByteClass.opener }
+    hereDocumentsCloseLoosely = rules.hereDocumentsCloseLoosely
+    inlineMarkup = rules.inlineMarkup
     backtickIdentifiers = rules.backtickIdentifiers
     if backtickIdentifiers { cls[0x60] = ByteClass.opener }
     commentsNeedWordStart = rules.commentsNeedWordStart || spec.lineCommentsAtLineStartOnly
@@ -324,6 +328,8 @@ public func scan(
     out[0] = Token(.comment, 0, i)
     count = 1
   }
+  // Markup until the first `<?php`.
+  if profile.inlineMarkup { (i, count) = markup(t, n, i, out, count) }
 
   @inline(__always) func identifierEnd(_ start: Int) -> Int {
     var j = start &+ 1
@@ -448,6 +454,12 @@ public func scan(
       count &+= 1
       i = j
     default:
+      // `?>` ends the code: markup follows, up to the next `<?php`.
+      if c == 0x3F, t[i &+ 1] == 0x3E, profile.inlineMarkup {
+        out[count] = Token(.punctuation, i, i &+ 2)
+        (i, count) = markup(t, n, i &+ 2, out, count &+ 1)
+        continue
+      }
       // A run of operator bytes is one token, up to anything that may start something else.
       var j = i &+ 1
       while j < n, cls[Int(t[j])] == ByteClass.punct { j &+= 1 }
@@ -526,6 +538,8 @@ private struct HereDocument {
   var start = 0
   var length = 0
   var indented = false
+  /// Any byte that can't continue the closing word may follow it.
+  var loose = false
 
   /// The offset after the line that ends the document (or the file's end).
   func bodyEnd(_ t: UnsafePointer<UInt8>, _ n: Int, from body: Int) -> Int {
@@ -536,6 +550,9 @@ private struct HereDocument {
       if memcmp(t + first, t + start, length) == 0 {
         let after = t[first &+ length]
         if after == 0x0A || after == 0x0D || after == 0 || after == 0x3B { return first &+ length }
+        if loose, !(after == 0x5F || after >= 0x80 || (after | 0x20 >= 0x61 && after | 0x20 <= 0x7A) || (after >= 0x30 && after <= 0x39)) {
+          return first &+ length
+        }
       }
       guard let found = memchr(t + line, 0x0A, n &- line) else { return n }
       line = UnsafePointer(found.assumingMemoryBound(to: UInt8.self)) - t &+ 1
@@ -571,7 +588,15 @@ private func opener(
         {
           continue
         }
-        let end = lineEnd(t, n, i)
+        // `#[…]`: an attribute (below).
+        if c == 0x23, profile.rustAttributes, t[i &+ 1] == 0x5B { continue }
+        var end = lineEnd(t, n, i)
+        // `// … ?>` ends at the `?>`.
+        if profile.inlineMarkup {
+          var k = i
+          while k &+ 1 < end, !(t[k] == 0x3F && t[k &+ 1] == 0x3E) { k &+= 1 }
+          if k &+ 1 < end { end = k }
+        }
         let width = entry.open.count
         // `///`, `//!`: documentation. `////...` rules aren't.
         let third = t[i &+ width]
@@ -727,7 +752,9 @@ private func opener(
     let wordStart = j
     guard profile.ident[Int(t[j])] != 0, t[j] > 0x39 else { return nil }
     while profile.ident[Int(t[j])] != 0 { j &+= 1 }
-    hereDocument = HereDocument(pending: true, start: wordStart, length: j &- wordStart, indented: indented)
+    hereDocument = HereDocument(
+      pending: true, start: wordStart, length: j &- wordStart, indented: indented || profile.hereDocumentsCloseLoosely,
+      loose: profile.hereDocumentsCloseLoosely)
     if quote != 0, t[j] == quote { j &+= 1 }
     out[count] = Token(.punctuation, i, j)
     return (j, count &+ 1)
@@ -750,6 +777,44 @@ private func regexMayStart(_ t: UnsafePointer<UInt8>, _ i: Int, _ previous: Toke
     return t[previous.end &- 1] != 0x3C && !(previous.length == 1 && t[previous.start] == 0x2E)
   default: return true
   }
+}
+
+/// Markup from `i` (PHP's text outside `<?php … ?>`): one string token up to the next `<?php` or `<?=`, then that
+/// tag as punctuation. Returns where the code starts and the new token count.
+private func markup(_ t: UnsafePointer<UInt8>, _ n: Int, _ i: Int, _ out: UnsafeMutablePointer<Token>, _ count: Int) -> (Int, Int) {
+  var j = i
+  var count = count
+  while j &+ 1 < n {
+    guard let found = memchr(t + j, 0x3C, n &- j) else {
+      j = n
+      break
+    }
+    j = UnsafePointer(found.assumingMemoryBound(to: UInt8.self)) - t
+    if t[j &+ 1] == 0x3F {
+      let isEcho = t[j &+ 2] == 0x3D
+      let isPHP = t[j &+ 2] | 0x20 == 0x70 && t[j &+ 3] | 0x20 == 0x68 && t[j &+ 4] | 0x20 == 0x70
+        && (t[j &+ 5] == 0x20 || t[j &+ 5] == 0x0A || t[j &+ 5] == 0x0D || t[j &+ 5] == 0x09 || j &+ 5 >= n)
+      if isEcho || isPHP {
+        var k = i
+        while k < j, t[k] == 0x20 || t[k] == 0x0A || t[k] == 0x0D || t[k] == 0x09 { k &+= 1 }
+        if k < j {
+          out[count] = Token(.string, i, j)
+          count &+= 1
+        }
+        let end = j &+ (isEcho ? 3 : 5)
+        out[count] = Token(.punctuation, j, end)
+        return (end, count &+ 1)
+      }
+    }
+    j &+= 1
+  }
+  var k = i
+  while k < n, t[k] == 0x20 || t[k] == 0x0A || t[k] == 0x0D || t[k] == 0x09 { k &+= 1 }
+  if k < n {
+    out[count] = Token(.string, i, n)
+    count &+= 1
+  }
+  return (n, count)
 }
 
 @inline(__always) private func lineEnd(_ t: UnsafePointer<UInt8>, _ n: Int, _ i: Int) -> Int {
