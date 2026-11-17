@@ -58,11 +58,20 @@ public struct ModelLanguage: Sendable {
   public var manifests: Set<String>
   /// The model of the project under `root`. `trusted`: the folder's own code may be run (a manifest evaluated).
   public var make: @Sendable (_ root: String, _ trusted: Bool) -> any LanguageModel
+  /// Whole file names that are the language's whatever their extension (`.zshrc`, `Rakefile`).
+  public var fileNames: Set<String>
+  /// Programs a `#!` line names for the language's files without an extension (`bash`, `pwsh`).
+  public var interpreters: Set<String>
 
-  public init(name: String, extensions: Set<String>, manifests: Set<String>, make: @escaping @Sendable (String, Bool) -> any LanguageModel) {
+  public init(
+    name: String, extensions: Set<String>, manifests: Set<String>, fileNames: Set<String> = [], interpreters: Set<String> = [],
+    make: @escaping @Sendable (String, Bool) -> any LanguageModel
+  ) {
     self.name = name
     self.extensions = extensions
     self.manifests = manifests
+    self.fileNames = fileNames
+    self.interpreters = interpreters
     self.make = make
   }
 
@@ -74,9 +83,33 @@ public struct ModelLanguage: Sendable {
     return manifests.contains("*" + file[dot...])
   }
 
-  /// Whether a path is one of this language's files.
+  /// Whether a path is one of this language's files: by its extension, its whole name, or, without an extension, the
+  /// program its `#!` line names (read from disk).
   public func handles(_ path: String) -> Bool {
-    guard let dot = path.lastIndex(of: "."), !path[dot...].contains("/") else { return false }
-    return extensions.contains(path[path.index(after: dot)...].lowercased())
+    let file = path.split(separator: "/").last.map(String.init) ?? path
+    if let dot = file.lastIndex(of: "."), extensions.contains(file[file.index(after: dot)...].lowercased()) { return true }
+    if !fileNames.isEmpty, fileNames.contains(file) { return true }
+    guard !interpreters.isEmpty, !file.contains("."), let program = Self.interpreter(ofFile: path) else { return false }
+    return interpreters.contains(program)
+  }
+
+  /// The program a file's `#!` line runs (`/usr/bin/env -S bash -e` names `bash`), versions dropped (`python3.12` is
+  /// `python`), nil without one.
+  public static func interpreter(ofFile path: String) -> String? {
+    guard let handle = FileHandle(forReadingAtPath: path) else { return nil }
+    defer { try? handle.close() }
+    guard let head = try? handle.read(upToCount: 256) else { return nil }
+    return interpreter(ofFirstLine: String(decoding: head.prefix { $0 != 10 }, as: UTF8.self))
+  }
+
+  public static func interpreter(ofFirstLine line: String) -> String? {
+    // zsh's function files: `#compdef` (a completion function), `#autoload`.
+    if line.hasPrefix("#compdef") || line.hasPrefix("#autoload") { return "zsh" }
+    guard line.hasPrefix("#!") else { return nil }
+    let words = line.dropFirst(2).split(whereSeparator: { $0 == " " || $0 == "\t" || $0 == "\r" })
+    guard var program = words.first.map({ String($0.split(separator: "/").last ?? $0) }) else { return nil }
+    if program == "env", let next = words.dropFirst().first(where: { !$0.hasPrefix("-") }) { program = String(next) }
+    let base = program.prefix { $0.isLetter || $0 == "-" || $0 == "_" }
+    return base.isEmpty ? nil : String(base)
   }
 }
