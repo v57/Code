@@ -290,7 +290,9 @@ private struct TokenFormatter {
       var allowed = min(count, limit)
       if isFullLayout {
         // No blank line just inside a bracket.
-        if tokens[index - 1].kind == .open || tokens[index].kind == .close { allowed = 1 }
+        // zig fmt keeps one before a comment, though.
+        let keepsBeforeComment = rules.bracesHoldLists && (tokens[index].kind == .comment || tokens[index].kind == .docComment)
+        if tokens[index - 1].kind == .open && !keepsBeforeComment || tokens[index].kind == .close { allowed = 1 }
       }
       breaks[index] = allowed
     }
@@ -383,6 +385,11 @@ private struct TokenFormatter {
         }
       } else if frame?.isSwitch == true, isCaseLabel(token) {
         level = aligned ? frame!.openerLevel : frame!.openerLevel + 1
+      } else if rules.bracesHoldLists, isByte(token, 0x2C), previousCode >= 0, tokens[previousCode].kind == .string,
+        tokens[previousCode].length >= 2, t[tokens[previousCode].start] == 0x5C, t[tokens[previousCode].start + 1] == 0x5C
+      {
+        // zig fmt puts the comma after a `\\` string's lines under the bracket's line.
+        level = frame?.openerLevel ?? 0
       } else if first > 0, previousCode >= 0, !afterDirective, continues(first: first, previous: previousCode, statementFirst: statementFirst, frame: frame, previousContinued: previousContinued) {
         level = content + 1
       }
@@ -429,7 +436,7 @@ private struct TokenFormatter {
             lineFrameLevel = min(lineFrameLevel, popped.openerLevel)
           }
         case .keyword:
-          if equals(current, "switch") || (equals(current, "match") && !rules.caseAlignsWithSwitch && source.profile.spec.name == "PHP") {
+          if (equals(current, "switch") && !rules.bracesHoldLists) || (equals(current, "match") && !rules.caseAlignsWithSwitch && source.profile.spec.name == "PHP") {
             pendingSwitch = true
           }
         case .directive:
@@ -495,7 +502,7 @@ private struct TokenFormatter {
       if isByte(last, 0x3B) { return false }
       if isByte(last, 0x2C) {
         // In brackets, a comma separates; in a block, it goes on a `guard a,` or a `let a = 1,` that a keyword started.
-        guard frame == nil || frame!.byte == 0x7B || frame!.byte == 0x23 else { return false }
+        guard frame == nil || frame!.byte == 0x7B && !rules.bracesHoldLists || frame!.byte == 0x23 else { return false }
         return statementFirst < tokens.count
           && (tokens[statementFirst].kind == .keyword || tokens[statementFirst].kind == .declarationKeyword)
           && !isCaseLabel(tokens[statementFirst]) && statementFirst != first
@@ -503,6 +510,8 @@ private struct TokenFormatter {
       if isByte(last, 0x3A) { return false }
       if endsWithOperator(last, index: previous) { return true }
     }
+    // Zig's word operators go on like any other.
+    if rules.bracesHoldLists, last.kind == .keyword, equals(last, "or") || equals(last, "and") || equals(last, "orelse") { return true }
     if token.kind == .keyword, equals(token, "else") || equals(token, "where") && !rules.caseAlignsWithSwitch { return false }
     if startsWithOperator(token, index: first) {
       // In a list, `.a,` is an element; after a `(` it isn't going on.
@@ -563,6 +572,26 @@ private struct TokenFormatter {
     return column
   }
 
+  /// With `bracesHoldLists`, whether the braces opened at `open` hold one element: no `,`, `;`, `=` or `=>` outside
+  /// inner brackets (`.{x}`, `error{A}`, but not `.{ .x = 1 }`, `.{ a, b }` or a block).
+  private func holdsOneElement(open: Int?) -> Bool {
+    guard rules.bracesHoldLists, let open, closers[open] > 0 else { return false }
+    var depth = 0
+    for index in (open + 1)..<Int(closers[open]) {
+      let token = tokens[index]
+      if token.kind == .open || token.kind == .interpolationOpen {
+        depth += 1
+      } else if token.kind == .close || token.kind == .interpolationClose {
+        depth -= 1
+      } else if depth == 0, token.kind == .punctuation,
+        isByte(token, 0x2C) || isByte(token, 0x3B) || isByte(token, 0x3D) || (token.length == 2 && t[token.start] == 0x3D && t[token.start + 1] == 0x3E)
+      {
+        return false
+      }
+    }
+    return true
+  }
+
   private func openerIndex(ofClose close: Int) -> Int? {
     var i = close - 1
     var depth = 0
@@ -581,7 +610,8 @@ private struct TokenFormatter {
     let hasSpaceBefore = token.start > 0 && (t[token.start - 1] == 0x20 || t[token.start - 1] == 0x09)
     switch c {
     case 0x2B, 0x2D:  // `i++` ended a statement; `a +` didn't.
-      if token.length >= 2, t[token.end - 2] == c { return false }
+      // Zig has no `++` increment: `a ++` is a concatenation going on.
+      if token.length >= 2, t[token.end - 2] == c, !rules.bracesHoldLists { return false }
       return true
     case 0x3F, 0x2A, 0x26:  // `String?`, `T*`, `T&` are types.
       return hasSpaceBefore
@@ -647,12 +677,12 @@ private struct TokenFormatter {
     if a.kind == .open {
       if aByte == 0x7B {
         if b.kind == .close { return false }
-        return rules.spacesInsideBraces ? true : hadGap
+        return rules.spacesInsideBraces && !holdsOneElement(open: index - 1) ? true : hadGap
       }
       return false
     }
     if b.kind == .close {
-      if bByte == 0x7D { return rules.spacesInsideBraces ? true : hadGap }
+      if bByte == 0x7D { return rules.spacesInsideBraces && !holdsOneElement(open: openerIndex(ofClose: index)) ? true : hadGap }
       return false
     }
     if rules.preservesOperatorSpacing { return hadGap }
@@ -660,6 +690,9 @@ private struct TokenFormatter {
       switch a.kind {
       case .identifier, .keyword, .declarationKeyword, .close, .string, .number:
         return rules.bracesFollowTightly ? hadGap : true
+      case .punctuation where rules.bracesFollowTightly:
+        // `1=>{}` is `1 => {}`, spaced on both sides (Zig's switch prongs, Elixir's maps).
+        return hadGap || isSpacedOperator(a, index - 1)
       default:
         return hadGap
       }
@@ -922,7 +955,10 @@ private struct TokenFormatter {
           // A comment's distance is the author's; so is Go's alignment.
           let previous = tokens[index - 1]
           let gap = token.start - previous.end
-          if (token.kind == .comment || token.kind == .docComment || rules.preservesOperatorSpacing || interpolated[index]), gap >= 1, isSpacesOnly(previous.end, token.start) {
+          // zig fmt lines a list's rows up in columns: spaces after a comma stay too.
+          let keeps = token.kind == .comment || token.kind == .docComment || rules.preservesOperatorSpacing || interpolated[index]
+            || rules.bracesHoldLists && isByte(previous, 0x2C)
+          if keeps, gap >= 1, isSpacesOnly(previous.end, token.start) {
             out.append(contentsOf: UnsafeBufferPointer(start: t + previous.end, count: gap))
           } else {
             out.append(0x20)
@@ -1038,8 +1074,10 @@ extension PrettyOptions {
       options.printWidth = 0
     }
     if language == "Python" { options.maxBlankLines = 2 }
+    // zig fmt: four spaces, whatever the file has.
+    if language == "Zig" { options.indentWidth = 4 }
     if let detected = detectIndent(source) {
-      if language != "Go" {
+      if language != "Go", language != "Zig" {
         options.useTabs = detected.tabs
         options.indentWidth = detected.tabs ? 1 : detected.width
       }
