@@ -735,9 +735,8 @@ public final class LanguageServerLoop {
 
   private func hasProjectFormatConfig(path: String) -> Bool {
     var folder = (path as NSString).deletingLastPathComponent
-    let names = [".editorconfig", ".prettierrc", ".prettierrc.json", ".swift-format", "rustfmt.toml", ".rustfmt.toml", ".clang-format"]
     while folder.count > 1 {
-      for name in names where FileManager.default.fileExists(atPath: folder + "/" + name) { return true }
+      for name in PrettyOptions.configFileNames where FileManager.default.fileExists(atPath: folder + "/" + name) { return true }
       if FileManager.default.fileExists(atPath: folder + "/.git") { return false }
       folder = (folder as NSString).deletingLastPathComponent
     }

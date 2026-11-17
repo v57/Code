@@ -1020,6 +1020,13 @@ private struct TokenFormatter {
 }
 
 extension PrettyOptions {
+  /// The configuration files read for a file's options, in the order they're read (in each folder from the file's up to
+  /// the repository's root, the first of a kind found wins): what makes a project's formatting its own.
+  public static let configFileNames = [
+    ".editorconfig", ".prettierrc", ".prettierrc.json", ".prettierrc.yaml", ".prettierrc.yml", ".swift-format",
+    "rustfmt.toml", ".rustfmt.toml", ".clang-format",
+  ]
+
   /// The options for a file: from the nearest `.editorconfig`, `.prettierrc`, `.swift-format`, `rustfmt.toml` or
   /// `.clang-format` upward, what the language's own tool does by default, and the text's own indentation.
   public static func resolve(path: String?, source: SourceFile) -> PrettyOptions {
@@ -1041,14 +1048,7 @@ extension PrettyOptions {
     var folder = (path as NSString).deletingLastPathComponent
     var found = Set<String>()
     while !folder.isEmpty, folder != "/" {
-      read(folder + "/.editorconfig", &found, &options, language: language, path: path)
-      for name in [".prettierrc", ".prettierrc.json", ".prettierrc.yaml", ".prettierrc.yml"] {
-        read(folder + "/" + name, &found, &options, language: language, path: path)
-      }
-      read(folder + "/.swift-format", &found, &options, language: language, path: path)
-      read(folder + "/rustfmt.toml", &found, &options, language: language, path: path)
-      read(folder + "/.rustfmt.toml", &found, &options, language: language, path: path)
-      read(folder + "/.clang-format", &found, &options, language: language, path: path)
+      for name in configFileNames { read(folder + "/" + name, &found, &options, language: language, path: path) }
       if FileManager.default.fileExists(atPath: folder + "/.git") { break }
       folder = (folder as NSString).deletingLastPathComponent
     }

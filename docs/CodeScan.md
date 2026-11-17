@@ -155,8 +155,10 @@ if output.refused { print("left alone at line", output.refusedLine ?? -1) }
 ### Options
 
 `PrettyOptions`: `indentWidth`, `useTabs`, `printWidth` (0 keeps line lengths), `maxBlankLines`, `quote`,
-`trailingCommas`. `PrettyOptions.resolve(path:source:)` reads them from the nearest `.editorconfig`, `.prettierrc`,
-`.swift-format`, `rustfmt.toml` or `.clang-format`, the language's usual style and the file's own indentation.
+`trailingCommas`. `PrettyOptions.resolve(path:source:)` reads them from the nearest `.editorconfig`, `.prettierrc`
+(also `.json`, `.yaml`, `.yml`), `.swift-format`, `rustfmt.toml` or `.clang-format` (`PrettyOptions.configFileNames`,
+which the server also checks before letting the editor's tab size win), the language's usual style and the file's own
+indentation.
 
 ```swift
 var options = PrettyOptions()

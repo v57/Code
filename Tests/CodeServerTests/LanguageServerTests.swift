@@ -227,6 +227,19 @@ private final class Client: @unchecked Sendable {
     }
   }
 
+  /// A project's own formatting file wins over the editor's tab size, whichever of Pretty's names it has.
+  @Test func formattingKeepsAProjectsYAMLPrettierConfig() throws {
+    for name in [".prettierrc.yaml", ".prettierrc.yml"] {
+      try start([".git/HEAD": "", name: "tabWidth: 4\n", "A.ts": "\n"]) { client, root in
+        let path = root + "/A.ts"
+        open(client, path, "function a() {\nb( c )\n}\n", language: "typescript")
+        let edits = client.request(
+          "textDocument/formatting", "{\"textDocument\":{\"uri\":\"file://\(path)\"},\"options\":{\"tabSize\":2,\"insertSpaces\":true}}")
+        #expect(edits["result"].array?.first?["newText"].string?.hasPrefix("    b(") == true, "\(name)")
+      }
+    }
+  }
+
   @Test func renameRefusesWhatItCantProve() throws {
     try start(["A.swift": "func once() {}\nfunc two() {}\nstruct S { func two() {} }\nfunc f() { once(); two() }\n"]) { client, root in
       let path = root + "/A.swift"
