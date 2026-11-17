@@ -111,10 +111,10 @@ extension Project {
   }
 
   /// A name filter over the project's files (or one of them), then each hit resolved by `answer`: a reference is only
-  /// what lands on one of `targets`.
-  package func references(named names: Set<Name>, in restrict: Int32?, landingOn targets: Set<Site>, answer: (_ unitIndex: Int32, _ token: Int) -> Answer)
-    -> [(path: String, line: Int)]
-  {
+  /// what lands on one of `targets`. `operators`: punctuation tokens are names too (Haskell's `<+>`).
+  package func references(
+    named names: Set<Name>, in restrict: Int32?, landingOn targets: Set<Site>, operators: Bool = false, answer: (_ unitIndex: Int32, _ token: Int) -> Answer
+  ) -> [(path: String, line: Int)] {
     var seen = Set<String>()
     var result: [(String, Int)] = []
     for u in 0..<projectUnits {
@@ -127,6 +127,8 @@ extension Project {
         case .attribute, .directive:
           // `@Test`, `#expect`: the name past its sign.
           guard token.length > 1, names.contains(hashName(unit.source.text + token.start + 1, token.length - 1)) else { continue }
+        case .punctuation where operators:
+          guard names.contains(hashName(unit.source.text + token.start, token.length)) else { continue }
         default:
           continue
         }
