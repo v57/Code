@@ -2,8 +2,8 @@
 
 ## Purpose
 
-CodeHighlighting turns source text into colored tokens. It holds the language catalog (31 languages and formats:
-the 20 most-used programming languages plus JSON, YAML, TOML, HTML, CSS, SQL, CQL, Redis, Markdown, Makefile and
+CodeHighlighting turns source text into colored tokens. It holds the language catalog (33 languages and formats:
+the 20 most-used programming languages, Zig and Elixir, plus JSON, YAML, TOML, HTML, CSS, SQL, CQL, Redis, Markdown, Makefile and
 Dockerfile), detects a file's language from its name, extension or `#!` line, scans text into tokens of Xcode's
 syntax categories, keeps an incremental highlighter for an editor buffer, matches brackets, and maps tokens to colors
 with color schemes and editor themes.

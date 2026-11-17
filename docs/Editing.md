@@ -11,8 +11,8 @@ menu. Find in Project, Open Quickly, Go to Line, Quick Help and breakpoints work
 
 ### The editor
 
-Code colors code in about twenty languages, among them Swift, Objective-C, C, C++, Rust, Go, JavaScript, TypeScript,
-Python, Java, Kotlin, C#, Ruby, PHP, Dart, Scala, Lua, Haskell, PowerShell and shell scripts. It also colors JSON,
+Code colors code in more than twenty languages, among them Swift, Objective-C, C, C++, Rust, Go, JavaScript,
+TypeScript, Python, Java, Kotlin, C#, Ruby, PHP, Dart, Scala, Lua, Haskell, Zig, Elixir, PowerShell and shell scripts. It also colors JSON,
 YAML, TOML, HTML and XML, CSS, SQL, Markdown, Makefiles and Dockerfiles.
 
 The editor shows line numbers and highlights the current line. The status bar under it shows **Line:** and

@@ -252,7 +252,7 @@ Architecture
   `SyntaxHighlighter` stores the state each line starts in and rescans only
   edited lines plus the lines whose start state changed, in batches when an
   edit opens a long comment. Data, markup and build formats (JSON, YAML, TOML,
-  HTML/XML, CSS, SQL, Markdown, Makefile, Dockerfile) join the 20 languages.
+  HTML/XML, CSS, SQL, Markdown, Makefile, Dockerfile) join the 22 languages.
 
   The editor never writes colors into the text storage. `CodeTextView` hands
   token colors to the layout manager at draw time

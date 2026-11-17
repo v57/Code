@@ -100,7 +100,8 @@ For each formatter, under **Formatters**:
 - **Custom command** runs your own command instead, for example a local build of swift-format.
 
 **Code’s formatter** formats files no formatter above applies to, in any language. It's off at first. If its result
-would change the code's meaning, it leaves the file as it was.
+would change the code's meaning, it leaves the file as it was. It lays out Zig files as zig fmt does, and in Elixir it
+only changes spaces within a line.
 
 <!-- only: windows -->
 On Windows, the formatters listed under **Formatters** don't run yet.

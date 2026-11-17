@@ -136,7 +136,8 @@ let tidy = Pretty.format("let numbers = [1,2 ,3]\n", language: "swift")  // nil 
 It only moves whitespace, adds a trailing comma where a list breaks and swaps quotes where nothing needs escaping.
 The result is scanned again and must give the same tokens, and a second pass must agree; otherwise the input comes
 back unchanged. Whitespace inside an interpolation is left as written. How much of the layout it decides depends on
-what whitespace means in the language. In Code it is off by default and runs only for a file no installed formatter
+what whitespace means in the language: Zig gets a full layout like zig fmt's (four spaces, a `switch`'s prongs as
+its content, a list's columns kept), Elixir only spaces within its lines, as its line breaks end expressions. In Code it is off by default and runs only for a file no installed formatter
 applies to.
 
 ### Formatting text
