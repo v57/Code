@@ -6,7 +6,9 @@ import Foundation
 /// files under the root, the source roots of the build's other modules and included builds outside it (Gradle's
 /// `settings.gradle(.kts)` `include` and `includeBuild`, `sourceSets` `srcDirs`, Maven's `<modules>`), Android's
 /// conventions, the platform's sources (a JDK's `lib/src.zip`, or the Android SDK's `android-stubs-src.jar`, which
-/// holds `java.*` as Android has it) and dependencies' `-sources.jar`s in Gradle's cache and `~/.m2`. Nothing is
+/// holds `java.*` as Android has it) and dependencies' `-sources.jar`s in Gradle's cache and `~/.m2`. Scala's front end
+/// adds sbt's and Mill's builds (`build.sbt` projects, `build.sc`/`build.mill` modules), `src/<set>/scala*` roots and
+/// Coursier's and Ivy's caches; Java's and Kotlin's projects never look at them. Nothing is
 /// fetched; what isn't on disk is left out. Packages are what names resolve by, so files are grouped by package, read
 /// from each file's `package` line.
 package final class JVMWorkspace {
@@ -22,6 +24,10 @@ package final class JVMWorkspace {
   /// The Android SDK a `local.properties` names.
   private var localSDK: String?
   private var packageDirectoryCache: [String: [String]] = [:]
+  /// A Scala front end's workspace: sbt, Mill, `scala*` source folders and Coursier's cache count.
+  var readsScala: Bool { extensions.contains("scala") }
+  /// What an archive's or a folder's entries are read as: Java's and Kotlin's sources, and Scala's for Scala.
+  var archiveExtensions: Set<String> { readsScala ? ["java", "kt", "scala"] : ["java", "kt"] }
 
   /// Folders never read: build output, tools' caches, dependencies' installs.
   package static let skipped: Set<String> = ["build", "out", "target", ".gradle", ".git", ".idea", "node_modules", ".build", "bin", ".kotlin", ".cxx"]
@@ -148,6 +154,19 @@ package final class JVMWorkspace {
       directory = parent
       steps += 1
     }
+    if buildRoots.isEmpty, readsScala {
+      // sbt's or Mill's build at or above the root.
+      directory = root
+      for _ in 0..<6 {
+        if Self.scalaBuildFiles.contains(where: { Self.exists(directory + "/" + $0) }) {
+          buildRoots.append(directory)
+          break
+        }
+        let parent = (directory as NSString).deletingLastPathComponent
+        if parent == directory || parent.isEmpty || parent == "/" { break }
+        directory = parent
+      }
+    }
     if buildRoots.isEmpty {
       directory = root
       var outer: String?
@@ -168,6 +187,15 @@ package final class JVMWorkspace {
       let settings = Self.read(buildRoot + "/settings.gradle.kts") ?? Self.read(buildRoot + "/settings.gradle") ?? ""
       for module in Self.gradleIncludes(settings) { moduleDirectories.append(Self.standardized(buildRoot + "/" + module)) }
       for included in Self.calls(["includeBuild"], in: settings) { queue.append(Self.standardized(buildRoot + "/" + included)) }
+      if readsScala {
+        if let sbt = Self.read(buildRoot + "/build.sbt") {
+          for module in Self.sbtProjects(sbt) { moduleDirectories.append(Self.standardized(buildRoot + "/" + module)) }
+        }
+        for mill in ["build.mill", "build.sc"] {
+          guard let text = Self.read(buildRoot + "/" + mill) else { continue }
+          for module in Self.millModules(text) { moduleDirectories.append(Self.standardized(buildRoot + "/" + module)) }
+        }
+      }
       if let pom = Self.read(buildRoot + "/pom.xml") {
         for module in Self.xmlValues("module", in: pom) { moduleDirectories.append(Self.standardized(buildRoot + "/" + module)) }
       }
@@ -186,19 +214,29 @@ package final class JVMWorkspace {
         isAndroid = true
         if compileSdk == nil, let found = Self.compileSdk(in: gradle) { compileSdk = found }
       }
-      roots += Self.sourceRoots(ofModule: module, gradle: gradle, pom: Self.read(module + "/pom.xml"))
+      roots += Self.sourceRoots(ofModule: module, gradle: gradle, pom: Self.read(module + "/pom.xml"), scala: readsScala)
     }
     let inside = root + "/"
     var unique = Set<String>()
     externalRoots = roots.filter { !$0.hasPrefix(inside) && $0 != root && !root.hasPrefix($0 + "/") && unique.insert($0).inserted }
   }
 
-  /// A module's source roots: every `src/<set>/java` and `src/<set>/kotlin`, the folders `sourceSets` and Maven name.
-  private static func sourceRoots(ofModule module: String, gradle: String, pom: String?) -> [String] {
+  /// A module's source roots: every `src/<set>/java` and `src/<set>/kotlin`, the folders `sourceSets` and Maven name;
+  /// for Scala also `src/<set>/scala`, the cross-built `scala-2`, `scala-3`, `scala-2.13`, and Mill's `src` itself.
+  private static func sourceRoots(ofModule module: String, gradle: String, pom: String?, scala: Bool = false) -> [String] {
     var result: [String] = []
     let sets = (try? FileManager.default.contentsOfDirectory(atPath: module + "/src")) ?? []
     for set in sets.sorted() {
       for language in ["java", "kotlin"] where exists(module + "/src/" + set + "/" + language) { result.append(module + "/src/" + set + "/" + language) }
+      if scala {
+        let folders = (try? FileManager.default.contentsOfDirectory(atPath: module + "/src/" + set)) ?? []
+        for folder in folders.sorted() where folder.hasPrefix("scala") { result.append(module + "/src/" + set + "/" + folder) }
+      }
+    }
+    // Mill: sources straight in `src`, tests in `test/src`.
+    if scala, !sets.contains("main") {
+      if exists(module + "/src") { result.append(module + "/src") }
+      if exists(module + "/test/src") { result.append(module + "/test/src") }
     }
     for folder in calls(["srcDir", "srcDirs"], in: gradle) { result.append(standardized(module + "/" + folder)) }
     if let pom {
@@ -207,6 +245,50 @@ package final class JVMWorkspace {
       }
     }
     return result.filter(exists)
+  }
+
+  static let scalaBuildFiles = ["build.sbt", "build.mill", "build.sc"]
+
+  /// sbt's projects' folders: `project.in(file("a"))`, `(project in file("a"))`, `lazy val a = project` (folder `a`),
+  /// a cross project's `shared`, `jvm` and `js` folders under its own.
+  static func sbtProjects(_ text: String) -> [String] {
+    var result: [String] = []
+    for line in text.split(separator: "\n") {
+      let trimmed = line.trimmingCharacters(in: .whitespaces)
+      if trimmed.hasPrefix("//") { continue }
+      let files = calls(["file"], in: String(line))
+      let cross = line.contains("crossProject") || line.contains("CrossProject")
+      if let folder = files.first {
+        result.append(folder)
+        if cross { result += ["shared", "jvm", "js", "native"].map { folder + "/" + $0 } }
+      } else if let range = line.range(of: "lazy val "), line.contains("= project") || line.contains("=project") || cross {
+        let name = line[range.upperBound...].prefix { $0.isLetter || $0.isNumber || $0 == "_" || $0 == "-" }
+        if !name.isEmpty {
+          result.append(String(name))
+          if cross { result += ["shared", "jvm", "js", "native"].map { String(name) + "/" + $0 } }
+        }
+      }
+    }
+    return result
+  }
+
+  /// Mill's modules: `object a extends …Module`, nested ones as `a/b`, by indentation and braces.
+  static func millModules(_ text: String) -> [String] {
+    var result: [String] = []
+    var stack: [(indent: Int, name: String)] = []
+    for line in text.split(separator: "\n") {
+      let indent = line.prefix { $0 == " " || $0 == "\t" }.count
+      let trimmed = line.trimmingCharacters(in: .whitespaces)
+      guard !trimmed.isEmpty, !trimmed.hasPrefix("//") else { continue }
+      while let last = stack.last, last.indent >= indent { stack.removeLast() }
+      guard trimmed.hasPrefix("object "), trimmed.contains("extends") else { continue }
+      let name = trimmed.dropFirst(7).prefix { $0.isLetter || $0.isNumber || $0 == "_" || $0 == "`" || $0 == "-" }.replacingOccurrences(of: "`", with: "")
+      guard !name.isEmpty else { continue }
+      let path = (stack.map(\.name) + [name]).joined(separator: "/")
+      if !trimmed.contains("Tests") && !trimmed.contains("TestModule") { result.append(path) }
+      stack.append((indent, name))
+    }
+    return result
   }
 
   /// `include(":a", ":b:c")`, `include ':app', ':lib'`: the modules' folders, `:b:c` being `b/c`.
@@ -300,11 +382,11 @@ package final class JVMWorkspace {
   package private(set) lazy var platform: JVMSourceSet? = {
     if findsPlatform {
       let environment = ProcessInfo.processInfo.environment
-      if let given = environment["CODE_JAVA_SDK"], let found = JVMSourceSet(path: given, kind: .platform) { return found }
+      if let given = environment["CODE_JAVA_SDK"], let found = JVMSourceSet(path: given, kind: .platform, extensions: archiveExtensions) { return found }
       let jdk = Self.jdkSources(environment)
       let android = androidStubs(environment)
       for candidate in isAndroid ? [android, jdk] : [jdk, android] {
-        if let candidate, let found = JVMSourceSet(path: candidate, kind: .platform) { return found }
+        if let candidate, let found = JVMSourceSet(path: candidate, kind: .platform, extensions: archiveExtensions) { return found }
       }
     }
     // None on disk: the built-in stub of the classes code calls most.
@@ -349,6 +431,13 @@ package final class JVMWorkspace {
     let environment = ProcessInfo.processInfo.environment
     var folders = [(environment["GRADLE_USER_HOME"] ?? NSHomeDirectory() + "/.gradle") + "/caches/modules-2/files-2.1", NSHomeDirectory() + "/.m2/repository"]
     if let extra = environment["CODE_JAVA_SOURCES"] { folders.insert(extra, at: 0) }
+    if readsScala {
+      // Coursier's cache (sbt, Mill, scala-cli) and Ivy's.
+      let home = NSHomeDirectory()
+      folders += [
+        environment["COURSIER_CACHE"] ?? home + "/Library/Caches/Coursier/v1", home + "/.cache/coursier/v1", home + "/.ivy2/cache", home + "/.ivy2/local",
+      ]
+    }
     var jars: [String] = []
     for folder in folders {
       guard let walker = FileManager.default.enumerator(atPath: folder) else { continue }
@@ -357,7 +446,8 @@ package final class JVMWorkspace {
       }
     }
     // The newest version of each artifact: its folder's path without the version and hash.
-    return jars.sorted().reversed().compactMap { JVMSourceSet(path: $0, kind: .dependency) }
+    let extensions = archiveExtensions
+    return jars.sorted().reversed().compactMap { JVMSourceSet(path: $0, kind: .dependency, extensions: extensions) }
   }()
 }
 
@@ -386,7 +476,7 @@ package final class JVMSourceSet {
     index(names: Array(files.keys))
   }
 
-  package init?(path: String, kind: Kind) {
+  package init?(path: String, kind: Kind, extensions: Set<String> = ["java", "kt"]) {
     self.path = path
     self.kind = kind
     var isDirectory: ObjCBool = false
@@ -396,13 +486,13 @@ package final class JVMSourceSet {
       archive = nil
       if let walker = FileManager.default.enumerator(atPath: path) {
         while let entry = walker.nextObject() as? String {
-          if entry.hasSuffix(".java") || entry.hasSuffix(".kt") { names.append(entry) }
+          if let dot = entry.lastIndex(of: "."), extensions.contains(String(entry[entry.index(after: dot)...])) { names.append(entry) }
         }
       }
     } else {
       guard let opened = ZipArchive(path: path) else { return nil }
       archive = opened
-      names = opened.entries.keys.filter { $0.hasSuffix(".java") || $0.hasSuffix(".kt") }
+      names = opened.entries.keys.filter { entry in entry.lastIndex(of: ".").map { extensions.contains(String(entry[entry.index(after: $0)...])) } ?? false }
     }
     index(names: names)
   }

@@ -7,7 +7,8 @@ import Foundation
 /// the build's other source roots (`JVMWorkspace.externalRoots`), the platform's sources and dependencies'
 /// `-sources.jar`s, in that order of preference (a package found in one isn't looked for further). Kotlin's front end
 /// takes it with its own extensions, a syntax that reads each file in its language and its standard library's sources
-/// as `extraSets`, looked in before the platform's.
+/// as `extraSets`, looked in before the platform's; Scala's also its own reading of a file's package
+/// (`packageOfFile`: chained `package` clauses).
 package final class JavaLayout: ProjectLayout {
   package let syntax: any LanguageSyntax
   /// Sources a front end adds, looked in before the platform's (Kotlin's standard library).
@@ -20,13 +21,17 @@ package final class JavaLayout: ProjectLayout {
   package var archived: [String: (set: JVMSourceSet, entry: String)] = [:]
   /// The packages the project's own files declare, and every package above them.
   private(set) var projectPrefixes: Set<String> = []
+  /// A file's package by its absolute path, when the front end reads it differently from Java's `package` line.
+  let packageOfFile: ((String) -> String)?
 
   package init(
-    root: String, findsPlatform: Bool = true, extensions: Set<String> = ["java"], syntax: any LanguageSyntax = JavaSyntax.shared, extraSets: [JVMSourceSet] = []
+    root: String, findsPlatform: Bool = true, extensions: Set<String> = ["java"], syntax: any LanguageSyntax = JavaSyntax.shared, extraSets: [JVMSourceSet] = [],
+    packageOfFile: ((String) -> String)? = nil
   ) {
     self.root = root
     self.syntax = syntax
     self.extraSets = extraSets
+    self.packageOfFile = packageOfFile
     workspace = JVMWorkspace(root: root, extensions: extensions)
     workspace.findsPlatform = findsPlatform
   }
@@ -34,7 +39,8 @@ package final class JavaLayout: ProjectLayout {
   package func sourceFiles(in directory: String) -> [String] { workspace.sourceFiles(in: directory) }
 
   package func moduleName(ofRelative path: String) -> String {
-    let package = JVMWorkspace.packageName(ofFile: path.hasPrefix("/") ? path : root + "/" + path)
+    let absolute = path.hasPrefix("/") ? path : root + "/" + path
+    let package = packageOfFile?(absolute) ?? JVMWorkspace.packageName(ofFile: absolute)
     var current = package
     while !current.isEmpty, projectPrefixes.insert(current).inserted {
       guard let dot = current.lastIndex(of: ".") else { break }
