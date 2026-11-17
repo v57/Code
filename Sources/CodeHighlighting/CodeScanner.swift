@@ -54,17 +54,19 @@ public struct CodeScanner: Sendable {
     init(spec: LanguageSpec) {
       func re(_ p: String) -> NSRegularExpression? { RegexCache.regex(p) }
       let ident = "[A-Za-z_$][A-Za-z0-9_$]*"
+      // A declared or accessed name is a whole name of the language (Elixir's `empty?`).
+      let name = spec.identifierPattern ?? ident
       if !spec.declKeywords.isEmpty {
         let alt = spec.declKeywords.keys.sorted { $0.count > $1.count }.joined(separator: "|")
-        declPattern = re("\\b(" + alt + ")\\s+(" + ident + ")")
+        declPattern = re("\\b(" + alt + ")\\s+(" + name + ")")
       } else {
         declPattern = nil
       }
       numberPattern = re(
         "(?:0[xX][0-9a-fA-F_]+|0[bB][01_]+|0[oO][0-7_]+|[0-9][0-9_]*(?:\\.[0-9_]+)?(?:[eE][+-]?[0-9]+)?)[uUlLfF]*"
       )!
-      identifierPattern = re(spec.identifierPattern ?? ident)!
-      memberPattern = re("\\." + ident)!
+      identifierPattern = re(name)!
+      memberPattern = re("\\." + name)!
       shellVarPattern = re("(?:\\$" + ident + "|\\$\\{" + ident + "\\})")!
       urlPattern = re("(?:https?|ftp)://[^\\s<>\"'()]+")!
       hashWordPattern = (spec.hashDirectives && !spec.hashDirectivesAnchored) ? re("#" + ident) : nil

@@ -355,7 +355,7 @@ private final class Client: @unchecked Sendable {
 /// `objective-cpp`) finds the scanner's profile when the file's name doesn't say.
 @Suite struct LanguageIDTests {
   /// Languages with no `LanguageSpec` in CodeHighlighting yet: the scanner reads them as plain text.
-  static let withoutSpec: Set<String> = ["zig", "elixir"]
+  static let withoutSpec: Set<String> = []
 
   @Test func everyCatalogLanguageIDResolves() {
     let ids = Set(LanguageServerCatalog.all.flatMap { $0.languageIDs.values })
@@ -367,5 +367,7 @@ private final class Client: @unchecked Sendable {
     #expect(LexProfile.profile(forLanguage: "typescriptreact")?.spec.name == "TypeScript")
     #expect(LexProfile.profile(forLanguage: "javascriptreact")?.spec.name == "JavaScript")
     #expect(LexProfile.profile(forLanguage: "objective-cpp")?.spec.name == "Objective-C")
+    #expect(LexProfile.profile(forLanguage: "zig")?.spec.name == "Zig")
+    #expect(LexProfile.profile(forLanguage: "elixir")?.spec.name == "Elixir")
   }
 }

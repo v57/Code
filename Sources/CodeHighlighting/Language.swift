@@ -11,7 +11,7 @@ public enum Language {
     ".zshenv": "shell", ".profile": "shell", ".envrc": "shell", "pkgbuild": "shell",
     "cmakelists.txt": "makefile", ".swift-format": "json", ".swiftlint.yml": "yaml",
     "package.resolved": "json", ".prettierrc": "json", ".eslintrc": "json", ".babelrc": "json",
-    "cargo.lock": "toml", "pipfile": "toml",
+    "cargo.lock": "toml", "pipfile": "toml", "mix.lock": "elixir",
   ]
 
   /// Extensions (lowercased, without the dot) that differ from a language alias.
@@ -32,7 +32,7 @@ public enum Language {
     "fish": "shell", "python": "python", "python3": "python", "python2": "python",
     "node": "javascript", "deno": "typescript", "bun": "javascript", "ruby": "ruby",
     "perl": "shell", "php": "php", "lua": "lua", "swift": "swift", "pwsh": "powershell",
-    "make": "makefile",
+    "make": "makefile", "elixir": "elixir", "iex": "elixir", "zig": "zig",
   ]
 
   /// The language for `url`, or nil for plain text. `firstLine` (when known)

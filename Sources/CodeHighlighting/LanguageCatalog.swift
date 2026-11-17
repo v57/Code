@@ -3,12 +3,13 @@ import Foundation
 /// The 20 most-used languages, in GitHub Octoverse 2024 ranking order
 /// (JavaScript, TypeScript, Python, Java, C#, C++, PHP, Shell, C, Ruby, Rust,
 /// Go, Kotlin, Dart, Swift, Objective-C, Scala, PowerShell, Lua, Haskell),
-/// followed by the data, markup and build formats a project folder also holds
-/// and query languages a project folder also holds (LanguageCatalog+Formats.swift).
+/// then Zig and Elixir (LanguageCatalog+ZigElixir.swift), followed by the data, markup
+/// and build formats a project folder also holds and query languages a project
+/// folder also holds (LanguageCatalog+Formats.swift).
 public enum LanguageCatalog {
   public static let all: [LanguageSpec] = [
     javascript, typescript, python, java, csharp, cpp, php, shell, c, ruby, rust, go, kotlin, dart,
-    swift, objectiveC, scala, powershell, lua, haskell,
+    swift, objectiveC, scala, powershell, lua, haskell, zig, elixir,
   ] + formats
 
   // MARK: - JavaScript
