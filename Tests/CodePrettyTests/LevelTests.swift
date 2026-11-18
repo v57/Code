@@ -81,6 +81,28 @@ private func expectFormats(_ text: String, _ language: String, to expected: Stri
     expectFormats("a=b  c  -x=1 d,e\n", "Shell", to: "a=b c -x=1 d,e\n")
   }
 
+  @Test func rubyIndentsByItsWords() {
+    let text = "class A\ndef a=(v)\n@a=v\nend\ndef b = 1\ndef c(x)\nreturn 1 if x\n[1,2].each do |i|\nputs i\nend\nend\nend\n"
+    expectFormats(text, "Ruby", to: """
+      class A
+        def a=(v)
+          @a = v
+        end
+        def b = 1
+        def c(x)
+          return 1 if x
+          [1, 2].each do |i|
+            puts i
+          end
+        end
+      end
+
+      """)
+    // A quoted here-document word runs to its quote, and the body runs to it.
+    let heredoc = "A.class_eval <<-'end;', __FILE__\n  def x\n  end\nend;\nputs 1\n"
+    expectFormats(heredoc, "Ruby", to: heredoc)
+  }
+
   @Test func scalaWithoutBracesKeepsItsIndentation() {
     let braceless = "object A:\n  def a(x: Int): Int =\n    val y = x\n    y\n"
     expectFormats(braceless, "Scala", to: braceless)

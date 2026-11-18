@@ -368,7 +368,16 @@ public struct LanguageRules: Sendable {
     },
     "Ruby": LanguageRules {
       $0.blocks = .indentation
-      $0.layout = .lines  // `%w(a,b)` and friends: a comma isn't always one.
+      // `%w(a,b)` and friends are one string token each, so a comma outside them is one.
+      $0.layout = .full
+      $0.wrapsLists = false
+      $0.newlineEndsStatements = true
+      $0.blockWords = [
+        "def": .open, "class": .open, "module": .open, "begin": .open, "case": .open, "do": .loopBody,
+        "if": .openAtStatementStart, "unless": .openAtStatementStart, "while": .loopHead, "until": .loopHead,
+        "for": .loopHead, "end": .close, "else": .middle, "elsif": .middle, "when": .middle, "in": .middle,
+        "rescue": .middle, "ensure": .middle,
+      ]
       $0.parameters = .nameFirst
       $0.assignmentDeclares = true
       $0.declarations = ["class": .class, "module": .module, "def": .function]
