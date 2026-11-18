@@ -344,6 +344,16 @@ public struct LanguageRules: Sendable {
     "Shell": LanguageRules {
       $0.codeEscape = 0x5C
       $0.blocks = .indentation
+      $0.layout = .full
+      $0.wordGaps = []
+      $0.wrapsLists = false
+      $0.newlineEndsStatements = true
+      $0.blockWordsAtCommandStart = true
+      $0.linesStartCommands = true
+      $0.blockWords = [
+        "then": .open, "do": .open, "else": .middle, "elif": .close, "fi": .close, "done": .close, "case": .caseHead,
+        "in": .caseIn, "esac": .caseEnd,
+      ]
       $0.bareFunctions = true
       $0.assignmentDeclares = true
       $0.declarations = ["function": .function]

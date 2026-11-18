@@ -30,6 +30,57 @@ private func expectFormats(_ text: String, _ language: String, to expected: Stri
     expectFormats("<?php declare(strict_types=1);\n", "PHP", to: "<?php declare(strict_types=1);\n")
   }
 
+  @Test func shellIndentsByItsWords() {
+    let text = """
+      if [ -n "$a" ]; then
+      echo a
+      elif true; then
+          echo b
+      else
+      for i in 1 2; do
+      echo $i
+      done
+      fi
+      case $x in
+        a|b) echo ab;;
+      (c)
+        echo c
+        ;;
+      esac
+
+      """
+    expectFormats(text, "Shell", to: """
+      if [ -n "$a" ]; then
+        echo a
+      elif true; then
+        echo b
+      else
+        for i in 1 2; do
+          echo $i
+        done
+      fi
+      case $x in
+        a|b) echo ab;;
+        (c)
+          echo c
+          ;;
+      esac
+
+      """)
+    // `echo done` is an argument, not the loop's end.
+    expectFormats("for a in b; do\necho done\ndone\n", "Shell", to: "for a in b; do\n  echo done\ndone\n")
+  }
+
+  @Test func shellLinesAreCommands() {
+    // `&` ends a command, `X=` assigns nothing, `/usr/bin/x` and `"$x"` start one; `||`, `|` and `$(` go on.
+    let text = "run &\npid=$!\nEMPTY=\nnext=1\n/usr/bin/make all\n\"$x\" >out\nok ||\n{ echo no; }\nv=$(ls |\n  wc -l)\n"
+    expectFormats(text, "Shell", to: "run &\npid=$!\nEMPTY=\nnext=1\n/usr/bin/make all\n\"$x\" >out\nok ||\n  { echo no; }\nv=$(ls |\n  wc -l)\n")
+    // A here-document's body stays, and the command after it starts a line.
+    expectFormats("f() {\ncat <<EOF\n  body\nEOF\n  echo after\n}\n", "Shell", to: "f() {\n  cat <<EOF\n  body\nEOF\n  echo after\n}\n")
+    // Spaces separate words: none is added or removed but one where several were.
+    expectFormats("a=b  c  -x=1 d,e\n", "Shell", to: "a=b c -x=1 d,e\n")
+  }
+
   @Test func scalaWithoutBracesKeepsItsIndentation() {
     let braceless = "object A:\n  def a(x: Int): Int =\n    val y = x\n    y\n"
     expectFormats(braceless, "Scala", to: braceless)
