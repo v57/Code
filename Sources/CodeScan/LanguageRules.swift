@@ -581,6 +581,8 @@ public struct LanguageRules: Sendable {
     "TOML": LanguageRules {
       $0.blocks = .none
       $0.outline = .tomlKeys
+      $0.layout = .full
+      $0.spacesInsideBraces = true
       $0.commentsNeedWordStart = true
       $0.extraIdentifierBytes = "-"
     },
@@ -598,10 +600,12 @@ public struct LanguageRules: Sendable {
     },
     "SQL": LanguageRules {
       $0.blocks = .none
+      $0.layout = .spacing
       $0.declarations = ["table": .struct, "view": .struct, "function": .function, "procedure": .function, "index": .field]
     },
     "CQL": LanguageRules {
       $0.blocks = .none
+      $0.layout = .spacing
       $0.declarations = ["table": .struct, "keyspace": .module, "type": .typeAlias]
     },
     "Redis": LanguageRules {

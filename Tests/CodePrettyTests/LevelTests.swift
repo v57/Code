@@ -127,6 +127,18 @@ private func expectFormats(_ text: String, _ language: String, to expected: Stri
     expectFormats(four, "Lua", to: four)
   }
 
+  @Test func tomlFormatsKeysTablesAndArrays() {
+    let text = "[a]\nname=\"x\"\n  deps = {version=\"1\",optional=true}\nlist = [\n\"a\",\n]\nwhen = 1979-05-27T07:32:00Z\ns = \"\"\"\n  keep  this\n\"\"\"\n"
+    expectFormats(text, "TOML", to: "[a]\nname = \"x\"\ndeps = { version = \"1\", optional = true }\nlist = [\n  \"a\",\n]\nwhen = 1979-05-27T07:32:00Z\ns = \"\"\"\n  keep  this\n\"\"\"\n")
+  }
+
+  @Test func sqlAndCQLGetSpacing() {
+    expectFormats("SELECT a,b FROM t WHERE a=1 AND b>=2;\n", "SQL", to: "SELECT a, b FROM t WHERE a = 1 AND b >= 2;\n")
+    expectFormats("SELECT a,b FROM ks.t WHERE a=1;\n", "CQL", to: "SELECT a, b FROM ks.t WHERE a = 1;\n")
+    // Indentation is the author's.
+    expectFormats("SELECT a\n  FROM t\n WHERE b=1;\n", "SQL", to: "SELECT a\n  FROM t\n WHERE b = 1;\n")
+  }
+
   @Test func scalaWithoutBracesKeepsItsIndentation() {
     let braceless = "object A:\n  def a(x: Int): Int =\n    val y = x\n    y\n"
     expectFormats(braceless, "Scala", to: braceless)
