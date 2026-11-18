@@ -108,6 +108,19 @@ private func expectFormats(_ text: String, _ language: String, to expected: Stri
     expectFormats(text, "PowerShell", to: "function A {\n  param($x)\n  if ($x) {\n    & $tool -p:x=1 a, b\n    . $common\n  }\n}\n")
   }
 
+  @Test func luaIndentsByWordsAndKeepsItsTables() {
+    let text = "local function a(x)\nif x then\nreturn {1,2}\nelse\nreturn nil\nend\nend\n"
+    expectFormats(text, "Lua", to: "local function a(x)\n  if x then\n    return {1, 2}\n  else\n    return nil\n  end\nend\n")
+    // A table under its call, and a long string under its key, stay where they're written; `={` gets both spaces.
+    let tables = "data:extend(\n{\n  {type=\"a\"},\n})\nsim =\n{\n  init =\n  [[\n    go()\n  ]]\n}\nt={x=1}\n"
+    expectFormats(tables, "Lua", to: "data:extend(\n{\n  {type = \"a\"},\n})\nsim =\n{\n  init =\n  [[\n    go()\n  ]]\n}\nt = {x = 1}\n")
+    // Without its spaces `t[ [[key]] ]` would be another long string.
+    expectFormats("local f = t[ [[key]] ]\n", "Lua", to: "local f = t[ [[key]] ]\n")
+    // Four spaces under `function`, with no braces to say so.
+    let four = "function a()\n    if b then\n        c()\n    end\nend\n"
+    expectFormats(four, "Lua", to: four)
+  }
+
   @Test func scalaWithoutBracesKeepsItsIndentation() {
     let braceless = "object A:\n  def a(x: Int): Int =\n    val y = x\n    y\n"
     expectFormats(braceless, "Scala", to: braceless)

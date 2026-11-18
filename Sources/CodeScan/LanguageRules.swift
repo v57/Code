@@ -489,7 +489,12 @@ public struct LanguageRules: Sendable {
     },
     "Lua": LanguageRules {
       $0.blocks = .indentation
-      $0.layout = .spacing
+      $0.layout = .full
+      $0.newlineEndsStatements = true
+      $0.blockWords = [
+        "function": .open, "do": .open, "then": .open, "repeat": .open, "end": .close, "until": .close,
+        "elseif": .close, "else": .middle,
+      ]
       $0.parameters = .nameFirst
       $0.assignmentDeclares = true
       $0.declarations = ["function": .function, "local": .variable]
