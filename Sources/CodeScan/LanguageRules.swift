@@ -472,7 +472,11 @@ public struct LanguageRules: Sendable {
     },
     "PowerShell": LanguageRules {
       $0.codeEscape = 0x60
-      $0.layout = .lines
+      // Commands take words: `a=b`, `-p:x=1` and `a ,b` mean other things spaced, so only these gain a space.
+      $0.layout = .full
+      $0.wordGaps = [.afterCommas, .beforeBraces, .afterControlWords]
+      $0.wrapsLists = false
+      $0.linesStartCommands = true
       $0.parameters = .nameLast
       $0.assignmentDeclares = true
       $0.declarations = ["function": .function, "class": .class, "enum": .enum]

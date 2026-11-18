@@ -103,6 +103,11 @@ private func expectFormats(_ text: String, _ language: String, to expected: Stri
     expectFormats(heredoc, "Ruby", to: heredoc)
   }
 
+  @Test func powerShellIndentsBracesAndKeepsCommandsWords() {
+    let text = "function A {\nparam($x)\nif($x){\n& $tool -p:x=1 a,b\n. $common\n}\n}\n"
+    expectFormats(text, "PowerShell", to: "function A {\n  param($x)\n  if ($x) {\n    & $tool -p:x=1 a, b\n    . $common\n  }\n}\n")
+  }
+
   @Test func scalaWithoutBracesKeepsItsIndentation() {
     let braceless = "object A:\n  def a(x: Int): Int =\n    val y = x\n    y\n"
     expectFormats(braceless, "Scala", to: braceless)
