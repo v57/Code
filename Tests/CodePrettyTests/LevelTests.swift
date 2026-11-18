@@ -21,6 +21,15 @@ private func expectFormats(_ text: String, _ language: String, to expected: Stri
 
 /// How much of the layout each language gets, and the rules that let the word-block languages have all of it.
 @Suite struct LevelTests {
+  @Test func phpIndentsInsideItsTagsAndLeavesMarkup() {
+    expectFormats("<?php\nfunction a($b){\nif($b){\nreturn [1,2];\n}\n}\n", "PHP", to: "<?php\nfunction a($b) {\n  if ($b) {\n    return [1, 2];\n  }\n}\n")
+    // With markup around it, the lines are the template's: spacing only, and the markup's bytes stay.
+    let template = "<?php\nif($a){\necho 1;\n}\n?>\n<p>x</p>\n<?php foreach($b as $c): ?>\n  <li><?= $c ?></li>\n<?php endforeach; ?>\n"
+    expectFormats(template, "PHP", to: "<?php\nif ($a) {\necho 1;\n}\n?>\n<p>x</p>\n<?php foreach ($b as $c): ?>\n  <li><?= $c ?></li>\n<?php endforeach; ?>\n")
+    expectFormats("<html>\n<?php if ($a) { echo 1; } ?>\n</html>\n", "PHP", to: "<html>\n<?php if ($a) { echo 1; } ?>\n</html>\n")
+    expectFormats("<?php declare(strict_types=1);\n", "PHP", to: "<?php declare(strict_types=1);\n")
+  }
+
   @Test func scalaWithoutBracesKeepsItsIndentation() {
     let braceless = "object A:\n  def a(x: Int): Int =\n    val y = x\n    y\n"
     expectFormats(braceless, "Scala", to: braceless)

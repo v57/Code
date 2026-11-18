@@ -323,7 +323,9 @@ public struct LanguageRules: Sendable {
       $0 = base
     },
     "PHP": LanguageRules {
-      $0.layout = .lines  // HTML can sit between its code.
+      // A file with markup between its code keeps its lines' indentation (`.spacing`), and whitespace next to `?>`
+      // and `<?php` is output, so it stays.
+      $0.layout = .full
       $0.parameters = .nameLast
       $0.declarations = [
         "class": .class, "interface": .interface, "trait": .interface, "enum": .enum, "function": .function,
