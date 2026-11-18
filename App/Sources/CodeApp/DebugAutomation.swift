@@ -394,7 +394,8 @@
           let node = model.workspace.tree.node(
             for: model.workspace.root.appendingPathComponent(String(argument[..<colon])))
         {
-          model.workspace.tree.setExpanded(node, argument[argument.index(after: colon)...] != "off")
+          let open = argument[argument.index(after: colon)...] != "off"
+          withKitAnimation { model.workspace.tree.setExpanded(node, open) }
         }
       case "quick":
         // The Projects list's quick actions: quick:<run|install|export|upload|preset name>:<folder>.
