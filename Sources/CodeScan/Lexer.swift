@@ -1006,7 +1006,13 @@ private func opener(
     if quote != 0 { j &+= 1 }
     let wordStart = j
     guard profile.ident[Int(t[j])] != 0, t[j] > 0x39 else { return nil }
-    while profile.ident[Int(t[j])] != 0 { j &+= 1 }
+    if quote != 0 {
+      // A quoted word runs to its quote: Ruby's `<<-'end;'`.
+      while j < n, t[j] != quote, t[j] != 0x0A { j &+= 1 }
+      if t[j] != quote { j = wordStart; while profile.ident[Int(t[j])] != 0 { j &+= 1 } }
+    } else {
+      while profile.ident[Int(t[j])] != 0 { j &+= 1 }
+    }
     hereDocument = HereDocument(
       pending: true, start: wordStart, length: j &- wordStart, indented: indented || profile.hereDocumentsCloseLoosely,
       loose: profile.hereDocumentsCloseLoosely)

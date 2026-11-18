@@ -111,6 +111,10 @@ private func names(_ text: String, _ language: String) -> [String] {
     let tokens = kinds("cat <<EOF\nnot code\nEOF\necho done\n", "Shell")
     #expect(tokens.contains { $0.0 == "echo" })
     #expect(!tokens.contains { $0.0 == "not" })
+    // A quoted word runs to its quote: Rake's `<<-'end;'` ends at `end;`, not at the first `end` in it.
+    let ruby = kinds("A.class_eval <<-'end;', __FILE__\n  def x\n  end\n  end;\nputs 1\n", "Ruby")
+    #expect(ruby.contains { $0 == ("<<-'end;'", .punctuation) })
+    #expect(ruby.contains { $0.0 == "puts" } && !ruby.contains { $0.0 == "def" })
   }
 
   @Test func phpTagsHereDocumentsAndAttributes() {
