@@ -13,6 +13,14 @@ public struct PrettyOptions: Equatable, Sendable {
   /// `"` or `'`, for languages that may use either; nil keeps what most of the file uses.
   public var quote: UInt8?
   public var trailingCommas = true
+  /// Columns a statement's continuation lines go in; 0 is one indentation level. clang-format's and dart format's
+  /// are 4 whatever the indentation.
+  public var continuationIndent = 0
+  /// Where the language's tools differ, a project's configuration settles these (`.clang-format`'s
+  /// `IndentCaseLabels`, `NamespaceIndentation`, `AccessModifierOffset`); nil follows the file.
+  public var indentsCaseLabels: Bool?
+  public var indentsNamespaces: Bool?
+  public var accessModifierOffset: Int?
 
   public init() {}
 }
@@ -59,6 +67,10 @@ public enum Pretty {
     if let path, ["tsx", "jsx", "vue", "svelte", "astro", "mdx"].contains((path as NSString).pathExtension.lowercased()) {
       layout = .lines
     }
+    // Scala 3 without braces: indentation is its blocks, which tokens can't see.
+    if layout == .full, source.profile.rules.optionalBraces, IndentationBlocks.used(in: source) { layout = .spacing }
+    // A PHP template: its code's indentation follows the markup around it, which the formatter doesn't see.
+    if layout == .full, source.profile.rules.inlineMarkup, hasMarkup(source) { layout = .spacing }
     let result: [UInt8]
     switch layout {
     case .lines: result = LineFormatter(source: source, options: options).run()
@@ -71,6 +83,17 @@ public enum Pretty {
       return Output(text: Array(source.bytes), refused: true, refusedLine: source.lines.line(of: offset))
     }
     return Output(text: result)
+  }
+
+  /// Whether text sits between the code's `?>` and `<?php`, or before the first.
+  private static func hasMarkup(_ source: SourceFile) -> Bool {
+    let tokens = source.tokens
+    guard let first = tokens.first else { return false }
+    if first.kind == .string { return true }
+    for (index, token) in tokens.enumerated() where token.length == 2 && source.text[token.start] == 0x3F && source.text[token.start + 1] == 0x3E && token.kind == .punctuation {
+      if index + 1 < tokens.count { return true }
+    }
+    return false
   }
 
   public static func format(_ text: String, language: String, path: String? = nil, options: PrettyOptions = PrettyOptions()) -> String? {
@@ -154,6 +177,57 @@ public enum Pretty {
   }
 }
 
+/// Whether a file of a language with optional braces (Scala 3) has blocks made by indentation: a line ending in `:`
+/// with deeper lines below, an `end` marker, or a line ending in `=`, `=>` or a word like `then` or `match` with two
+/// statements below it at one deeper column.
+enum IndentationBlocks {
+  static func used(in source: SourceFile) -> Bool {
+    let t = source.text
+    let tokens = source.tokens
+    struct Row { var first: Int; var last: Int; var indent: Int; var depth: Int }
+    var rows: [Row] = []
+    var depth = 0
+    var index = 0
+    func indent(_ offset: Int) -> Int { offset - Int(source.lines.starts[source.lines.line(of: offset)]) }
+    while index < tokens.count {
+      var end = index + 1
+      while end < tokens.count, memchr(t + tokens[end - 1].end, 0x0A, tokens[end].start - tokens[end - 1].end) == nil { end += 1 }
+      var last = end - 1
+      while last > index, tokens[last].kind == .comment || tokens[last].kind == .docComment { last -= 1 }
+      let startDepth = depth
+      for i in index..<end {
+        let token = tokens[i]
+        if token.kind == .open, t[token.start] != 0x7B { depth += 1 } else if token.kind == .close, t[token.start] != 0x7D { depth = max(0, depth - 1) }
+      }
+      if tokens[index].kind != .comment, tokens[index].kind != .docComment, tokens[index].kind != .string || last > index {
+        rows.append(Row(first: index, last: last, indent: indent(tokens[index].start), depth: startDepth))
+      }
+      index = end
+    }
+    func word(_ token: Token) -> String { String(decoding: UnsafeBufferPointer(start: t + token.start, count: token.length), as: UTF8.self) }
+    func isOperatorStart(_ row: Row) -> Bool {
+      let token = tokens[row.first]
+      return token.kind == .punctuation && token.length <= 3
+    }
+    for (n, row) in rows.enumerated() where row.depth == 0 {
+      let first = word(tokens[row.first])
+      if first == "end", row.last - row.first <= 1 { return true }
+      let last = tokens[row.last]
+      let ending = word(last)
+      guard n + 1 < rows.count, rows[n + 1].indent > row.indent, rows[n + 1].depth == 0 else { continue }
+      if last.kind == .punctuation, ending == ":" { return true }
+      let opens = ["=", "=>", "then", "else", "do", "with", "match", "yield", "try", "finally", "catch"]
+      guard opens.contains(ending), n + 2 < rows.count else { continue }
+      let a = rows[n + 1]
+      let b = rows[n + 2]
+      if b.indent == a.indent, b.depth == 0, !isOperatorStart(b), tokens[a.last].kind != .punctuation || word(tokens[a.last]) == ")" || word(tokens[a.last]) == "]" {
+        return true
+      }
+    }
+    return false
+  }
+}
+
 /// `.lines`: whitespace may be content, so only what's invisible at the end of lines and of the file.
 private struct LineFormatter {
   let source: SourceFile
@@ -232,6 +306,10 @@ private struct TokenFormatter {
   let isFullLayout: Bool
   let newline: [UInt8]
   let preferredQuote: UInt8?
+  var style = Style()
+  /// Gaps written exactly as they are: before the token after a Haskell `do`, `where`, `let` or `of` on its line (its
+  /// column is the block's), next to PHP's `?>` and `<?php` (whitespace there is output).
+  var keptGaps: [Bool]
 
   init(source: SourceFile, options: PrettyOptions, layout: LanguageRules.Layout) {
     self.source = source
@@ -252,8 +330,110 @@ private struct TokenFormatter {
       if token.kind == .interpolationOpen { depth += 1 }
     }
     preferredQuote = Self.quote(in: source, rules: rules, options: options)
+    keptGaps = [Bool](repeating: false, count: tokens.count + 1)
+    computeKeptGaps()
     computeBreaks()
     computeClosers()
+    style = detectStyle()
+  }
+
+  /// Votes from the file where a language's tools differ: `case` under `switch` or in from it, a namespace's content
+  /// indented or not, `public:`'s offset.
+  private func detectStyle() -> Style {
+    var style = Style()
+    style.casesAlignWithSwitch = rules.caseAlignsWithSwitch
+    guard isFullLayout, rules.followsFileStyle else { return style }
+    var alignedCases = 0
+    var indentedCases = 0
+    var flatNamespaces = 0
+    var indentedNamespaces = 0
+    var offsets = [Int: Int]()
+    var stack: [Int] = []
+    var switchBraces = Set<Int>()
+    var pendingSwitch = false
+    var statementFirst = 0
+    for (index, token) in tokens.enumerated() {
+      let firstOnLine = index == 0 || breaks[index] > 0
+      switch token.kind {
+      case .open where t[token.start] == 0x7B:
+        if pendingSwitch { switchBraces.insert(index) }
+        pendingSwitch = false
+        let head = tokens[statementFirst]
+        if statementFirst < index, equals(head, "namespace") || (equals(head, "extern") && tokens[index - 1].kind == .string),
+          index + 1 < tokens.count, breaks[index + 1] > 0, tokens[index + 1].kind != .close
+        {
+          if indentOfLine(tokens[index + 1].start) > indentOfLine(token.start) { indentedNamespaces += 1 } else { flatNamespaces += 1 }
+        }
+        stack.append(index)
+        statementFirst = index + 1
+      case .open:
+        stack.append(index)
+      case .close:
+        _ = stack.popLast()
+        if t[token.start] == 0x7D { statementFirst = index + 1 }
+      case .keyword where equals(token, "switch"):
+        pendingSwitch = true
+      case .keyword where firstOnLine && (equals(token, "case") || equals(token, "default")):
+        if let open = stack.last, switchBraces.contains(open), index + 1 < tokens.count {
+          if indentOfLine(token.start) > indentOfLine(tokens[open].start) { indentedCases += 1 } else { alignedCases += 1 }
+        }
+      case .punctuation where isByte(token, 0x3B):
+        statementFirst = index + 1
+      default:
+        if firstOnLine, rules.outdentsLabels, index + 1 < tokens.count, isByte(tokens[index + 1], 0x3A),
+          equals(token, "public") || equals(token, "private") || equals(token, "protected"), let open = stack.last, t[tokens[open].start] == 0x7B
+        {
+          offsets[indentOfLine(token.start) - indentOfLine(tokens[open].start), default: 0] += 1
+        }
+      }
+      // Comments and preprocessor lines before a statement aren't its start.
+      if index == statementFirst, token.kind == .comment || token.kind == .docComment || token.kind == .directive { statementFirst = index + 1 }
+    }
+    if let indents = options.indentsCaseLabels {
+      style.casesAlignWithSwitch = !indents
+    } else if alignedCases + indentedCases > 0 {
+      style.casesAlignWithSwitch = alignedCases > indentedCases
+    }
+    if let indents = options.indentsNamespaces {
+      style.indentsNamespaces = indents
+    } else {
+      style.indentsNamespaces = indentedNamespaces > flatNamespaces
+    }
+    let unit = options.useTabs ? 8 : options.indentWidth
+    if let offset = options.accessModifierOffset {
+      style.accessOffset = max(0, unit + offset)
+    } else if let best = offsets.max(by: { $0.value < $1.value || ($0.value == $1.value && $0.key > $1.key) }), best.key >= 0, best.key <= unit {
+      style.accessOffset = options.useTabs ? (best.key >= unit ? unit : 0) : best.key
+    }
+    return style
+  }
+
+  /// A line written exactly as it is: a here-document's body, which starts its line, and Ruby's `=begin` and
+  /// `__END__`, which must.
+  private func keepsVerbatim(_ index: Int) -> Bool {
+    let token = tokens[index]
+    if index == 0, rules.inlineMarkup { return true }
+    // `a\` then `b` at the line's start is one word `ab`: indenting it would make two.
+    if rules.codeEscape != 0, index > 0, token.start > 0, t[token.start - 1] == 0x0A, isByte(tokens[index - 1], rules.codeEscape) { return true }
+    guard token.start > 0, t[token.start - 1] == 0x0A else { return token.start == 0 && rules.embeddedDocuments }
+    switch token.kind {
+    case .string: return rules.hereDocuments && followsHereDocumentStart(index)
+    case .comment, .docComment: return rules.embeddedDocuments && (t[token.start] == 0x3D || t[token.start] == 0x5F)
+    default: return false
+    }
+  }
+
+  /// A string at a line's start is a here-document's body when the line before holds its `<<`; `"a" >b` isn't one.
+  private func followsHereDocumentStart(_ index: Int) -> Bool {
+    var i = index - 1
+    while i >= 0 {
+      let token = tokens[i]
+      if token.length >= 2, t[token.start] == 0x3C, t[token.start + 1] == 0x3C { return true }
+      // Its line's first token: stop.
+      if token.start == 0 || memchr(t + (i > 0 ? tokens[i - 1].end : 0), 0x0A, token.start - (i > 0 ? tokens[i - 1].end : 0)) != nil { return false }
+      i -= 1
+    }
+    return false
   }
 
   private static func quote(in source: SourceFile, rules: LanguageRules, options: PrettyOptions) -> UInt8? {
@@ -271,6 +451,32 @@ private struct TokenFormatter {
     return single > double ? 0x27 : 0x22
   }
 
+  mutating func computeKeptGaps() {
+    if rules.inlineMarkup {
+      for (index, token) in tokens.enumerated() where token.kind == .punctuation && token.length >= 2 {
+        let first = t[token.start]
+        if first == 0x3F, t[token.start + 1] == 0x3E {
+          keptGaps[index + 1] = true  // After `?>`, to the end of the file too.
+        } else if first == 0x3C, t[token.start + 1] == 0x3F {
+          keptGaps[index] = true
+        }
+      }
+    }
+    guard !rules.layoutWords.isEmpty else { return }
+    var lineFirst = 0
+    for (index, token) in tokens.enumerated() {
+      if index > 0, memchr(t + tokens[index - 1].end, 0x0A, token.start - tokens[index - 1].end) != nil { lineFirst = index }
+      guard token.kind == .keyword || token.kind == .declarationKeyword, index + 1 < tokens.count else { continue }
+      let next = tokens[index + 1]
+      guard memchr(t + token.end, 0x0A, next.start - token.end) == nil, !(next.kind == .open && t[next.start] == 0x7B) else { continue }
+      let word = String(decoding: UnsafeBufferPointer(start: t + token.start, count: token.length), as: UTF8.self)
+      // `\case` opens one; a plain `case` waits for its `of`.
+      let opens = rules.layoutWords.contains(word) && (word != "case" || (index > 0 && isByte(tokens[index - 1], 0x5C)))
+      guard opens else { continue }
+      for gap in (lineFirst + 1)...(index + 1) { keptGaps[gap] = true }
+    }
+  }
+
   mutating func computeBreaks() {
     let limit = UInt16(options.maxBlankLines + 1)
     for index in tokens.indices where index > 0 {
@@ -283,7 +489,7 @@ private struct TokenFormatter {
         i += 1
       }
       guard count > 0 else { continue }
-      if interpolated[index] {
+      if interpolated[index] || keptGaps[index] {
         breaks[index] = count
         continue
       }
@@ -320,6 +526,18 @@ private struct TokenFormatter {
     var isVerbatim = false
     /// The token this line lines up under, when the author aligned it with what follows a bracket.
     var alignedWith = -1
+    /// Columns past the token it lines up under.
+    var alignOffset = 0
+    /// Columns past its levels.
+    var extra = 0
+  }
+
+  /// What the file's own layout says where languages' styles differ, else the language's default.
+  struct Style {
+    var casesAlignWithSwitch = false
+    var indentsNamespaces = false
+    /// Where `public:` sits, in columns past its class's level.
+    var accessOffset = 0
   }
 
   struct Frame {
@@ -335,12 +553,130 @@ private struct TokenFormatter {
     /// What follows the bracket on its own line, and that token's column in the original.
     var alignToken = -1
     var alignColumn = -1
+    /// Columns past the levels, of the opener's line and of the content's lines: where continuation lines indent by
+    /// something other than a level (clang-format's and dart format's 4 columns).
+    var openerExtra = 0
+    var contentExtra = 0
+    /// Opened by a word (`then`, `do`, `def`) rather than a bracket.
+    var word = WordFrame.none
+    /// Whether the opener's line was a chain's head (1) or link (2), which its closing line goes on as.
+    var openerChain = 0
   }
+
+  enum WordFrame { case none, block, loopHead, caseList, caseItem }
 
   @inline(__always) func isByte(_ token: Token, _ byte: UInt8) -> Bool { token.length == 1 && t[token.start] == byte }
 
   func equals(_ token: Token, _ word: StaticString) -> Bool {
     token.length == word.utf8CodeUnitCount && memcmp(t + token.start, word.utf8Start, token.length) == 0
+  }
+
+  /// The role a word plays in blocks, if it's one of the language's block words where it stands.
+  private func blockWord(_ index: Int) -> LanguageRules.BlockWord? {
+    let token = tokens[index]
+    guard !rules.blockWords.isEmpty, token.kind == .keyword || token.kind == .declarationKeyword, token.length <= 8 else { return nil }
+    let word = String(decoding: UnsafeBufferPointer(start: t + token.start, count: token.length), as: UTF8.self)
+    guard let role = rules.blockWords[word] else { return nil }
+    // `echo done`: an argument, not the shell's word.
+    if rules.blockWordsAtCommandStart, role != .caseIn, !isCommandStart(index) { return nil }
+    return role
+  }
+
+  /// Whether a word stands where a shell command starts: a line's first, or after `;`, `&&`, `|`, `(`, `{` or
+  /// another reserved word.
+  private func isCommandStart(_ index: Int) -> Bool {
+    var i = index - 1
+    while i >= 0, tokens[i].kind == .comment || tokens[i].kind == .docComment { i -= 1 }
+    guard i >= 0 else { return true }
+    let previous = tokens[i]
+    if breaks[index] > 0 || memchr(t + previous.end, 0x0A, tokens[index].start - previous.end) != nil {
+      // A line break ends the command unless the line asked to go on.
+      // `a &&` goes on; `a &` runs in the background and ends.
+      let isAnd = t[previous.end - 1] == 0x26 && (previous.length == 2 || (i > 0 && tokens[i - 1].end == previous.start && isByte(tokens[i - 1], 0x26)))
+      return !(previous.kind == .punctuation && (t[previous.end - 1] == 0x7C || isAnd || t[previous.end - 1] == 0x5C))
+    }
+    switch previous.kind {
+    case .open: return true
+    case .punctuation:
+      let c = t[previous.end - 1]
+      return c == 0x3B || c == 0x26 || c == 0x7C || (c == 0x21 && previous.length == 1)
+    case .keyword:
+      return equals(previous, "then") || equals(previous, "do") || equals(previous, "else") || equals(previous, "elif")
+        || equals(previous, "if") || equals(previous, "while") || equals(previous, "until") || equals(previous, "time")
+    case .close:
+      return isByte(previous, 0x7D)
+    default: return false
+    }
+  }
+
+  /// Whether `if`, `while` and the like start a statement here, so they open a block: `x = if a` does, `y if a` (a
+  /// modifier) doesn't.
+  private func startsStatement(_ index: Int) -> Bool {
+    var i = index - 1
+    while i >= 0, tokens[i].kind == .comment || tokens[i].kind == .docComment { i -= 1 }
+    guard i >= 0 else { return true }
+    if memchr(t + tokens[i].end, 0x0A, tokens[index].start - tokens[i].end) != nil { return true }
+    let previous = tokens[i]
+    switch previous.kind {
+    case .open, .interpolationOpen: return true
+    case .punctuation: return true
+    case .keyword, .declarationKeyword:
+      return equals(previous, "then") || equals(previous, "else") || equals(previous, "do") || equals(previous, "begin")
+        || equals(previous, "and") || equals(previous, "or") || equals(previous, "not") || equals(previous, "when")
+        || equals(previous, "in") || equals(previous, "ensure") || equals(previous, "rescue")
+    default: return false
+    }
+  }
+
+  /// `def a(x) = x`: Ruby's endless method, which has no `end`.
+  private func isEndlessDefinition(_ index: Int, lineEnd: Int) -> Bool {
+    var depth = 0
+    var i = index + 1
+    while i < lineEnd {
+      let token = tokens[i]
+      if token.kind == .open { depth += 1 } else if token.kind == .close { depth -= 1 } else if depth == 0, isByte(token, 0x3D) {
+        // `def x=(v)` names a setter.
+        let named = i == index + 2 || (i >= 2 && isByte(tokens[i - 2], 0x2E))
+        if !(named && token.start == tokens[i - 1].end && i + 1 < tokens.count && tokens[i + 1].start == token.end && isByte(tokens[i + 1], 0x28)) {
+          return true
+        }
+      }
+      i += 1
+    }
+    return false
+  }
+
+  /// A `{` that holds a list, not statements: `f({ a, b })`, Dart's named parameters.
+  private func isListBrace(_ open: Int) -> Bool {
+    guard open > 0 else { return false }
+    let before = tokens[open - 1]
+    return (before.kind == .open && t[before.start] != 0x7B) || isByte(before, 0x2C)
+  }
+
+  /// `if (` with its condition on the lines below and `)` on its own: the condition's lines don't indent again
+  /// (Prettier's rule).
+  private func isBrokenCondition(_ open: Int) -> Bool {
+    guard open > 0, open + 1 < tokens.count, t[tokens[open].start] == 0x28, breaks[open + 1] > 0 else { return false }
+    let before = tokens[open - 1]
+    guard before.kind == .keyword, equals(before, "if") || equals(before, "while") || equals(before, "switch") || equals(before, "elseif") else { return false }
+    let close = Int(closers[open])
+    return close > 0 && breaks[close] > 0
+  }
+
+  /// A goto label alone on its line (`fail:`), in a block.
+  private func isGotoLabel(_ first: Int, end: Int, previousCode: Int) -> Bool {
+    guard rules.outdentsLabels, tokens[first].kind == .identifier, first + 1 < end, isByte(tokens[first + 1], 0x3A) else { return false }
+    if first + 2 < end, tokens[first + 2].kind != .comment, tokens[first + 2].kind != .docComment { return false }
+    guard previousCode >= 0 else { return true }
+    let previous = tokens[previousCode]
+    return isByte(previous, 0x3B) || isByte(previous, 0x3A) || (previous.kind == .open && t[previous.start] == 0x7B) || (previous.kind == .close && t[previous.start] == 0x7D)
+  }
+
+  /// `public:`, `private:`, `protected:` (C++).
+  private func isAccessSpecifier(_ first: Int, end: Int) -> Bool {
+    guard rules.outdentsLabels, first + 1 < end, tokens[first].kind == .keyword || tokens[first].kind == .identifier, isByte(tokens[first + 1], 0x3A) else { return false }
+    let token = tokens[first]
+    return equals(token, "public") || equals(token, "private") || equals(token, "protected")
   }
 
   /// The level of every line, from the bracket that's open at its start and whether its statement goes on.
@@ -351,13 +687,22 @@ private struct TokenFormatter {
     var frames: [Frame] = []
     frames.reserveCapacity(32)
     var pendingSwitch = false
+    var pendingCase = false
+    var expectsPattern = false
+    var skippedPatternOpen = -1
     var statementFirst = 0
     var index = 0
     var previousCode = -1  // The last token that isn't a comment.
     var afterDirective = false  // `#if os(macOS)` is a line of its own, whatever its last token looks like.
     var previousContinued = false  // A chain's next link goes on where the last one went.
+    var previousLevel = 0
+    var previousChain = 0  // The line before went on its statement as a chain's head (1) or a link (2).
     let indentWidth = options.useTabs ? 4 : options.indentWidth
-    let aligned = rules.caseAlignsWithSwitch
+    let aligned = style.casesAlignWithSwitch
+    let continuationDelta = options.useTabs || options.continuationIndent <= 0 ? 0 : options.continuationIndent - options.indentWidth
+    let switchWords = source.profile.spec.keywords.contains("case")
+
+    func lastWordFrame() -> Int? { frames.lastIndex(where: { $0.word != .none }) }
 
     while index < tokens.count {
       let first = index
@@ -367,10 +712,20 @@ private struct TokenFormatter {
       let frame = frames.last
       let content = frame?.contentLevel ?? 0
       var level = content
+      var extra = frame?.contentExtra ?? 0
       var isVerbatim = false
+      let word = blockWord(first)
 
       if token.kind == .close || token.kind == .interpolationClose {
         level = frame?.openerLevel ?? 0
+        extra = frame?.openerExtra ?? 0
+      } else if let word, word == .close || word == .middle || word == .caseEnd, var found = lastWordFrame() {
+        // `esac` lines up with its `case`, past the open pattern's body.
+        if word == .caseEnd, frames[found].word == .caseItem, found > 0, frames[found - 1].word == .caseList { found -= 1 }
+        level = frames[found].openerLevel
+        extra = frames[found].openerExtra
+      } else if keepsVerbatim(first) {
+        isVerbatim = true
       } else if token.kind == .directive {
         if let keyword = directiveWord(token), rules.swiftRawStrings {
           // Swift's `#if` indents what's inside it.
@@ -385,18 +740,49 @@ private struct TokenFormatter {
         }
       } else if frame?.isSwitch == true, isCaseLabel(token) {
         level = aligned ? frame!.openerLevel : frame!.openerLevel + 1
+        extra = frame!.openerExtra
       } else if rules.bracesHoldLists, isByte(token, 0x2C), previousCode >= 0, tokens[previousCode].kind == .string,
         tokens[previousCode].length >= 2, t[tokens[previousCode].start] == 0x5C, t[tokens[previousCode].start + 1] == 0x5C
       {
         // zig fmt puts the comma after a `\\` string's lines under the bracket's line.
         level = frame?.openerLevel ?? 0
+        extra = frame?.openerExtra ?? 0
+      } else if let frame, frame.byte == 0x7B, isAccessSpecifier(first, end: end) {
+        level = frame.openerLevel
+        extra = frame.openerExtra + style.accessOffset
+      } else if frame?.byte == 0x7B, isGotoLabel(first, end: end, previousCode: previousCode) {
+        level = originalColumn(first) == 0 ? 0 : max(content - 1, 0)
+        extra = level == 0 ? 0 : frame!.openerExtra
       } else if first > 0, previousCode >= 0, !afterDirective, continues(first: first, previous: previousCode, statementFirst: statementFirst, frame: frame, previousContinued: previousContinued) {
         level = content + 1
+        // A body without braces is a statement of its own, a level in; anything else goes on its statement.
+        if !isControlBody(previousCode, first: first) { extra += continuationDelta }
+        // `=>` / `app` / `.api()`: a chain whose head went on a line of its own goes in from that head.
+        if previousChain > 0, isChainLink(first) {
+          level = previousChain == 1 ? previousLevel + 1 : previousLevel
+        }
       }
+      if level > content, token.kind != .close {
+        previousChain = isChainLink(first) ? 2 : startsWithOperator(token, index: first) || token.kind == .comment ? 0 : 1
+      } else if token.kind == .close, let frame, frame.openerChain == 2 {
+        previousChain = 2  // `})` closing a link's bracket: the next link lines up with it.
+      } else {
+        previousChain = 0
+      }
+      let lineChain = previousChain
+      previousLevel = level
       previousContinued = level > content && token.kind != .close
       var alignedWith = -1
-      if let frame, frame.alignToken >= 0, !isVerbatim, token.kind != .close, originalColumn(first) == frame.alignColumn {
-        alignedWith = frame.alignToken
+      var alignOffset = 0
+      if let frame, frame.alignToken >= 0, !isVerbatim, token.kind != .close {
+        let column = originalColumn(first)
+        if column == frame.alignColumn {
+          alignedWith = frame.alignToken
+        } else if level > content, column > frame.alignColumn {
+          // Going on with an aligned element (`: "b"` under `a ? x`): as far past the alignment as it was.
+          alignedWith = frame.alignToken
+          alignOffset = column - frame.alignColumn
+        }
       }
       if interpolated[first] { isVerbatim = true }
 
@@ -404,62 +790,213 @@ private struct TokenFormatter {
       if level == content, token.kind != .close { statementFirst = first }
       afterDirective = token.kind == .directive
 
-      var width = (isVerbatim ? 0 : level) * indentWidth
+      var width = (isVerbatim ? 0 : level) * indentWidth + (isVerbatim ? 0 : extra)
       var tokenIndex = first
       var lineFrameLevel = level
+      var lineFrameExtra = extra
       while tokenIndex < end {
         let currentFrameLevel = lineFrameLevel
+        let currentFrameExtra = lineFrameExtra
         let current = tokens[tokenIndex]
         if tokenIndex > first, shouldSpace(tokenIndex) { width += 1 }
         width += current.length
+        // A shell `case`'s patterns: `a|b)` opens its body, which `;;` ends; `(a)` is the same pattern.
+        if let top = frames.last, top.word == .caseList, expectsPattern {
+          if current.kind == .open, t[current.start] == 0x28, skippedPatternOpen < 0 {
+            skippedPatternOpen = tokenIndex
+            if current.kind != .comment { previousCode = tokenIndex }
+            tokenIndex += 1
+            continue
+          }
+          if current.kind == .close, t[current.start] == 0x29 {
+            var item = Frame(openerLevel: top.contentLevel, contentLevel: top.contentLevel + 1, isSwitch: false, byte: 0x7B, firstOfStatement: tokenIndex)
+            item.openerExtra = top.contentExtra
+            item.contentExtra = top.contentExtra
+            item.word = .caseItem
+            item.outerStatementFirst = statementFirst
+            frames.append(item)
+            expectsPattern = false
+            skippedPatternOpen = -1
+            statementFirst = tokenIndex + 1
+            previousCode = tokenIndex
+            tokenIndex += 1
+            continue
+          }
+        }
         switch current.kind {
         case .open, .interpolationOpen:
           let byte = t[current.end - 1]
           let isBrace = byte == 0x7B
           let isSwitch = isBrace && pendingSwitch
           if isBrace { pendingSwitch = false }
-          let contentLevel = isSwitch && !aligned ? currentFrameLevel + 2 : currentFrameLevel + 1
-          var opened = Frame(openerLevel: currentFrameLevel, contentLevel: contentLevel, isSwitch: isSwitch, byte: byte, firstOfStatement: tokenIndex)
+          // `class A(…)` / `extends B {`: the block belongs to the statement, not to the line that went on with it.
+          var blockLevel = currentFrameLevel
+          var blockExtra = currentFrameExtra
+          if isBrace, current.kind == .open, currentFrameLevel > content, currentFrameLevel == level, continuesHeader(first), opensAtLineEnd(tokenIndex, end: end) {
+            blockLevel = content
+            blockExtra = frame?.contentExtra ?? 0
+          }
+          // Flat content: C++'s `namespace a {`, Lua's `f(` / `{` / `})`, and a shell's `x=$(a |` mid-line, whose lines go
+          // on the command one level in, not two.
+          let contentLevel = isSwitch && !aligned ? blockLevel + 2 : (isBrace && opensFlatBlock(tokenIndex, statementFirst: statementFirst) || hugsBlock(tokenIndex, end: end)
+              || rules.blockWordsAtCommandStart && byte == 0x28 && tokenIndex > first && !opensAtLineEnd(tokenIndex, end: end) ? blockLevel : blockLevel + 1)
+          var opened = Frame(openerLevel: blockLevel, contentLevel: contentLevel, isSwitch: isSwitch, byte: byte, firstOfStatement: tokenIndex)
           opened.outerStatementFirst = statementFirst
+          opened.openerExtra = blockExtra
+          opened.contentExtra = blockExtra
+          opened.openerChain = lineChain
           if byte != 0x7B, tokenIndex + 1 < end {
             opened.alignToken = tokenIndex + 1
             opened.alignColumn = originalColumn(tokenIndex + 1)
+          }
+          // `f(a,` or `f(` with `)` after the last argument: they go on the statement, by its continuation; only
+          // `f(` … `)` on lines of their own is a block.
+          if continuationDelta != 0, current.kind == .open, !isBrace, closers[tokenIndex] > 0,
+            !(opensAtLineEnd(tokenIndex, end: end) && breaks[Int(closers[tokenIndex])] > 0)
+          {
+            opened.contentExtra += continuationDelta
           }
           frames.append(opened)
           statementFirst = tokenIndex + 1
         case .close, .interpolationClose:
           var popped: Frame?
-          if !frames.isEmpty, !(frames.last!.isDirective) { popped = frames.removeLast() } else if let found = frames.lastIndex(where: { !$0.isDirective }) { popped = frames.remove(at: found) }
+          if !frames.isEmpty, !(frames.last!.isDirective), frames.last!.word == .none {
+            popped = frames.removeLast()
+          } else if let found = frames.lastIndex(where: { !$0.isDirective && $0.word == .none }) {
+            popped = frames.remove(at: found)
+          }
           // A `{` after `b) ` belongs to the statement that `if (a &&` started, not to the line it's on.
           if let popped {
             statementFirst = popped.outerStatementFirst
+            if popped.openerLevel <= lineFrameLevel { lineFrameExtra = popped.openerExtra }
             lineFrameLevel = min(lineFrameLevel, popped.openerLevel)
           }
-        case .keyword:
-          if (equals(current, "switch") && !rules.bracesHoldLists) || (equals(current, "match") && !rules.caseAlignsWithSwitch && source.profile.spec.name == "PHP") {
+        case .keyword, .declarationKeyword:
+          if switchWords, (equals(current, "switch") && !rules.bracesHoldLists) || (equals(current, "match") && !rules.caseAlignsWithSwitch && source.profile.spec.name == "PHP") {
             pendingSwitch = true
+          }
+          if let role = tokenIndex == first ? word : blockWord(tokenIndex) {
+            func open(_ kind: WordFrame) {
+              var opened = Frame(openerLevel: currentFrameLevel, contentLevel: currentFrameLevel + 1, isSwitch: false, byte: 0x7B, firstOfStatement: tokenIndex)
+              opened.outerStatementFirst = statementFirst
+              opened.openerExtra = currentFrameExtra
+              opened.contentExtra = currentFrameExtra
+              opened.word = kind
+              frames.append(opened)
+              statementFirst = tokenIndex + 1
+            }
+            func close() -> Frame? {
+              guard let found = lastWordFrame() else { return nil }
+              let popped = frames.remove(at: found)
+              if popped.openerLevel <= lineFrameLevel { lineFrameExtra = popped.openerExtra }
+              lineFrameLevel = min(lineFrameLevel, popped.openerLevel)
+              statementFirst = tokenIndex + 1
+              return popped
+            }
+            switch role {
+            case .open:
+              if !(equals(current, "def") && isEndlessDefinition(tokenIndex, lineEnd: end)) { open(.block) }
+            case .openAtStatementStart:
+              if startsStatement(tokenIndex) { open(.block) }
+            case .loopHead:
+              if startsStatement(tokenIndex) { open(.loopHead) }
+            case .loopBody:
+              // `while a do`: the loop's own `do`.
+              if let top = frames.last, top.word == .loopHead, top.firstOfStatement < tokenIndex,
+                memchr(t + tokens[top.firstOfStatement].end, 0x0A, current.start - tokens[top.firstOfStatement].end) == nil
+              {
+                frames[frames.count - 1].word = .block
+              } else {
+                open(.block)
+              }
+            case .close:
+              _ = close()
+            case .middle:
+              // At a line's start only: `x rescue y` and `a; else b` in one line change nothing.
+              if tokenIndex == first, let popped = close() {
+                var reopened = popped
+                reopened.firstOfStatement = tokenIndex
+                reopened.word = popped.word == .loopHead ? .block : popped.word
+                frames.append(reopened)
+              }
+            case .caseHead:
+              pendingCase = true
+            case .caseIn:
+              if pendingCase {
+                pendingCase = false
+                open(.caseList)
+                expectsPattern = true
+              }
+            case .caseEnd:
+              if frames.last?.word == .caseItem { _ = close() }
+              _ = close()
+              expectsPattern = false
+            }
           }
         case .directive:
           if rules.swiftRawStrings, let keyword = directiveWord(current) {
             if keyword == "if" {
               // Whether `#if` indents is the author's: swift-format does, Xcode doesn't, and neither is wrong.
               let indents = end < tokens.count && indentOfLine(tokens[end].start) > indentOfLine(current.start)
-              frames.append(Frame(openerLevel: level, contentLevel: indents ? level + 1 : level, isSwitch: false, byte: 0x23, firstOfStatement: tokenIndex, isDirective: true))
+              var opened = Frame(openerLevel: level, contentLevel: indents ? level + 1 : level, isSwitch: false, byte: 0x23, firstOfStatement: tokenIndex, isDirective: true)
+              opened.openerExtra = extra
+              opened.contentExtra = extra
+              frames.append(opened)
             } else if keyword == "endif", frames.last?.isDirective == true {
               frames.removeLast()
             }
           }
         case .punctuation:
-          if isByte(current, 0x3B) { statementFirst = tokenIndex + 1 }
+          if isByte(current, 0x3B) {
+            statementFirst = tokenIndex + 1
+            // `;;` (also `;&`, `;;&`) ends a case's body.
+            if tokenIndex + 1 < end, tokens[tokenIndex + 1].start == current.end, isByte(tokens[tokenIndex + 1], 0x3B) || isByte(tokens[tokenIndex + 1], 0x26),
+              frames.last?.word == .caseItem
+            {
+              frames.removeLast()
+              expectsPattern = true
+            }
+          }
         default: break
         }
         if current.kind != .comment, current.kind != .docComment { previousCode = tokenIndex }
         tokenIndex += 1
       }
-      lines.append(Line(first: first, end: end, level: level, width: width, isVerbatim: isVerbatim, alignedWith: alignedWith))
+      lines.append(Line(first: first, end: end, level: level, width: width, isVerbatim: isVerbatim, alignedWith: alignedWith, alignOffset: alignOffset, extra: isVerbatim ? 0 : extra))
       index = end
     }
     return lines
+  }
+
+  /// `f(a,` with `{` … `}` as its last argument starting the next line, written under the call's line: Lua's
+  /// `data:extend(` / `{` / `})`. The braces stay where the author put them.
+  private func hugsBlock(_ open: Int, end: Int) -> Bool {
+    guard t[tokens[open].start] == 0x28, closers[open] > 0 else { return false }
+    let next = end
+    guard next < tokens.count, tokens[next].kind == .open, t[tokens[next].start] == 0x7B, closers[next] > 0,
+      Int(closers[next]) + 1 == Int(closers[open])
+    else { return false }
+    return originalColumn(next) == indentOfLine(tokens[open].start)
+  }
+
+  /// Whether only comments follow this token on its line.
+  private func opensAtLineEnd(_ index: Int, end: Int) -> Bool {
+    var i = index + 1
+    while i < end {
+      if tokens[i].kind != .comment, tokens[i].kind != .docComment { return false }
+      i += 1
+    }
+    return i < tokens.count
+  }
+
+  /// A block whose content stays at its own level: C++'s `namespace a {` and `extern "C" {`, unless the file indents them.
+  private func opensFlatBlock(_ open: Int, statementFirst: Int) -> Bool {
+    guard rules.flatNamespaces, !style.indentsNamespaces, statementFirst < open else { return false }
+    let head = tokens[statementFirst]
+    if equals(head, "namespace") || (equals(head, "inline") && statementFirst + 1 < open && equals(tokens[statementFirst + 1], "namespace")) {
+      return true
+    }
+    return equals(head, "extern") && tokens[open - 1].kind == .string
   }
 
   private func directiveWord(_ token: Token) -> String? {
@@ -479,11 +1016,27 @@ private struct TokenFormatter {
     let token = tokens[first]
     // A blank line ends a statement, and a `{` on its own line starts a block.
     if breaks[first] > 1 { return false }
-    if token.kind == .open, t[token.start] == 0x7B { return false }
+    // A TOML line is a table, a key or an array's element: none goes on another.
+    if case .tomlKeys = rules.outline { return false }
+    if token.kind == .open, t[token.start] == 0x7B, !(rules.blockWordsAtCommandStart && last.kind == .punctuation && (t[last.end - 1] == 0x7C || t[last.end - 1] == 0x26)) {
+      return false
+    }
+    // After a here-document's body the next command starts.
+    if rules.hereDocuments, last.kind == .string, keepsVerbatim(previous) { return false }
+    // Lua's `init =` / `[[`: a long string written under its key is a block like a table.
+    if token.kind == .string, t[token.start] == 0x5B, statementFirst < first,
+      originalColumn(first) == indentOfLine(tokens[statementFirst].start)
+    {
+      return false
+    }
     // In CSS a line is a selector or a declaration: neither `.a` nor `*` is an operator there.
     if case .cssSelectors = rules.outline {
       if last.kind == .close || last.kind == .open || isByte(last, 0x3B) || token.kind == .comment { return false }
       return statementFirst < first && indentOfLine(tokens[statementFirst].start) < indentOfLine(token.start)
+    }
+    // A shell's `cmd &` runs in the background and ends its command, like `;`.
+    if rules.blockWordsAtCommandStart, isByte(last, 0x26), previous == 0 || tokens[previous - 1].end < last.start || !isByte(tokens[previous - 1], 0x26) {
+      return false
     }
     // A comment goes where the code after it goes; only its own indentation can't say.
     if token.kind == .comment || token.kind == .docComment {
@@ -498,14 +1051,27 @@ private struct TokenFormatter {
     case .comment, .docComment, .directive: return false
     default: break
     }
+    // `if (` broken over lines: its condition's lines stand at one level.
+    if let frame, frame.byte == 0x28, isBrokenCondition(frame.firstOfStatement) { return false }
+    // `do |a|` and `{ |a|`: the block's parameters, not an operator.
+    if isByte(last, 0x7C), closesBlockParameters(previous) { return false }
+    // `{ case a =>` and `{ a ->`: a closure's head, its body below.
+    if let frame, frame.byte == 0x7B, frame.word == .none, last.length == 2, t[last.start + 1] == 0x3E, t[last.start] == 0x3D || t[last.start] == 0x2D,
+      memchr(t + tokens[frame.firstOfStatement].end, 0x0A, last.start - tokens[frame.firstOfStatement].end) == nil
+    {
+      return false
+    }
     if last.kind == .punctuation {
       if isByte(last, 0x3B) { return false }
       if isByte(last, 0x2C) {
         // In brackets, a comma separates; in a block, it goes on a `guard a,` or a `let a = 1,` that a keyword started.
         guard frame == nil || frame!.byte == 0x7B && !rules.bracesHoldLists || frame!.byte == 0x23 else { return false }
+        // `f({ this.a,` is a list, and `this` a value, not a statement's word.
+        if let frame, frame.word == .none, frame.byte == 0x7B, isListBrace(frame.firstOfStatement) { return false }
         return statementFirst < tokens.count
           && (tokens[statementFirst].kind == .keyword || tokens[statementFirst].kind == .declarationKeyword)
-          && !isCaseLabel(tokens[statementFirst]) && statementFirst != first
+          && !isCaseLabel(tokens[statementFirst]) && statementFirst != first && !isValueKeyword(tokens[statementFirst])
+          && !(statementFirst + 1 < tokens.count && isByte(tokens[statementFirst + 1], 0x3A))  // `from: a,` is a key.
       }
       if isByte(last, 0x3A) { return false }
       if endsWithOperator(last, index: previous) { return true }
@@ -539,18 +1105,68 @@ private struct TokenFormatter {
     {
       return false
     }
-    if statementFirst < first, indentOfLine(tokens[statementFirst].start) < indentOfLine(token.start) { return true }
+    return isDeeperThanStatement(token, statementFirst: statementFirst, first: first)
+  }
+
+  /// `if (x)` or `else` ending the line before, with no `{`: what follows is its body.
+  private func isControlBody(_ previous: Int, first: Int) -> Bool {
+    guard !rules.newlineEndsStatements, !(tokens[first].kind == .open && t[tokens[first].start] == 0x7B) else { return false }
+    let last = tokens[previous]
+    if last.kind == .keyword, equals(last, "else") { return true }
+    guard last.kind == .close, t[last.start] == 0x29, let open = openerIndex(ofClose: previous), open > 0 else { return false }
+    let before = tokens[open - 1]
+    return before.kind == .keyword && (equals(before, "if") || equals(before, "for") || equals(before, "while") || equals(before, "foreach"))
+  }
+
+  /// A line that goes on with a declaration's head: `extends`, `with`, `implements`, `throws`, `where`, `: Base`.
+  private func continuesHeader(_ index: Int) -> Bool {
+    let token = tokens[index]
+    if isByte(token, 0x3A) { return true }
+    guard token.kind == .keyword || token.kind == .declarationKeyword || token.kind == .identifier else { return false }
+    return equals(token, "extends") || equals(token, "with") || equals(token, "implements") || equals(token, "throws") || equals(token, "where")
+  }
+
+  /// `.a()` and `?.a()` starting a line.
+  private func isChainLink(_ index: Int) -> Bool {
+    let token = tokens[index]
+    guard token.kind == .punctuation, index + 1 < tokens.count, tokens[index + 1].kind == .identifier, tokens[index + 1].start == token.end else { return false }
+    return isByte(token, 0x2E) || (token.length == 2 && t[token.start] == 0x3F && t[token.start + 1] == 0x2E)
+  }
+
+  private func isValueKeyword(_ token: Token) -> Bool {
+    equals(token, "this") || equals(token, "self") || equals(token, "super") || equals(token, "true") || equals(token, "false")
+      || equals(token, "null") || equals(token, "nil")
+  }
+
+  /// Whether this `|` ends `do |a, b|` or `{ |a|` on its line.
+  private func closesBlockParameters(_ index: Int) -> Bool {
+    var i = index - 1
+    while i > 0, tokens[i].kind != .open || i == index, memchr(t + tokens[i].end, 0x0A, tokens[i + 1].start - tokens[i].end) == nil {
+      if isByte(tokens[i], 0x7C) {
+        let before = tokens[i - 1]
+        return equals(before, "do") || (before.kind == .open && t[before.start] == 0x7B)
+      }
+      i -= 1
+    }
     return false
   }
 
   private func isDeeperThanStatement(_ token: Token, statementFirst: Int, first: Int) -> Bool {
-    statementFirst < first && indentOfLine(tokens[statementFirst].start) < indentOfLine(token.start)
+    statementFirst < first && statementIndent(statementFirst) < indentOfLine(token.start)
+  }
+
+  /// Where a statement's lines start in the original: its line's indentation, one step in when it starts right after a
+  /// bracket that opened on that line (`.a(&(b {` … `})` then `.c()`), as its content is that deep once formatted.
+  private func statementIndent(_ statementFirst: Int) -> Int {
+    let indent = indentOfLine(tokens[statementFirst].start)
+    guard statementFirst > 0, tokens[statementFirst - 1].kind == .open, !breaksOriginally(statementFirst) else { return indent }
+    return indent + (options.useTabs ? 8 : options.indentWidth)
   }
 
   /// The visual width of the indentation of a line in the original, a tab being 8.
   private func indentOfLine(_ offset: Int) -> Int {
-    var start = offset
-    while start > 0, t[start - 1] != 0x0A { start -= 1 }
+    // The line index, not a walk back: a minified file is one line of megabytes.
+    var start = Int(source.lines.starts[source.lines.line(of: offset)])
     var column = 0
     while start < offset {
       if t[start] == 0x20 { column += 1 } else if t[start] == 0x09 { column = (column / 8 + 1) * 8 } else { break }
@@ -562,8 +1178,9 @@ private struct TokenFormatter {
   /// The visual column of a token in the original.
   private func originalColumn(_ index: Int) -> Int {
     let offset = tokens[index].start
-    var start = offset
-    while start > 0, t[start - 1] != 0x0A { start -= 1 }
+    var start = Int(source.lines.starts[source.lines.line(of: offset)])
+    // Nothing lines up that far out.
+    if offset - start > 4096 { return offset - start }
     var column = 0
     while start < offset {
       column = t[start] == 0x09 ? (column / 8 + 1) * 8 : column + ((t[start] & 0xC0) == 0x80 ? 0 : 1)
@@ -608,6 +1225,8 @@ private struct TokenFormatter {
   private func endsWithOperator(_ token: Token, index: Int) -> Bool {
     let c = t[token.end - 1]
     let hasSpaceBefore = token.start > 0 && (t[token.start - 1] == 0x20 || t[token.start - 1] == 0x09)
+    // A shell's `a |` and `a &&` go on; `X=` is an empty assignment.
+    if rules.blockWordsAtCommandStart { return c == 0x7C || c == 0x26 }
     switch c {
     case 0x2B, 0x2D:  // `i++` ended a statement; `a +` didn't.
       // Zig has no `++` increment: `a ++` is a concatenation going on.
@@ -630,6 +1249,8 @@ private struct TokenFormatter {
   private func startsWithOperator(_ token: Token, index: Int) -> Bool {
     guard token.kind == .punctuation else { return false }
     let c = t[token.start]
+    // A shell line starts a command (`/usr/bin/make`, `& $tool`); only `|` and `&&` go on one.
+    if rules.linesStartCommands { return c == 0x7C || (c == 0x26 && index + 1 < tokens.count && isByte(tokens[index + 1], 0x26)) || (c == 0x26 && token.length == 2) }
     switch c {
     case 0x2E, 0x3F, 0x3A:  // . ? :
       return !isByte(token, 0x3A) || token.length == 1
@@ -654,7 +1275,7 @@ private struct TokenFormatter {
     let a = tokens[index - 1]
     let b = tokens[index]
     let hadGap = b.start > a.end
-    if interpolated[index] { return hadGap }
+    if interpolated[index] || keptGaps[index] { return hadGap }
     // Inside interpolation and next to it: as written.
     switch a.kind {
     case .interpolationOpen: return hadGap
@@ -669,6 +1290,17 @@ private struct TokenFormatter {
 
     let aByte = t[a.end - 1]
     let bByte = t[b.start]
+    // Lua's `t[ [[key]] ]`: without the spaces the brackets would be the long string's.
+    if a.kind == .string || b.kind == .string, (aByte == 0x5B && bByte == 0x5B) || (aByte == 0x5D && bByte == 0x5D) { return hadGap }
+    // Where spaces separate words, a gap stays one and none is made, but where the language says it's safe.
+    if let allowed = rules.wordGaps {
+      if hadGap { return true }
+      if allowed.contains(.afterCommas), a.length == 1, aByte == 0x2C, b.kind != .close, b.kind != .punctuation { return true }
+      if allowed.contains(.aroundOperators), (a.kind == .punctuation && isSpacedOperator(a, index - 1)) || (b.kind == .punctuation && isSpacedOperator(b, index)) { return true }
+      if allowed.contains(.beforeBraces), b.kind == .open, bByte == 0x7B, a.kind == .close && aByte == 0x29 || a.kind == .keyword { return true }
+      if allowed.contains(.afterControlWords), a.kind == .keyword, b.kind == .open, bByte == 0x28, isControlWord(a) { return true }
+      return false
+    }
     if b.length == 1, bByte == 0x2C || bByte == 0x3B { return false }
     if a.length == 1, aByte == 0x2C || aByte == 0x3B {
       if b.kind == .close { return bByte == 0x7D && hadGap }
@@ -687,6 +1319,8 @@ private struct TokenFormatter {
     }
     if rules.preservesOperatorSpacing { return hadGap }
     if b.kind == .open, bByte == 0x7B {
+      // `a = {`: the operator was spaced on its left, so on its right too.
+      if a.kind == .punctuation, isSpacedOperator(a, index - 1) { return true }
       switch a.kind {
       case .identifier, .keyword, .declarationKeyword, .close, .string, .number:
         return rules.bracesFollowTightly ? hadGap : true
@@ -760,12 +1394,21 @@ private struct TokenFormatter {
     let right = tokens[index + 1]
     // `(==)`, `reduce(0, +)`, `operator==(`, `func ==(`, `<T=U>`.
     guard isValueEnd(left), isValueStart(right) else { return false }
+    // PHP's `declare(strict_types=1)` is written tight (PSR-12).
+    if token.length == 1, index >= 3, isByte(tokens[index - 2], 0x28), equals(tokens[index - 3], "declare") { return false }
+    // Ruby's `def name=(v)` names a setter; `def name = v` would be an endless method.
+    if token.length == 1, token.start == left.end, index >= 2 {
+      let before = tokens[index - 2]
+      if equals(before, "def") || (isByte(before, 0x2E) && index >= 4 && equals(tokens[index - 4], "def")) { return false }
+    }
     // Written with a space on one side only, it may be a language's own use of it (`T&& x`).
     let gapLeft = token.start > left.end
     let gapRight = right.start > token.end
     if gapLeft != gapRight { return false }
     // Keyword arguments and defaults stay tight where that's the style: `f(a=1)`.
     if token.length == 1, !isFullLayout, !gapLeft, enclosingIsParenthesis(index) { return false }
+    // In TOML `=` only ever joins a key and its value.
+    if case .tomlKeys = rules.outline { return true }
     if token.length == 1, rules.extraIdentifierBytes.utf8.contains(0x2D) { return gapLeft }
     return true
   }
@@ -804,7 +1447,7 @@ private struct TokenFormatter {
 
   /// Breaks the outermost list of each line over the print width, until none is or none can be.
   mutating func wrap() {
-    guard isFullLayout, options.printWidth > 0 else { return }
+    guard isFullLayout, options.printWidth > 0, rules.wrapsLists else { return }
     var pass = 0
     while pass < 12 {
       let lines = measureLines()
@@ -836,7 +1479,7 @@ private struct TokenFormatter {
       }
       let close = Int(closers[index])
       // Only what fixes the line: breaking `a(x)` of `a(x) || b(y) || c(z)` makes it longer and no shorter.
-      let saved = tokens[close].start - tokens[index].end
+      let saved = formattedWidth(from: index + 1, to: close)
       if close > index + 1, line.width - saved <= options.printWidth, canBreak(open: index, close: close), breaks[index + 1] == 0 {
         apply(open: index, close: close)
         return true
@@ -846,6 +1489,20 @@ private struct TokenFormatter {
       index = close + 1
     }
     return false
+  }
+
+  /// The width tokens `from..<to` take on one line once spaced, and the space before `to`: measured as they'll be
+  /// written, as a minified original would undercount it.
+  private func formattedWidth(from: Int, to: Int) -> Int {
+    var width = 0
+    var index = from
+    while index < to {
+      if index > 0, shouldSpace(index) { width += 1 }
+      width += tokens[index].length
+      index += 1
+    }
+    if to > from, shouldSpace(to) { width += 1 }
+    return width
   }
 
   private func canBreak(open: Int, close: Int) -> Bool {
@@ -917,15 +1574,24 @@ private struct TokenFormatter {
     // In `f"{a['b']}"` the inner quotes can't become the outer ones, in Python before 3.12.
     var interpolationDepth = 0
     for line in lines where line.alignedWith >= 0 { alignTargets.insert(Int32(line.alignedWith)) }
+    // Whitespace before PHP's first `<?php` is output: the lines above it stay, its own is kept below.
+    if rules.inlineMarkup { out.append(contentsOf: UnsafeBufferPointer(start: t, count: lineStart(of: tokens[0].start))) }
     for (lineIndex, line) in lines.enumerated() {
-      if lineIndex > 0 {
+      let keepsGap = lineIndex > 0 && keptGaps[line.first]
+      if keepsGap {
+        let gapStart = tokens[line.first - 1].end
+        out.append(contentsOf: UnsafeBufferPointer(start: t + gapStart, count: tokens[line.first].start - gapStart))
+      }
+      if lineIndex > 0, !keepsGap {
         for _ in 0..<breaks[line.first] { out.append(contentsOf: newline) }
       }
       // The indentation.
       let originalLineStart = lineStart(of: tokens[line.first].start)
       let originalIndent = tokens[line.first].start - originalLineStart
       var written = 0
-      if !isFullLayout || line.isVerbatim {
+      if keepsGap {
+        written = originalIndent
+      } else if !isFullLayout || line.isVerbatim {
         if breaksOriginally(line.first) || line.first == 0 {
           out.append(contentsOf: UnsafeBufferPointer(start: t + originalLineStart, count: originalIndent))
           written = originalIndent
@@ -933,7 +1599,8 @@ private struct TokenFormatter {
           // A new line made here (a wrap) in a layout that keeps indentation doesn't occur; keep the level.
           for _ in 0..<line.level { out.append(contentsOf: indentUnit) }
         }
-      } else if line.alignedWith >= 0, let column = columns[Int32(line.alignedWith)] {
+      } else if line.alignedWith >= 0, let aligned = columns[Int32(line.alignedWith)] {
+        let column = aligned + line.alignOffset
         // Tabs as far as they go, spaces the rest of the way.
         let tabs = options.useTabs ? column / 8 : 0
         for _ in 0..<tabs { out.append(0x09) }
@@ -941,9 +1608,15 @@ private struct TokenFormatter {
         out.append(contentsOf: repeatElement(0x20, count: spaces))
         written = tabs + spaces
       } else {
-        for _ in 0..<line.level {
-          out.append(contentsOf: indentUnit)
-          written += indentUnit.count
+        let columns = line.level * indentUnit.count + line.extra
+        if options.useTabs || line.extra == 0 || columns < 0 {
+          for _ in 0..<line.level {
+            out.append(contentsOf: indentUnit)
+            written += indentUnit.count
+          }
+        } else {
+          out.append(contentsOf: repeatElement(0x20, count: columns))
+          written += columns
         }
       }
       var lineStartInOutput = out.count - written
@@ -957,7 +1630,7 @@ private struct TokenFormatter {
           let gap = token.start - previous.end
           // zig fmt lines a list's rows up in columns: spaces after a comma stay too.
           let keeps = token.kind == .comment || token.kind == .docComment || rules.preservesOperatorSpacing || interpolated[index]
-            || rules.bracesHoldLists && isByte(previous, 0x2C)
+            || keptGaps[index] || rules.bracesHoldLists && isByte(previous, 0x2C)
           if keeps, gap >= 1, isSpacesOnly(previous.end, token.start) {
             out.append(contentsOf: UnsafeBufferPointer(start: t + previous.end, count: gap))
           } else {
@@ -972,13 +1645,21 @@ private struct TokenFormatter {
           }
           columns[Int32(index)] = column
         }
-        write(token, into: &out, indentChange: written - originalIndent, swapsQuotes: interpolationDepth == 0)
+        // A piece of an interpolated string between two interpolations (`" kind="`) has no quotes of its own.
+        let isPiece = (index > 0 && tokens[index - 1].kind == .interpolationClose) || (index + 1 < tokens.count && tokens[index + 1].kind == .interpolationOpen)
+        write(token, into: &out, indentChange: written - originalIndent, swapsQuotes: interpolationDepth == 0 && !isPiece)
         if token.length > 0, memchr(t + token.start, 0x0A, token.length) != nil, let last = out.lastIndex(of: 0x0A) { lineStartInOutput = last + 1 }
         if commas.contains(index) { out.append(0x2C) }
         index += 1
       }
     }
-    out.append(contentsOf: newline)
+    // What follows PHP's last `?>` is output.
+    if keptGaps[tokens.count], tokens.last!.end < source.count {
+      out.append(contentsOf: UnsafeBufferPointer(start: t + tokens.last!.end, count: source.count - tokens.last!.end))
+    } else if !(tokens.last!.length > 0 && t[tokens.last!.end - 1] == 0x0A) {
+      // A token that ends in a newline already ends the file: markup after `?>`, a here-document to the end.
+      out.append(contentsOf: newline)
+    }
     return out
   }
 
@@ -1074,15 +1755,24 @@ extension PrettyOptions {
       options.printWidth = 0
     }
     if language == "Python" { options.maxBlankLines = 2 }
+    if ["C", "C++", "Objective-C", "Dart"].contains(language) { options.continuationIndent = 4 }
     // zig fmt: four spaces, whatever the file has.
     if language == "Zig" { options.indentWidth = 4 }
-    if let detected = detectIndent(source) {
-      if language != "Go", language != "Zig" {
+    // dart format and zig fmt have one indentation, as gofmt has.
+    let fixed = language == "Go" || language == "Dart" || language == "Zig"
+    if let detected = detectIndent(source, bracesOnly: options.continuationIndent > 0) {
+      if !fixed {
         options.useTabs = detected.tabs
         options.indentWidth = detected.tabs ? 1 : detected.width
       }
     }
-    guard let path else { return options }
+    // google-java-format goes on by 4 with 2 in, Android's and IntelliJ's by 8 with 4: two levels either way.
+    func finished(_ options: PrettyOptions) -> PrettyOptions {
+      var options = options
+      if language == "Java", !options.useTabs, options.continuationIndent == 0 { options.continuationIndent = options.indentWidth * 2 }
+      return options
+    }
+    guard let path else { return finished(options) }
     var folder = (path as NSString).deletingLastPathComponent
     var found = Set<String>()
     while !folder.isEmpty, folder != "/" {
@@ -1090,7 +1780,7 @@ extension PrettyOptions {
       if FileManager.default.fileExists(atPath: folder + "/.git") { break }
       folder = (folder as NSString).deletingLastPathComponent
     }
-    return options
+    return finished(options)
   }
 
   private static func read(_ file: String, _ found: inout Set<String>, _ options: inout PrettyOptions, language: String, path: String) {
@@ -1126,8 +1816,34 @@ extension PrettyOptions {
     case ".clang-format":
       guard applies("C", "C++", "Objective-C") else { return }
       found.insert(kind)
+      // The base style first, then what the file sets.
+      let base = text.range(of: "BasedOnStyle").map { text[$0.upperBound...].prefix(40).lowercased() } ?? ""
+      if base.contains("google") || base.contains("chromium") {
+        options.indentsCaseLabels = true
+        options.accessModifierOffset = -1
+      } else if base.contains("mozilla") {
+        options.indentsCaseLabels = true
+        options.continuationIndent = 2
+        options.accessModifierOffset = -2
+      } else if base.contains("webkit") || base.contains("microsoft") {
+        options.indentsCaseLabels = false
+        options.accessModifierOffset = -4
+      } else if base.contains("llvm") || base.contains("gnu") {
+        options.indentsCaseLabels = false
+        options.accessModifierOffset = -2
+      }
       if let width = number(in: text, "ColumnLimit") { options.printWidth = width }
       if let spaces = number(in: text, "IndentWidth") { options.indentWidth = spaces }
+      if let spaces = number(in: text, "ContinuationIndentWidth") { options.continuationIndent = spaces }
+      if let indents = flag(in: text, "IndentCaseLabels") { options.indentsCaseLabels = indents }
+      if let range = text.range(of: "NamespaceIndentation") {
+        let value = text[range.upperBound...].prefix(16)
+        options.indentsNamespaces = !value.contains("None")
+      }
+      if let range = text.range(of: "AccessModifierOffset") {
+        let value = text[range.upperBound...].prefix(16).drop(while: { $0 == ":" || $0 == " " })
+        if let offset = Int(value.prefix(while: { $0 == "-" || $0.isNumber })) { options.accessModifierOffset = offset }
+      }
     default: break
     }
   }
@@ -1179,15 +1895,14 @@ extension PrettyOptions {
 
   /// The text's own indentation, as far as code can tell: what a line starting inside a new bracket adds to the line
   /// that opened it. Alignment, comments and continuation lines don't count, as they'd vote for widths no one chose.
-  private static func detectIndent(_ source: SourceFile) -> (tabs: Bool, width: Int)? {
+  private static func detectIndent(_ source: SourceFile, bracesOnly: Bool) -> (tabs: Bool, width: Int)? {
     let t = source.text
     let tokens = source.tokens
     var tabs = 0
     var steps = [Int](repeating: 0, count: 9)
     var seen = 0
     func indent(_ offset: Int) -> (width: Int, usesTab: Bool) {
-      var start = offset
-      while start > 0, t[start - 1] != 0x0A { start -= 1 }
+      var start = Int(source.lines.starts[source.lines.line(of: offset)])
       var width = 0
       var usesTab = false
       while t[start] == 0x20 || t[start] == 0x09 {
@@ -1198,6 +1913,8 @@ extension PrettyOptions {
       return (width, usesTab)
     }
     for index in tokens.indices.dropLast() where tokens[index].kind == .open {
+      // Where arguments go in by a continuation's width, only blocks say what a level is.
+      if bracesOnly, t[tokens[index].start] != 0x7B { continue }
       let next = tokens[index + 1]
       if next.kind == .close { continue }
       let gap = tokens[index].end
@@ -1212,6 +1929,38 @@ extension PrettyOptions {
       }
       seen += 1
       if seen > 4000 { break }
+    }
+    // Where words open blocks (`then`, `do`, `function`), a line holding one and the deeper line after it vote too.
+    let words = source.profile.rules.blockWords
+    if !words.isEmpty, seen <= 4000 {
+      var lineIndent: (width: Int, usesTab: Bool)? = nil
+      var opensBlock = false
+      var previousEnd = 0
+      for token in tokens {
+        if token.start == 0 || memchr(t + previousEnd, 0x0A, token.start - previousEnd) != nil {
+          let here = indent(token.start)
+          if opensBlock, let lineIndent, here.width > lineIndent.width {
+            if here.usesTab {
+              tabs += 1
+            } else {
+              let step = here.width - lineIndent.width
+              if step <= 8 { steps[step] += 1 }
+            }
+            seen += 1
+          }
+          lineIndent = here
+          opensBlock = false
+        }
+        previousEnd = token.end
+        if token.kind == .keyword || token.kind == .declarationKeyword,
+          let role = words[String(decoding: UnsafeBufferPointer(start: t + token.start, count: token.length), as: UTF8.self)]
+        {
+          switch role {
+          case .close, .caseEnd: break
+          default: opensBlock = true
+          }
+        }
+      }
     }
     if seen == 0 { return nil }
     if tabs * 2 > seen { return (true, 1) }

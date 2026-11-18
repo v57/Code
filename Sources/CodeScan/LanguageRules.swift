@@ -182,6 +182,58 @@ public struct LanguageRules: Sendable {
   /// braces ends an element. A one-element list keeps the spaces inside its braces as written: zig fmt writes `.{x}`
   /// and `error{A}`, but `.{ .x = 1 }` and `.{ a, b }` (Zig).
   public var bracesHoldLists = false
+  /// Words that open and close blocks as brackets do (`then` … `fi`, `do` … `end`): `.full` indents by them.
+  public var blockWords: [String: BlockWord] = [:]
+  /// Block words count only where a command starts: `echo done` is an argument (Shell).
+  public var blockWordsAtCommandStart = false
+  /// A line starts a command: `/usr/bin/make`, `& $tool`, `. $file`; only `|` (and a shell's `&&`) at its start goes on.
+  public var linesStartCommands = false
+  /// Goto labels and `public:` sit a level out from what they label (clang-format's defaults).
+  public var outdentsLabels = false
+  /// `namespace a {` and `extern "C" {` don't indent their content, unless the file does.
+  public var flatNamespaces = false
+  /// Where the language's tools differ (C's `case` under `switch` or in from it), the file's own choice wins.
+  public var followsFileStyle = false
+  /// A line too long for the print width may break after a bracket. Off where a line break ends a command.
+  public var wrapsLists = true
+  /// Braces are optional and indentation can make blocks instead (Scala 3): a file that uses it keeps its indentation.
+  public var optionalBraces = false
+  /// Spaces separate words, as on a shell's command line (`a=b` isn't `a = b`): a gap stays a gap, runs of spaces
+  /// becoming one, and none is made but where these say. Nil: spacing is the formatter's.
+  public var wordGaps: WordGaps?
+  /// Words after which the next token's column opens a block of the layout rule (Haskell's `do`, `where`, `let`,
+  /// `of`, `\case`): the gaps before it on its line stay as written.
+  public var layoutWords: Set<String> = []
+
+  /// Where a word-separated language may still gain a space.
+  public struct WordGaps: OptionSet, Sendable {
+    public let rawValue: UInt8
+    public init(rawValue: UInt8) { self.rawValue = rawValue }
+    /// `a,b` → `a, b`.
+    public static let afterCommas = WordGaps(rawValue: 1)
+    /// `a==b` → `a == b`, for the operators that can't be anything else.
+    public static let aroundOperators = WordGaps(rawValue: 2)
+    /// `){` → `) {`.
+    public static let beforeBraces = WordGaps(rawValue: 4)
+    /// `if(` → `if (`.
+    public static let afterControlWords = WordGaps(rawValue: 8)
+  }
+
+  /// What a block word does.
+  public enum BlockWord: Sendable {
+    case open
+    /// Opens where a statement starts: `x = if a` does, `y if a` (a modifier) doesn't (Ruby).
+    case openAtStatementStart
+    /// `while`, `until`, `for`: opens where a statement starts, and its own `do` on its line opens nothing more (Ruby).
+    case loopHead
+    /// `do`: opens, unless a loop head on its line already did.
+    case loopBody
+    case close
+    /// Ends a block and starts the next where it starts a line (`else`, `when`, `rescue`); elsewhere it's left alone.
+    case middle
+    /// A shell `case`: `in` opens its patterns, each `a)` a body that `;;` ends, `esac` all of it.
+    case caseHead, caseIn, caseEnd
+  }
 
   public enum TrailingCommas: Sendable { case never, allowed, required }
 
@@ -395,6 +447,7 @@ public struct LanguageRules: Sendable {
       $0.colonHugsLeft = true
       $0.backtickIdentifiers = true
       $0.colonJoinsOperators = true
+      $0.optionalBraces = true
     },
     "PowerShell": LanguageRules {
       $0.codeEscape = 0x60
@@ -578,6 +631,9 @@ public struct LanguageRules: Sendable {
       $0.cppRawStrings = raw
       $0.memberOperators = ["->", "::"]
       $0.spacesAfterControlWords = false
+      $0.outdentsLabels = true
+      $0.flatNamespaces = true
+      $0.followsFileStyle = true
     }
   }
 
