@@ -108,6 +108,12 @@ private func expectFormats(_ text: String, _ language: String, to expected: Stri
     expectFormats(text, "PowerShell", to: "function A {\n  param($x)\n  if ($x) {\n    & $tool -p:x=1 a, b\n    . $common\n  }\n}\n")
   }
 
+  @Test func haskellKeepsItsLayout() {
+    expectFormats("main = do\n    let xs = [1,2]\n    print   xs\n", "Haskell", to: "main = do\n    let xs = [1, 2]\n    print xs\n")
+    // After `where` the next word's column is the block's: the gap before it stays.
+    expectFormats("f = g\n  where  g  = 1\n         h = 2\n", "Haskell", to: "f = g\n  where  g = 1\n         h = 2\n")
+  }
+
   @Test func luaIndentsByWordsAndKeepsItsTables() {
     let text = "local function a(x)\nif x then\nreturn {1,2}\nelse\nreturn nil\nend\nend\n"
     expectFormats(text, "Lua", to: "local function a(x)\n  if x then\n    return {1, 2}\n  else\n    return nil\n  end\nend\n")

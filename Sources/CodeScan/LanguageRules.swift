@@ -508,6 +508,11 @@ public struct LanguageRules: Sendable {
     },
     "Haskell": LanguageRules {
       $0.blocks = .indentation
+      // The layout rule: lines' indentation and the column after `do`, `where`, `let` and `of` are its blocks, and
+      // `a.b`, `f -1`, `x@y` and `!x` read differently spaced, so gaps stay and only commas and plain operators gain one.
+      $0.layout = .spacing
+      $0.wordGaps = [.afterCommas, .aroundOperators]
+      $0.layoutWords = ["do", "where", "let", "of", "mdo", "rec", "case"]
       $0.signatureDeclares = true
       $0.symbolOperators = true
       $0.dollarIsPunctuation = true
