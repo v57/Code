@@ -136,9 +136,31 @@ let tidy = Pretty.format("let numbers = [1,2 ,3]\n", language: "swift")  // nil 
 It only moves whitespace, adds a trailing comma where a list breaks and swaps quotes where nothing needs escaping.
 The result is scanned again and must give the same tokens, and a second pass must agree; otherwise the input comes
 back unchanged. Whitespace inside an interpolation is left as written. How much of the layout it decides depends on
-what whitespace means in the language: Zig gets a full layout like zig fmt's (four spaces, a `switch`'s prongs as
-its content, a list's columns kept), Elixir only spaces within its lines, as its line breaks end expressions. In Code it is off by default and runs only for a file no installed formatter
+what whitespace means in the language. In Code it is off by default and runs only for a file no installed formatter
 applies to.
+
+### Levels
+
+`LanguageRules.layout` says how much of the layout is CodePretty's:
+
+- **`.full`**: indentation, spacing and blank lines. Swift, Go, TypeScript and JavaScript, C, C++, Objective-C,
+  C#, Java, Kotlin, Scala, Rust, Dart, Zig (as zig fmt does: four spaces, a `switch`'s prongs as its content, a
+  list's columns kept), JSON, CSS and TOML by their brackets; Shell, Ruby and Lua by their block words
+  too (`LanguageRules.blockWords`: `then` … `fi`, `do` … `end`, `function` … `end`), PHP and PowerShell by braces.
+  Two kinds of file drop to `.spacing` on their own: Scala 3 written without braces (`optionalBraces`: indentation is
+  its blocks) and PHP with markup around its `<?php` (`inlineMarkup`: the lines are the template's, and the markup's
+  bytes stay as they are).
+- **`.spacing`**: spaces inside lines, the author's indentation. Python and Haskell (indentation is meaning; after
+  Haskell's `do`, `where`, `let` and `of` the gap before the next word sets a block's column and stays, `layoutWords`),
+  Elixir (its line breaks end expressions), SQL and CQL (no one indentation style to follow).
+- **`.lines`**: only trailing spaces and blank lines at the end. YAML, Markdown, HTML, Makefile, Redis and every
+  language without a row.
+
+Where spaces separate a command's words (Shell, PowerShell, Haskell), `wordGaps` says where one may be added; a gap
+is otherwise kept as one space and none is made. Shell and PowerShell lines start commands (`linesStartCommands`), so
+only `|` (and a shell's `&&`) at a line's start goes on the line before. In C, C++ and Objective-C the file's own
+`switch`/`case`, namespace and access-specifier style wins (`followsFileStyle`), and goto labels and `public:` sit a
+level out (`outdentsLabels`).
 
 ### Formatting text
 
@@ -156,10 +178,14 @@ if output.refused { print("left alone at line", output.refusedLine ?? -1) }
 ### Options
 
 `PrettyOptions`: `indentWidth`, `useTabs`, `printWidth` (0 keeps line lengths), `maxBlankLines`, `quote`,
-`trailingCommas`. `PrettyOptions.resolve(path:source:)` reads them from the nearest `.editorconfig`, `.prettierrc`
-(also `.json`, `.yaml`, `.yml`), `.swift-format`, `rustfmt.toml` or `.clang-format` (`PrettyOptions.configFileNames`,
-which the server also checks before letting the editor's tab size win), the language's usual style and the file's own
-indentation.
+`trailingCommas`, `continuationIndent` (how far a statement's next line goes in; 0 is one level), `indentsCaseLabels`,
+`indentsNamespaces` and `accessModifierOffset` (nil: the file's own). `PrettyOptions.resolve(path:source:)` reads them
+from the nearest `.editorconfig`, `.prettierrc` (also `.json`, `.yaml`, `.yml`), `.swift-format`, `rustfmt.toml` or
+`.clang-format` (`BasedOnStyle`, `ColumnLimit`, `IndentWidth`, `ContinuationIndentWidth`, `IndentCaseLabels`,
+`NamespaceIndentation`, `AccessModifierOffset`; `PrettyOptions.configFileNames`, which the server also checks before
+letting the editor's tab size win), the language's usual style (C, C++, Objective-C and Dart go on a statement by 4,
+Java by two levels; Dart indents by 2, as `dart format` does) and the file's own indentation (by its braces, and by its
+block words where a language has them).
 
 ```swift
 var options = PrettyOptions()
@@ -211,8 +237,12 @@ swift test --filter CodeServerTests
 
 `CodeScanTests` lex every language in the catalog, so run them after changing a `LanguageSpec` or `LanguageRules`.
 The formatter's tests cover its layout rules (indentation, spacing, strings and comments, chains, preprocessor
-lines). Check a formatter change with each language's own parser over real code too, since tokens can't see every
-place where whitespace is content. `CodeServerTests` talk to a `LanguageServerLoop` over pipes.
+lines) and each language's level (`LevelTests`: a sample per language, formatted, with its tokens kept and a second
+pass changing nothing). Check a formatter change with each language's own parser over real code too, since tokens
+can't see every place where whitespace is content: `bash -n` and `zsh -n`, Ruby's compiled instructions, Python's
+`ast`, `swiftc -parse`, `gofmt -e`, `clang -fsyntax-only`, JavaScriptCore's `checkSyntax`, SQLite for SQL and
+`cargo metadata` for TOML, on a formatted copy of `../Demos/CodeModelBench`'s corpora (never `--write` on them).
+`CodeServerTests` talk to a `LanguageServerLoop` over pipes.
 
 ## Related
 
