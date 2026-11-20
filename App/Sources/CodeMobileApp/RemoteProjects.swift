@@ -27,6 +27,11 @@ struct RemoteProject: Identifiable, Hashable {
     #if DEBUG
       projects += DebugLaunch.projects
     #endif
+    #if REVIEW_RECORDING
+      // The App Review video's build (`~/Developer/v57/Demo.md`): only the demo projects (`Tools/screenshots/make-demo.sh
+      // ~/CodeDemo`) show, so none of the user's own work is on camera; the vault keeps every project.
+      projects = projects.filter { $0.targets.contains { $0.directory.contains("/CodeDemo/") } }
+    #endif
     return projects.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
   }
 
