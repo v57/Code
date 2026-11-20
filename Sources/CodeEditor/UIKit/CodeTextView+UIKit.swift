@@ -129,7 +129,7 @@
       ]
       colors = Dictionary(uniqueKeysWithValues: kinds.map { ($0, UIColor(hex: syntax.color(for: $0))) })
       plainColor = UIColor(hex: syntax.plainText)
-      backgroundColor = UIColor(hex: theme.background)
+      backgroundColor = configuration.drawsBackground ? UIColor(hex: theme.background) : .clear
       tintColor = UIColor(hex: theme.cursor)
       let size = configuration.fontSize
       if let name = configuration.fontName {

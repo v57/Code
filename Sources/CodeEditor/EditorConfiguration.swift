@@ -23,6 +23,9 @@ public struct EditorConfiguration: Equatable, Sendable {
   public var trimTrailingWhitespace: Bool
   /// False shows the text read-only (selectable, not editable).
   public var isEditable: Bool
+  /// False leaves the theme's background out, so the view behind shows (an app's own page ground). iPhone and iPad
+  /// only; the Mac editor always paints it.
+  public var drawsBackground = true
 
   public init(
     themeID: String? = nil, fontName: String? = nil, fontSize: CGFloat = 13, tabWidth: Int = 2,
