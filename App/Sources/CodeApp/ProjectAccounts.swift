@@ -36,6 +36,24 @@ import VaultKit
     }
   }
 
+  /// A repository opened in a window joins its account's projects in the vault when no account has it yet, so the
+  /// user's other devices list it (Code on iPhone builds it here over SSH, as its welcome says). Opening a folder
+  /// only made it a recent: a project joined the vault from an import or a saved preset. A folder that isn't a git
+  /// repository (Downloads) stays a recent.
+  static func addToVault(_ folder: URL, account: String) {
+    guard !ScreenshotDemo.isOn,
+      FileManager.default.fileExists(atPath: folder.appendingPathComponent(".git").path)
+    else { return }
+    let vaults = Vaults.shared
+    let path = folder.standardizedFileURL.path
+    let all = (vaults.accounts + [.personal]).compactMap { vaults.vault(for: $0) }
+    guard !all.contains(where: { $0.project(atPath: path) != nil }),
+      let vault = vaults.account(id: account).flatMap({ vaults.vault(for: $0) }) ?? vaults.vault(for: .personal)
+    else { return }
+    let remote = RunPresets.originURL(of: folder)
+    vault.perform { try $0.addProject(path: path, remoteURL: remote) }
+  }
+
   /// Keeps the icons of the vault's projects on this Mac current, for this app's lists and the other v57 apps'.
   /// Looking again at a vault that already looks is free.
   static func findIcons(in vault: Vault) {

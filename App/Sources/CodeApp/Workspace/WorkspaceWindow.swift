@@ -184,6 +184,7 @@ struct WorkspaceWindow: View {
     }
     AppState.shared.register(model, window: window)
     AppState.shared.recents.add(root)
+    ProjectAccounts.addToVault(root, account: account)
     RemovedProjects.restore(root)
     for file in AppState.shared.takePendingFiles(for: root) {
       workspace.tree.reveal(file)
