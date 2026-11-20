@@ -268,9 +268,10 @@ public struct BuildLogParser {
   /// xcodebuild's "Test case 'B/c()' passed on 'My Mac …'".
   static let xcTestResult = try! NSRegularExpression(
     pattern: #"^\s*Test [Cc]ase '(?:-\[)?([^'\]]+)\]?' (?:passed|failed|skipped)"#)
-  /// Swift Testing's "✔ Test c() passed after 0.001 seconds." (any symbol).
+  /// Swift Testing's "✔ Test c() passed after 0.001 seconds." (any symbol); not its issue lines, whose message can say
+  /// "failed" ("✘ Test c() recorded an issue at A.swift:3:5: Expectation failed: …"), which counted a test twice.
   static let swiftTestingResult = try! NSRegularExpression(
-    pattern: #"^\s*\S{1,2}\s+Test (?!run with)(.+?) (?:passed|failed|skipped)\b"#)
+    pattern: #"^\s*\S{1,2}\s+Test (?!run with)(?!.* recorded an issue at )(.+?) (?:passed|failed|skipped)\b"#)
 
   /// A task or test the line shows done, and what to say about it.
   static func unit(in line: String) -> (Unit, ActionProgress)? {

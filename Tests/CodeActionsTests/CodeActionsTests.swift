@@ -123,6 +123,7 @@ import Testing
     "Test Case '-[KitTests.ATests testAdds]' passed (0.001 seconds).",
     "Test case 'BTests/subtracts()' failed on 'My Mac - App (1)' (0.002 seconds)",
     "✔ Test \"Adds numbers\" passed after 0.001 seconds.",
+    "✘ Test sorts() recorded an issue at ATests.swift:19:3: Expectation failed: a == b",
     "✔ Test run with 3 tests in 1 suite passed after 0.003 seconds.",
   ]
 
