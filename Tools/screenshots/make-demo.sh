@@ -98,6 +98,8 @@ public final class TripStore {
   }
 }
 SWIFT
+# The second test fails on purpose (the store keeps trips in the order they were made), so Code's Issues has a
+# failed test to open: the App Review video taps it.
 cat > Tests/AtlasTests/TripStoreTests.swift <<'SWIFT'
 import Foundation
 import Testing
@@ -109,6 +111,15 @@ import Testing
   let store = TripStore(folder: folder)
   try store.create(named: "Lisbon", from: .now, days: 4)
   #expect(TripStore(folder: folder).trips.map(\.name) == ["Lisbon"])
+}
+
+@Test func tripsAreSortedByStart() throws {
+  let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+  try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+  let store = TripStore(folder: folder)
+  try store.create(named: "Porto", from: .now.addingTimeInterval(7 * 86_400), days: 2)
+  try store.create(named: "Lisbon", from: .now, days: 4)
+  #expect(store.trips.map(\.name) == ["Lisbon", "Porto"])
 }
 SWIFT
 printf '# Atlas\n\nPlans trips: stops, bookings and the days between them.\n' > README.md
