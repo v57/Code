@@ -168,6 +168,30 @@
       updateCommandHover(at: point, flags: .command)
     }
 
+    /// A right click (or ⌃-click): the editor's own menu when the app has one (`onContextMenu`), else the system's
+    /// text menu. As a text view does, it selects the word under the pointer unless the click is inside the selection;
+    /// with nothing under the pointer the caret goes there.
+    public override func menu(for event: NSEvent) -> NSMenu? {
+      guard let onContextMenu else { return super.menu(for: event) }
+      let point = convert(event.locationInWindow, from: nil)
+      endCommandHover()
+      window?.makeFirstResponder(self)
+      let location = characterUnderPoint(point)
+      prepareSelectionForMenu(at: location, point: point)
+      return onContextMenu(location, point) ? nil : super.menu(for: event)
+    }
+
+    /// The selection a right click leaves: its own when the click is inside it, the word under the pointer, or a caret.
+    public func prepareSelectionForMenu(at location: Int?, point: NSPoint) {
+      let selection = selectedRange()
+      if let location, selection.length > 0, NSLocationInRange(location, selection) { return }
+      if let location, let word = identifierRange(at: location) {
+        setSelectedRange(word)
+      } else {
+        setSelectedRange(NSRange(location: characterIndexForInsertion(at: point), length: 0))
+      }
+    }
+
     /// The character drawn under `point`, not the nearest insertion point: past a line's end there is none.
     func characterUnderPoint(_ point: NSPoint) -> Int? {
       guard let layoutManager, let textContainer else { return nil }

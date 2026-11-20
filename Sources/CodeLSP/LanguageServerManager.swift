@@ -212,6 +212,18 @@
       return try? await server.hover(url: url, position: position)
     }
 
+    /// Whether this open file's server renames symbols.
+    public func supportsRename(_ url: URL) -> Bool {
+      server(ofOpen: url)?.supportsRename ?? false
+    }
+
+    /// The edits that rename the symbol at a position; none when the file has no server that renames, or it failed.
+    public func rename(url: URL, position: LSPPosition, newName: String) async -> [LSPTextEdit] {
+      let url = url.standardizedFileURL
+      guard let server = server(ofOpen: url) else { return [] }
+      return (try? await server.rename(url: url, position: position, newName: newName)) ?? []
+    }
+
     // MARK: - Completion
 
     /// Whether this open file's server completes code.

@@ -124,6 +124,14 @@
         path: url.standardizedFileURL.path, text: text, line: line, column: column, countReferences: countReferences)
     }
 
+    /// Every place the file's language model is sure names the symbol at a position, its declaration included, for
+    /// Rename. `openTexts`: the files open with changes not on disk, as their editors have them.
+    func modelRenameSites(url: URL, text: String, line: Int, column: Int, name: String, openTexts: [String: String]) async -> RenameAnswer? {
+      guard let language = Self.language(for: url) else { return nil }
+      return await model(for: language).renameSites(
+        path: url.standardizedFileURL.path, text: text, line: line, column: column, name: name, openTexts: openTexts)
+    }
+
     /// The declaration at a place (a language server's answer), described by its language's model, else the scanner.
     func describe(_ place: DefinitionPlace, useModel: Bool, useScanner: Bool) async -> SymbolDescription? {
       if useModel, let language = Self.language(for: place.url), let found = await model(for: language).describe(place) { return found }
@@ -448,6 +456,56 @@
           let sure = found.answer.state == .exact && !found.answer.byNameOnly
           let answer = SymbolAnswer(tier: .model, isSure: sure, symbols: found.details.map(Self.description))
           continuation.resume(returning: (answer, countReferences ? model.referenceCount(of: found.answer) : nil))
+        }
+      }
+    }
+
+    func renameSites(path: String, text: String, line: Int, column: Int, name: String, openTexts: [String: String]) async -> RenameAnswer? {
+      await withCheckedContinuation { continuation in
+        queue.async { [self] in
+          guard let model = prepare(path: path, text: text) else { return continuation.resume(returning: nil) }
+          for (other, otherText) in openTexts where other != path { _ = prepare(path: other, text: otherText) }
+          let answer = model.answer(path: path, line: line, character: column)
+          guard answer.state == .exact, !answer.byNameOnly, !answer.sites.isEmpty else {
+            return continuation.resume(returning: answer.state == .unknown ? nil : .unsure)
+          }
+          let targets = Set(answer.sites)
+          // The declarations, then every line the model lists a use on.
+          var declared = Set<RenameSite>()
+          var lines: [String: Set<Int>] = [:]
+          let length = (name as NSString).length
+          for site in answer.sites {
+            guard let found = model.location(of: site) else { return continuation.resume(returning: .outside) }
+            guard found.path.hasPrefix(root + "/"), !found.path.contains("/.build/"), !found.path.contains("/node_modules/") else {
+              return continuation.resume(returning: .outside)
+            }
+            declared.insert(RenameSite(url: URL(fileURLWithPath: found.path), line: found.line, column: found.character, length: length))
+            lines[found.path, default: []].insert(found.line)
+          }
+          for reference in model.references(of: answer) {
+            let file = reference.path.hasPrefix("/") ? reference.path : URL(fileURLWithPath: root).appendingPathComponent(reference.path).standardizedFileURL.path
+            lines[file, default: []].insert(reference.line - 1)
+          }
+          lines[path, default: []].insert(line)
+          var sites = Set<RenameSite>()
+          for (file, numbers) in lines {
+            guard let content = file == path ? text : openTexts[file] ?? (try? String(contentsOfFile: file, encoding: .utf8)) else { continue }
+            let fileLines = content.split(separator: "\n", omittingEmptySubsequences: false)
+            let url = URL(fileURLWithPath: file)
+            for number in numbers where number >= 0 && number < fileLines.count {
+              for found in Rename.columns(of: name, in: String(fileLines[number]) as NSString) {
+                let site = RenameSite(url: url, line: number, column: found, length: length)
+                if declared.contains(site) {
+                  sites.insert(site)
+                  continue
+                }
+                let there = model.answer(path: file, line: number, character: found)
+                if there.state != .unknown, !there.byNameOnly, there.sites.contains(where: targets.contains) { sites.insert(site) }
+              }
+            }
+          }
+          let sorted = sites.sorted { ($0.url.path, $0.line, $0.column) < ($1.url.path, $1.line, $1.column) }
+          continuation.resume(returning: .sites(sorted))
         }
       }
     }

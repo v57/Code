@@ -136,6 +136,11 @@
         services.hideSymbolMenu()
         services.hideSymbolInfo(in: document)
       }
+      textView.onContextMenu = { [weak services, weak document] location, point in
+        guard let services, let document else { return false }
+        services.showEditorMenu(in: document, at: location, point: point)
+        return true
+      }
       textView.onBreakpointsChange = { [weak services, weak document] lines in
         guard let services, let document else { return }
         services.setBreakpoints(lines, for: document.url)

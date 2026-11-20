@@ -132,6 +132,7 @@ import SwiftUI
       }
     }
     SymbolMenuPanel.install(on: self)
+    EditorMenuHooks.install(on: self)
   }
 
   // MARK: - Preview

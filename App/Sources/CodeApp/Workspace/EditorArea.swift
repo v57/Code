@@ -56,6 +56,7 @@ struct EditorArea: View {
         } onOverlayGeometryChange: { geometry in
           if detachedDocument == nil { overlayGeometry = geometry }
         }
+        .editorMenu(for: document, services: model.services)
         .ignoresSafeArea(.container, edges: .vertical)
         .overlay {
           // The project's builds, tests and runs float on the project window's editor.

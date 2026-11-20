@@ -17,7 +17,8 @@
   /// `scheme:<name>`, `destination:<name or id>`, `definition` (at the
   /// caret), `breakpoint` (toggle at the caret), `save`, `insert:<text>`,
   /// `console:on|off`, `issues`, `back`, `quickhelp`, `commandhover[:off|release]`, `symbolrow:<index>|off` (highlights a
-  /// row of the symbol menu), `type:<text>` (as if typed: completions open), `complete` (Esc),
+  /// row of the symbol menu), `editormenu[:space|off|<row id>]` (a right click at the caret, or a pick),
+  /// `renamesymbol[:<name>|type:<name>|cancel]`, `type:<text>` (as if typed: completions open), `complete` (Esc),
   /// `key:up|down|return|tab|esc|cmdup|optreturn`,
   /// `hidden:on|off` (Show Hidden Files), `choose:on|off` (Choose Visible
   /// Files), `setvisible:<relative path>:on|off`, `quickopen:<query>|off`,
@@ -241,6 +242,44 @@
           "optreturn": #selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)),
         ]
         if let selector = selectors[argument] { document?.textView?.doCommand(by: selector) }
+      case "editormenu":
+        // editormenu: a right click on the character at the caret (`space`: past its line's end; `off`: closes it);
+        // editormenu:<row id> picks a row of the open menu (`definition`, `rename`, `cut`, `comment`…).
+        if argument == "off" {
+          services.hideEditorMenu()
+        } else if !argument.isEmpty, argument != "space", let menu = services.editorMenu {
+          if let row = menu.content.rows.first(where: { $0.id == argument }) {
+            menu.pick(row)
+            services.hideEditorMenu()
+          }
+        } else if let textView = document?.textView, let window = textView.window {
+          let caret = textView.selectedRange()
+          let onScreen = textView.firstRect(forCharacterRange: NSRange(location: caret.location, length: argument == "space" ? 0 : 1), actualRange: nil)
+          let rect = textView.convert(window.convertFromScreen(onScreen), from: nil)
+          let point = NSPoint(x: rect.midX + (argument == "space" ? 200 : 0), y: rect.midY)
+          // A real right click's event, handed to the text view (a posted one doesn't reach a background window).
+          if let event = NSEvent.mouseEvent(
+            with: .rightMouseDown, location: textView.convert(point, to: nil), modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime,
+            windowNumber: window.windowNumber, context: nil, eventNumber: 0, clickCount: 1, pressure: 1)
+          {
+            textView.rightMouseDown(with: event)
+          }
+        }
+      case "renamesymbol":
+        // renamesymbol: Rename… for the symbol at the caret; renamesymbol:<name> types the new name and renames;
+        // renamesymbol:type:<name> only types it; renamesymbol:cancel.
+        if argument.isEmpty {
+          if let document, let textView = document.textView { services.beginRename(in: document, at: textView.selectedRange().location) }
+        } else if argument == "cancel" {
+          services.cancelRename()
+        } else if let request = services.renameRequest {
+          if argument.hasPrefix("type:") {
+            request.newName = String(argument.dropFirst(5))
+          } else {
+            request.newName = argument
+            services.commitRename(request)
+          }
+        }
       case "symbolrow":
         // symbolrow:<index> highlights a row of the symbol menu, as the pointer does (`off`: none).
         if let menu = services.symbolMenu {
@@ -480,6 +519,10 @@
           lines.append("  text length \(textView.string.count) visible \(textView.visibleRect) clip \(textView.enclosingScrollView?.contentView.bounds ?? .zero) container \(textView.textContainer?.size ?? .zero) inset \(textView.textContainerInset) origin \(textView.textContainerOrigin)")
         }
         lines.append("symbol menu:\n" + (services.symbolMenu?.summary ?? "-"))
+        lines.append("editor menu:\n" + (services.editorMenu.map { "at \(Int($0.point.x)),\(Int($0.point.y))\n" + $0.summary } ?? "-"))
+        lines.append(
+          "rename: "
+            + (services.renameRequest.map { "\($0.name) -> \($0.newName) | \($0.status) | can \($0.canRename) | anchor \($0.anchor)" } ?? "-"))
         lines.append("tabs: \(model.workspace.tabs.map(\.name))")
         lines.append("presets file error: \(model.presets.fileError ?? "-")")
         lines += model.presets.items.map { item in

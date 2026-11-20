@@ -125,6 +125,10 @@
     /// ⌘-click at a character location (jump to definition); return true
     /// when handled.
     public var onCommandClick: ((Int) -> Bool)?
+    /// A right click, after the word under the pointer was selected (or the caret put there): the character under
+    /// the pointer, if any, and the point in this view. Return true to show a menu of the editor's own instead of the
+    /// system's text menu.
+    public var onContextMenu: ((Int?, NSPoint) -> Bool)?
     /// Called with each edit, positioned in the text before it, for
     /// language servers.
     public var onTextChange: ((TextEdit) -> Void)?

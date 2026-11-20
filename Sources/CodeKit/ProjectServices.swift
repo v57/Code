@@ -95,6 +95,17 @@
       /// view, or (nil) takes it away. Without it ⌘ held over a symbol shows a popover with its declaration.
       @ObservationIgnored public var symbolMenuPresenter: ((SymbolMenu?, CodeTextView?, NSRect) -> Void)?
     #endif
+    #if os(macOS)
+      /// The editor's own menu (a right click on its text) while it's up; the app draws it at its point.
+      public var editorMenu: EditorMenu?
+      /// Rename while it asks for the new name; the app draws it under the symbol.
+      public var renameRequest: RenameRequest?
+      @ObservationIgnored var editorMenuLookup: Task<Void, Never>?
+    #endif
+    /// Find “text” in Project: the app's Find in Project, for the text as it is.
+    @ObservationIgnored public var findInProject: ((String) -> Void)?
+    /// Show in Issues: the app's Issues.
+    @ObservationIgnored public var showIssues: (() -> Void)?
     /// Find References: the app's Find in Project, for a name as a whole word.
     @ObservationIgnored public var findReferences: ((String) -> Void)?
     /// The definitions menu's rows, as shown.

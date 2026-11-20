@@ -55,6 +55,19 @@
     }
   }
 
+  /// One edit of a server's `WorkspaceEdit`.
+  public struct LSPTextEdit: Equatable, Hashable, Sendable {
+    public var url: URL
+    public var range: LSPRange
+    public var newText: String
+
+    public init(url: URL, range: LSPRange, newText: String) {
+      self.url = url
+      self.range = range
+      self.newText = newText
+    }
+  }
+
   public struct LSPDiagnostic: Equatable, Hashable, Sendable {
     public enum Severity: Int, Sendable {
       case error = 1, warning, information, hint
@@ -311,6 +324,36 @@
       let result = try await connection.request(method, params, timeout: 20)
       if let array = result.array { return array.compactMap(LSPLocation.init) }
       return LSPLocation(result).map { [$0] } ?? []
+    }
+
+    /// Whether the server renames symbols (it says so once running).
+    var supportsRename: Bool {
+      guard status == .running else { return false }
+      let provider = capabilities["renameProvider"]
+      return provider.bool == true || provider.object != nil
+    }
+
+    /// The edits that rename the symbol at a position, one per place (`textDocument/rename`'s `WorkspaceEdit`, from
+    /// its `changes` or its `documentChanges`).
+    func rename(url: URL, position: LSPPosition, newName: String) async throws -> [LSPTextEdit] {
+      guard supportsRename else { return [] }
+      var params = positionParams(url, position)
+      if case .object(var object) = params {
+        object["newName"] = .string(newName)
+        params = .object(object)
+      }
+      let result = try await connection.request("textDocument/rename", params, timeout: 30)
+      var edits: [LSPTextEdit] = []
+      func add(_ uri: String?, _ list: JSONValue) {
+        guard let uri, let url = URL(string: uri) else { return }
+        for item in list.array ?? [] {
+          guard let range = LSPRange(item["range"]), let text = item["newText"].string else { continue }
+          edits.append(LSPTextEdit(url: url.standardizedFileURL, range: range, newText: text))
+        }
+      }
+      for (uri, list) in result["changes"].object ?? [:] { add(uri, list) }
+      for change in result["documentChanges"].array ?? [] { add(change["textDocument"]["uri"].string, change["edits"]) }
+      return edits
     }
 
     /// Hover text (Markdown or plain), if any.

@@ -206,6 +206,14 @@ extension SearchQuery {
 /// Find in Project's Replace: the same matches as `ProjectSearch` (none of
 /// zero length), replaced in a text or a file.
 public enum ProjectReplace {
+  /// Rewrites the text file at `url`, keeping its encoding: `change` gives the new text, or nil to leave the file
+  /// alone. False when it wasn't written (not a text file, or left alone).
+  public static func rewrite(fileAt url: URL, _ change: (String) -> String?) throws -> Bool {
+    guard case .text(let text, let encoding) = TextDocument.read(url), let new = change(text), new != text else { return false }
+    _ = try TextDocument.write(new, to: url, encoding: encoding)
+    return true
+  }
+
   /// `text` with every match replaced, and how many there were.
   public static func replacingAll(in text: String, query: SearchQuery, with replacement: String)
     -> (text: String, count: Int)

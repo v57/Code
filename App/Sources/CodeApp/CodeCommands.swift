@@ -219,6 +219,11 @@ struct CodeCommands: Commands {
           .keyboardShortcut("/", modifiers: [.control])
         Button("Select Previous Placeholder") { send(#selector(CodeTextView.selectPreviousPlaceholder(_:))) }
           .keyboardShortcut("/", modifiers: [.control, .shift])
+        Divider()
+        // The file and line as tools write them (`Sources/App/File.swift:20`); also in the editor's own menu.
+        Button("Copy Reference") { workspace?.selectedDocument.map { services?.copyReference(in: $0) } }
+          .keyboardShortcut("c", modifiers: [.command, .control, .shift])
+          .disabled(workspace?.selectedDocument == nil)
       }
     #endif
 
