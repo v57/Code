@@ -69,6 +69,34 @@ import VaultKit
     return client
   }
 
+  /// The file an issue is in, on the device: the path there when the log named one in the project (the log's paths are
+  /// the local copy's), else the first file of that name in the project, as Swift Testing names only the file
+  /// ("recorded an issue at TripStoreTests.swift:16:3").
+  func file(of issue: BuildIssue) async -> SFTPFileInfo? {
+    guard let url = issue.url, let source, let controller, let client = try? await fileClient() else { return nil }
+    let root = controller.root.standardizedFileURL.path
+    let path = url.standardizedFileURL.path
+    let there = source.directory.hasSuffix("/") ? String(source.directory.dropLast()) : source.directory
+    let remote = path.hasPrefix(root + "/") ? there + path.dropFirst(root.count) : path
+    if let info = try? await client.stat(remote), !info.isDirectory { return info }
+    return await Self.find(url.lastPathComponent, in: there, client: client)
+  }
+
+  /// A file by name in the project, folder by folder from the top, leaving out hidden folders and build output.
+  private static func find(_ name: String, in root: String, client: SFTPClient) async -> SFTPFileInfo? {
+    let skipped: Set<String> = [".build", "build", "DerivedData", "node_modules", "Pods", "target"]
+    var folders = [root]
+    var listed = 0
+    while !folders.isEmpty, listed < 400 {
+      let folder = folders.removeFirst()
+      listed += 1
+      guard let entries = try? await client.list(folder) else { continue }
+      if let match = entries.first(where: { !$0.isDirectory && $0.name == name }) { return match }
+      folders += entries.filter { $0.isDirectory && !$0.name.hasPrefix(".") && !skipped.contains($0.name) }.map(\.path)
+    }
+    return nil
+  }
+
   /// An SFTP connection to the target, dialed a second time after a short wait when the first couldn't reach it: right
   /// after Code comes to the front, iOS's first dial on the local network can fail with "No route to host" while the
   /// network path (or the `.local` name) isn't ready yet, and the same dial a moment later connects (C-011).

@@ -17,8 +17,8 @@ struct ProjectScreen: View {
   private var session: ProjectSession { lifetime.session }
   @State private var pane = Pane.log
   @State private var showsFiles = false
-  /// A file pushed straight from here (Debug: `CODE_DEBUG_SHOW=file:<path>`).
-  @State private var shownFile: SFTPFileInfo?
+  /// A file pushed straight from here: an issue's, at its line (Debug: `CODE_DEBUG_SHOW=file:<path>`).
+  @State private var shownFile: ShownFile?
   @State private var hidesUnreadable = false
   #if DEBUG
     /// `CODE_DEBUG_SHOW` is shown once, not on every return.
@@ -75,7 +75,9 @@ struct ProjectScreen: View {
         RemoteFolderView(session: session, path: source.directory, title: project.name, isRoot: true)
       }
     }
-    .navigationDestination(item: $shownFile) { entry in RemoteFileView(session: session, entry: entry) }
+    .navigationDestination(item: $shownFile) { shown in
+      RemoteFileView(session: session, entry: shown.entry, issue: shown.issue)
+    }
     // Again on every return from Files: opens only the first time.
     .task {
       await session.openOnce()
@@ -102,7 +104,7 @@ struct ProjectScreen: View {
 
       if show.hasPrefix("file:") {
         let path = source.directory + "/" + show.dropFirst(5)
-        shownFile = try? await session.fileClient().stat(path)
+        shownFile = (try? await session.fileClient().stat(path))?.map { ShownFile(entry: $0) }
       }
     }
   #endif
@@ -136,7 +138,12 @@ struct ProjectScreen: View {
       .kitSegmentedStyle(idiom == .phone ? .wide : .automatic)
       switch pane {
       case .log: LogView(controller: controller)
-      case .issues: IssuesView(controller: controller, device: session.source?.name)
+      case .issues:
+        IssuesView(controller: controller, device: session.source?.name) { issue in
+          Task {
+            if let entry = await session.file(of: issue) { shownFile = ShownFile(entry: entry, issue: issue) }
+          }
+        }
       }
     }
     .padding(.horizontal, KitMetrics.gutter + 4)
@@ -188,12 +195,18 @@ struct ProjectTitle: View {
       if controller.isScanning { return [String(localized: "Reading the project…")] }
       return [controller.schemes.isEmpty ? String(localized: "No schemes") : String(localized: "Ready")]
     case .running(let kind):
-      let detail = controller.progress?.message ?? controller.stepTitle
-      return [detail.map { $0.isEmpty ? kind.progressTitle : "\(kind.progressTitle): \($0)" } ?? kind.progressTitle]
+      // "Building: Compiling Trip.swift", never "Building: Build" or "Building: Building Atlas".
+      let detail = controller.progress?.message ?? controller.stepTitle ?? ""
+      let title = kind.progressTitle
+      if detail.isEmpty || detail == kind.title { return [title] }
+      return [detail.hasPrefix(title) ? detail : "\(title): \(detail)"]
     case .succeeded(let kind, _):
       return [String(localized: "\(kind.title) succeeded")] + [device].compactMap { $0 }
     case .failed(let kind, _, let summary):
-      return [String(localized: "\(kind.title) failed: \(summary)")] + [device].compactMap { $0 }
+      // A test's summary says it already: "Test: 1 of 2 failed", not "Test failed: 1 of 2 failed".
+      let line = summary.hasSuffix("failed")
+        ? String(localized: "\(kind.title): \(summary)") : String(localized: "\(kind.title) failed: \(summary)")
+      return [line] + [device].compactMap { $0 }
     case .stopped(let kind, _):
       return [String(localized: "\(kind.title) stopped")]
     }
@@ -389,16 +402,25 @@ struct LogView: View {
   }
 }
 
+/// A file a project pushes over itself, and the issue it was opened for.
+struct ShownFile: Hashable {
+  var entry: SFTPFileInfo
+  var issue: BuildIssue?
+}
+
 /// The issues the last action found, in one card: the counts and the device in its header, each issue its
-/// severity, message and file:line.
+/// severity, message and file:line; a tap opens the file there at the issue's line.
 struct IssuesView: View {
   let controller: ActionController
   let device: String?
+  var open: (BuildIssue) -> Void = { _ in }
 
   var body: some View {
     let issues = controller.issues
     if issues.isEmpty {
-      EmptyState(systemImage: "checkmark.circle", title: "No Issues")
+      EmptyState(
+        systemImage: "checkmark.circle", title: "No Issues",
+        message: "Errors, warnings and failed tests from the last build or test show here.")
     } else {
       let errors = issues.filter { $0.severity == .error }.count
       let warnings = issues.filter { $0.severity == .warning }.count
@@ -413,7 +435,14 @@ struct IssuesView: View {
           ],
           systemImage: errors > 0 ? "xmark.octagon" : "exclamationmark.triangle", hue: errors > 0 ? .red : .orange
         ) {
-          ForEach(issues) { issue in IssueRow(issue: issue) }
+          ForEach(issues) { issue in
+            if issue.url != nil {
+              Button { open(issue) } label: { IssueRow(issue: issue, opens: true) }
+                .buttonStyle(.plain)
+            } else {
+              IssueRow(issue: issue)
+            }
+          }
         }
         .padding(.bottom, KitMetrics.gutter)
       }
@@ -424,8 +453,14 @@ struct IssuesView: View {
 /// An issue: its severity on the kit's row tile, the whole message (it wraps), and its file:line.
 struct IssueRow: View {
   let issue: BuildIssue
+  /// A tap opens its file: a chevron says so, and the text isn't selectable.
+  var opens = false
 
   var body: some View {
+    if opens { row } else { row.textSelection(.enabled) }
+  }
+
+  private var row: some View {
     HStack(alignment: .top, spacing: 10) {
       RowTile(
         systemImage: issue.severity == .error ? "xmark.octagon" : "exclamationmark.triangle",
@@ -441,10 +476,16 @@ struct IssueRow: View {
         }
       }
       Spacer(minLength: 0)
+      if opens {
+        Image(systemName: "chevron.right")
+          .kitFont(.caption)
+          .foregroundStyle(.kitTertiary)
+          .padding(.top, 4)
+      }
     }
     .padding(.horizontal, 10)
     .padding(.vertical, 8)
-    .textSelection(.enabled)
+    .contentShape(.rect)
     .accessibilityElement(children: .combine)
   }
 }
