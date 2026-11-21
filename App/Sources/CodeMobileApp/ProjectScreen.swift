@@ -78,6 +78,7 @@ struct ProjectScreen: View {
     .navigationDestination(item: $shownFile) { shown in
       RemoteFileView(session: session, entry: shown.entry, issue: shown.issue)
     }
+    .modifier(RetryAfterPrompt(session: session))
     // Again on every return from Files: opens only the first time.
     .task {
       await session.openOnce()
@@ -547,5 +548,36 @@ struct PresetBar: View {
       return "Runs on \(preset.target) from the Mac it’s connected to."
     }
     return controller.state(of: preset).reason
+  }
+}
+
+/// Opens the project again once a system prompt that interrupted the first try is answered. The first connection on
+/// the local network asks for Local Network access, and until the user answers, iOS fails the dial ("the host name
+/// mac.local couldn't be found", "No route to host"): without this the screen says it couldn't open the project and
+/// waits for Try Again, though Allow was just tapped. While a prompt shows, the scene is inactive, so a try that failed
+/// with the scene interrupted runs once more when it's active again. A refused prompt fails the second try too, and
+/// the error stays.
+private struct RetryAfterPrompt: ViewModifier {
+  let session: ProjectSession
+  @Environment(\.scenePhase) private var scenePhase
+  /// The scene left the front while the project was opening.
+  @State private var interrupted = false
+
+  func body(content: Content) -> some View {
+    content
+      .onChange(of: scenePhase) { _, phase in
+        if phase != .active, case .loading = session.phase { interrupted = true }
+        retryIfAnswered()
+      }
+      .onChange(of: session.phase) { _, phase in
+        if phase == .ready { interrupted = false }
+        retryIfAnswered()
+      }
+  }
+
+  private func retryIfAnswered() {
+    guard interrupted, scenePhase == .active, case .failed = session.phase else { return }
+    interrupted = false
+    Task { await session.open() }
   }
 }
