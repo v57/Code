@@ -1,5 +1,5 @@
 {
-  "originHash" : "2466628aa939cf9338e4e7b708835f6dbff49823f3d4277893d907c7373d4a70",
+  "originHash" : "e8d867f3802f288b12892e1da26062cf663612041904a993576abfab3275b593",
   "pins" : [
     {
       "identity" : "component",
@@ -7,7 +7,7 @@
       "location" : "https://github.com/v57/Component.git",
       "state" : {
         "branch" : "main",
-        "revision" : "e2bd87dc479ba767fd649d98c9f128be8d82217f"
+        "revision" : "082e90a899147d92fdb8f9b98aeb778864a1750e"
       }
     },
     {
