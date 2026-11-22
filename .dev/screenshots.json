@@ -1,29 +1,142 @@
 {
-  "build": { "scheme": "Code", "project": "Code.xcodeproj" },
-  "appearances": ["light", "dark"],
-  "variables": { "DEMO": "/tmp/CodeDemo" },
-  "watch": ["App", "Sources", "Tools/screenshots"],
-  "mac": { "window": [1440, 900] },
+  "build": {
+    "scheme": "Code",
+    "project": "Code.xcodeproj"
+  },
+  "appearances": [
+    "light",
+    "dark"
+  ],
+  "variables": {
+    "DEMO": "/tmp/CodeDemo",
+    "SSH_USER": "v57"
+  },
+  "watch": [
+    "App",
+    "Sources",
+    "Tools/screenshots"
+  ],
+  "mac": {
+    "window": [
+      1440,
+      900
+    ]
+  },
+  "ios": {
+    "devices": [
+      "iPhone 18 Pro Max",
+      "iPad Pro 13-inch (M5)"
+    ]
+  },
   "scenes": [
     {
       "id": "01-editor",
-      "arguments": ["--screenshot-demo", "--open", "$DEMO/Atlas", "--do", "open:$DEMO/Atlas/Sources/Atlas/TripStore.swift:17"],
+      "platforms": [
+        "mac"
+      ],
+      "arguments": [
+        "--screenshot-demo",
+        "--open",
+        "$DEMO/Atlas",
+        "--do",
+        "open:$DEMO/Atlas/Sources/Atlas/TripStore.swift:17"
+      ],
       "caption": "A fast editor for your projects"
     },
     {
       "id": "02-quick-open",
-      "arguments": ["--screenshot-demo", "--open", "$DEMO/Atlas", "--do", "open:$DEMO/Atlas/Sources/Atlas/Trip.swift:1", "--do", "quickopen:trip"],
+      "platforms": [
+        "mac"
+      ],
+      "arguments": [
+        "--screenshot-demo",
+        "--open",
+        "$DEMO/Atlas",
+        "--do",
+        "open:$DEMO/Atlas/Sources/Atlas/Trip.swift:1",
+        "--do",
+        "quickopen:trip"
+      ],
       "caption": "Open any file in a few keystrokes"
     },
     {
       "id": "03-find",
-      "arguments": ["--screenshot-demo", "--open", "$DEMO/Atlas", "--do", "open:$DEMO/Atlas/Sources/Atlas/Stop.swift:1", "--do", "find:trips"],
+      "platforms": [
+        "mac"
+      ],
+      "arguments": [
+        "--screenshot-demo",
+        "--open",
+        "$DEMO/Atlas",
+        "--do",
+        "open:$DEMO/Atlas/Sources/Atlas/Stop.swift:1",
+        "--do",
+        "find:trips"
+      ],
       "caption": "Find across the whole project"
     },
     {
       "id": "04-welcome",
-      "arguments": ["--screenshot-demo", "--recent", "$DEMO/Atlas", "--recent", "$DEMO/Weather", "--recent", "$DEMO/Field Notes"],
+      "platforms": [
+        "mac"
+      ],
+      "arguments": [
+        "--screenshot-demo",
+        "--recent",
+        "$DEMO/Atlas",
+        "--recent",
+        "$DEMO/Weather",
+        "--recent",
+        "$DEMO/Field Notes"
+      ],
       "caption": "Pick up where you left off"
+    },
+    {
+      "id": "11-projects-ios",
+      "platforms": [
+        "iphone",
+        "ipad"
+      ],
+      "relaunch": true,
+      "arguments": [],
+      "environment": {
+        "CODE_DEBUG_REMOTE": "{\"name\": \"Atlas\", \"host\": \"127.0.0.1\", \"port\": 2222, \"user\": \"$SSH_USER\", \"directory\": \"$DEMO/Atlas\", \"key\": \"$DEMO/ssh/client\", \"device\": \"Studio\"}",
+        "CODE_DEBUG_SELECT": "none"
+      },
+      "delay": 4,
+      "caption": "Your Mac's projects, wherever you are"
+    },
+    {
+      "id": "13-test-ios",
+      "platforms": [
+        "iphone",
+        "ipad"
+      ],
+      "relaunch": true,
+      "arguments": [],
+      "environment": {
+        "CODE_DEBUG_REMOTE": "{\"name\": \"Atlas\", \"host\": \"127.0.0.1\", \"port\": 2222, \"user\": \"$SSH_USER\", \"directory\": \"$DEMO/Atlas\", \"key\": \"$DEMO/ssh/client\", \"device\": \"Studio\"}",
+        "CODE_DEBUG_SELECT": "Atlas",
+        "CODE_DEBUG_PERFORM": "test"
+      },
+      "delay": 30,
+      "caption": "Run the tests and see what failed"
+    },
+    {
+      "id": "14-file-ios",
+      "platforms": [
+        "iphone",
+        "ipad"
+      ],
+      "relaunch": true,
+      "arguments": [],
+      "environment": {
+        "CODE_DEBUG_REMOTE": "{\"name\": \"Atlas\", \"host\": \"127.0.0.1\", \"port\": 2222, \"user\": \"$SSH_USER\", \"directory\": \"$DEMO/Atlas\", \"key\": \"$DEMO/ssh/client\", \"device\": \"Studio\"}",
+        "CODE_DEBUG_SELECT": "Atlas",
+        "CODE_DEBUG_SHOW": "file:Sources/Atlas/TripStore.swift"
+      },
+      "delay": 8,
+      "caption": "Read any file of the project"
     }
   ]
 }
