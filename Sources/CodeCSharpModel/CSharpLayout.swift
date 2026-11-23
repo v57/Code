@@ -2,6 +2,10 @@ import CodeModel
 import CodeScan
 import Foundation
 
+#if canImport(FoundationXML)
+  import FoundationXML
+#endif
+
 /// A C# project (a `.csproj`): what its files are read with and what they see.
 struct CSharpProject {
   var name: String
