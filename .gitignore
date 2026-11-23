@@ -42,3 +42,4 @@ KANBAN*.md
 /Code-Local.xcworkspace/xcshareddata/
 /.swiftpm/
 /App/Package.resolved
+/Package.resolved

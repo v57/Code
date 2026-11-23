@@ -47,6 +47,15 @@
       }
     },
     {
+      "identity" : "remote",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/v57/Remote.git",
+      "state" : {
+        "branch" : "main",
+        "revision" : "90866943f4f497c43fcef33249063a0795bc0173"
+      }
+    },
+    {
       "identity" : "ssh",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/v57/SSH.git",
