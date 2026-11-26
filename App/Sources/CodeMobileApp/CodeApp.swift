@@ -279,8 +279,11 @@ struct ProjectsSidebar: View {
     .status {
       HStack(spacing: 6) {
         StatusDot(hue: deviceCount > 0 ? .green : .gray)
-        Text(deviceCount == 0 ? "No devices" : "\(deviceCount) devices")
-        Spacer(minLength: 0)
+        // With a project open the bar holds Build and Test, and the card above names its device.
+        if session?.controller == nil || idiom == .phone {
+          Text(deviceCount == 0 ? "No devices" : "\(deviceCount) devices")
+          Spacer(minLength: 0)
+        }
         // The kit's icon button: a kit button style sets its own label style, so `.labelStyle(.iconOnly)` around
         // `.kitPlain` still showed the title ("Priva…").
         Button("Privacy", systemImage: "hand.raised") { showsPrivacy = true }

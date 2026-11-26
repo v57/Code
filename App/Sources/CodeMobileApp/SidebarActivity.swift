@@ -85,11 +85,15 @@ struct SidebarActionButtons: View {
   let controller: ActionController?
 
   var body: some View {
-    ForEach([ActionKind.build, .test], id: \.self) { kind in
-      Button(kind.title, systemImage: kind.symbolName) { controller?.perform(kind) }
-        .disabled(!canPerform(kind))
+    // Only with a project to build: two disabled buttons took the bar's room from the devices' count (296pt beside
+    // an unfolded iPhone Duo's page).
+    if let controller {
+      ForEach([ActionKind.build, .test], id: \.self) { kind in
+        Button(kind.title, systemImage: kind.symbolName) { controller.perform(kind) }
+          .disabled(!canPerform(kind))
+      }
+      if controller.isRunning { StopButton(controller: controller).labelStyle(.iconOnly) }
     }
-    if let controller, controller.isRunning { StopButton(controller: controller).labelStyle(.iconOnly) }
   }
 
   private func canPerform(_ kind: ActionKind) -> Bool {
