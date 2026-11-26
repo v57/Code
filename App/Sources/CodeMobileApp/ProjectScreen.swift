@@ -24,6 +24,8 @@ struct ProjectScreen: View {
     /// `CODE_DEBUG_SHOW` is shown once, not on every return.
     @State private var debugShown = false
   #endif
+  /// Where the projects sidebar finds this project's session, and asks for the log or the issues.
+  @Environment(ShownProject.self) private var shownProject
   @Environment(\.kitIdiom) private var idiom
 
   enum Pane: Hashable {
@@ -80,7 +82,13 @@ struct ProjectScreen: View {
     }
     .modifier(RetryAfterPrompt(session: session))
     // Again on every return from Files: opens only the first time.
+    .onChange(of: shownProject.requestedPane) { _, requested in
+      guard let requested else { return }
+      pane = requested
+      shownProject.requestedPane = nil
+    }
     .task {
+      shownProject.session = session
       await session.openOnce()
       #if DEBUG
         if !debugShown {

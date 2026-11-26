@@ -38,6 +38,7 @@ struct SidebarView: View {
         systemImage: workspace.visibility.showsHiddenFiles ? "eye.slash" : "eye"
       ) { workspace.visibility.showsHiddenFiles.toggle() }
       .kitHelp(workspace.visibility.showsHiddenFiles ? "Hide Hidden Files" : "Show Hidden Files", shortcut: "⇧⌘.")
+      NavigatorActionButtons()
     }
     .background { SidebarSelectionFollower() }
     .onDeleteCommand {
@@ -141,6 +142,8 @@ private struct NavigatorSidebar<Content: View, BottomBar: View>: View {
     } bottomBar: {
       bottomBar
     }
+    // What runs, here and in the other projects, and what failed last: a tap shows its output.
+    .activity(AppState.shared.navigatorActivity(in: model))
     .onReturn(activateSelection)
     // The selection stays in view when a tab, Quick Open or Finder changes it (no `ScrollViewReader` here: it built
     // the whole tree again whenever the rows it could scroll to changed, on every tab switch).

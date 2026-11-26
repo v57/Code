@@ -48,6 +48,8 @@ struct ProjectsView: View {
   @State private var compactColumn = NavigationSplitViewColumn.sidebar
   /// iPhone's stack: the open project, then its files.
   @State private var path = NavigationPath()
+  /// The open project's session, for the sidebar's activity card and its Build, Test and Stop.
+  @State private var shown = ShownProject()
   @Environment(\.kitIdiom) private var idiom
 
   private var projects: [RemoteProject] { RemoteProjects.all(vault: vault) }
@@ -64,6 +66,7 @@ struct ProjectsView: View {
         split
       }
     }
+    .environment(shown)
     .task {
       #if DEBUG
         if let id = DebugLaunch.selected(in: projects) { selection = id }
@@ -174,12 +177,20 @@ struct PrivacySheet: ViewModifier {
 /// The projects as the kit's sidebar: one card of the vault's projects that have a folder on another device, each
 /// on its icon (or initial) with the devices that have it; search filters them, and the bar says how many devices
 /// Code can reach, through the user's Hubs or over SSH. With none, it says how to get some.
+///
+/// The last projects opened lead in a Recent card. Beside an open project (iPad, an unfolded iPhone), the activity
+/// card says what it is doing on its device and the bottom bar has its Build, Test and Stop; iPhone's list shows
+/// while no project is open, so it has neither.
 struct ProjectsSidebar: View {
   let projects: [RemoteProject]
   @Binding var selection: RemoteProject.ID?
   @Binding var columnVisibility: NavigationSplitViewVisibility
   @State private var search = ""
   @State private var showsPrivacy = false
+  /// The ids of the last projects opened here, newest first.
+  @State private var recents = KitRecents(key: "recentProjects", limit: 3)
+  @Environment(ShownProject.self) private var shownProject
+  @Environment(\.kitIdiom) private var idiom
 
   private var shown: [RemoteProject] {
     search.isEmpty ? projects : projects.filter { $0.name.localizedCaseInsensitiveContains(search) }
@@ -188,12 +199,55 @@ struct ProjectsSidebar: View {
   /// The devices the projects are on.
   private var deviceCount: Int { Set(projects.flatMap { $0.targets.map(\.name) }).count }
 
+  /// The last projects opened that are still on a device Code can reach.
+  private var recent: [RemoteProject] {
+    recents.ids.compactMap { id in projects.first { $0.id == id } }
+  }
+
+  /// The session of the project shown beside the sidebar.
+  private var session: ProjectSession? {
+    guard idiom != .phone, let session = shownProject.session, session.project.id == selection else { return nil }
+    return session
+  }
+
   var body: some View {
+    Group {
+      // iPhone's list has no project beside it to build: no buttons, and no empty card for them in the bar.
+      if idiom == .phone {
+        sidebar { EmptyView() }
+      } else {
+        sidebar { SidebarActionButtons(controller: session?.controller) }
+      }
+    }
+    .onChange(of: selection) { _, id in
+      if let id { recents.note(id) }
+    }
+    // A project that left the vault, or whose devices did, leaves Recent. Not while the list is empty: the vault may
+    // not have loaded yet.
+    .onChange(of: projects.map(\.id), initial: true) { _, ids in
+      if !ids.isEmpty { recents.keep { ids.contains($0) } }
+    }
+  }
+
+  private func row(_ project: RemoteProject) -> some View {
+    // iPhone: a row pushes its project.
+    SidebarRow(value: project.id, project.name, subtitle: project.targets.map(\.name).joined(separator: ", ")) {
+      ProjectTile(project: project)
+    }
+    .pushes()
+  }
+
+  private func sidebar<BottomBar: View>(@ViewBuilder bottomBar: () -> BottomBar) -> some View {
     KitSidebar(
       selection: $selection, searchText: $search, searchPrompt: "Search Projects", columnVisibility: $columnVisibility
     ) {
       VaultAccountPicker(
         meta: String(localized: "\(projects.count) projects"))
+      if search.isEmpty, !recent.isEmpty {
+        KitSection("Recent", systemImage: "clock", hue: .gray) {
+          ForEach(recent) { row($0) }
+        }
+      }
       KitSection(
         "Projects",
         meta: projects.isEmpty
@@ -204,23 +258,24 @@ struct ProjectsSidebar: View {
           ],
         systemImage: "folder", hue: .orange
       ) {
-        ForEach(shown) { project in
-          // iPhone: a row pushes its project.
-          SidebarRow(value: project.id, project.name, subtitle: project.targets.map(\.name).joined(separator: ", ")) {
-            ProjectTile(project: project)
+        ForEach(shown) { row($0) }
+        // None yet (on iPad the welcome beside it says how to get some): the one step there is on this device, as
+        // iCloud off is a reason for none.
+        if projects.isEmpty {
+          SectionEmptyActions("Projects on your other devices appear here.") {
+            Button("Privacy: iCloud on This Device", systemImage: "hand.raised") { showsPrivacy = true }
           }
-          .pushes()
         }
       }
-      // None yet (on iPad the welcome beside it says how to get some), or none matches the search.
-      .emptyState(
-        projects.isEmpty ? "Projects on your other devices appear here." : "Nothing matches “\(search)”.",
-        systemImage: projects.isEmpty ? "desktopcomputer" : "magnifyingglass")
+      // None matches the search.
+      .emptyState("Nothing matches “\(search)”.", systemImage: "magnifyingglass")
       // Many projects: the card's title stays in view while they scroll past.
       .kitSticky()
     } bottomBar: {
-      EmptyView()
+      bottomBar()
     }
+    // What the open project is doing on its device; a run's line shows its log or its issues.
+    .activity(session?.sidebarActivity { shownProject.requestedPane = $0 } ?? [])
     .status {
       HStack(spacing: 6) {
         StatusDot(hue: deviceCount > 0 ? .green : .gray)
