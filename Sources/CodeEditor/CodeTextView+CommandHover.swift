@@ -69,6 +69,7 @@
 
     public override func scrollWheel(with event: NSEvent) {
       endCommandHover()
+      pendingReveal = nil
       super.scrollWheel(with: event)
     }
 

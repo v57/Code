@@ -1279,7 +1279,8 @@
       guard start < storage.length else { return false }
       let visible = visibleRect
       var anchor: (character: Int, y: CGFloat)?
-      if visible.minY > textContainerOrigin.y {
+      if let reveal = pendingReveal, selectedRange().location != reveal || start >= reveal { pendingReveal = nil }
+      if pendingReveal == nil, visible.minY > textContainerOrigin.y {
         let point = NSPoint(x: 0, y: visible.minY - textContainerOrigin.y)
         let glyph = layoutManager.glyphIndex(for: point, in: textContainer)
         let character = layoutManager.characterIndexForGlyph(at: glyph)
@@ -1293,7 +1294,9 @@
       let took = max(CACurrentMediaTime() - began, 0.000_1)
       let fitting = Double(layoutFillSlice) * Self.layoutFillBudget / took
       layoutFillSlice = max(200, min(100_000, Int((Double(layoutFillSlice) + fitting) / 2)))
-      if let anchor, let clip = enclosingScrollView?.contentView {
+      if let pendingReveal {
+        scrollToMiddle(pendingReveal)
+      } else if let anchor, let clip = enclosingScrollView?.contentView {
         let glyph = layoutManager.glyphIndexForCharacter(at: anchor.character)
         let delta = layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil).minY - anchor.y
         if abs(delta) > 0.25 {
@@ -1546,6 +1549,38 @@
 
     // MARK: - Navigation
 
+    /// The character a jump scrolled to while the text before it wasn't all laid out: `fillLayoutSlice` keeps it
+    /// in the middle until it is, unless the caret left it or the user scrolled.
+    var pendingReveal: Int?
+
+    /// Scrolls the character at `location` to the middle of the view.
+    func scrollToMiddle(_ location: Int) {
+      guard let layoutManager, let textContainer else { return }
+      let glyphs = layoutManager.glyphRange(
+        forCharacterRange: NSRange(location: location, length: 0), actualCharacterRange: nil)
+      var rect = layoutManager.boundingRect(forGlyphRange: glyphs, in: textContainer)
+      rect.origin.y += textContainerOrigin.y
+      let visible = visibleRect
+      if let scrollView = enclosingScrollView {
+        // The view's height follows the layout late: a line past its end would be cut to the old end.
+        sizeToFit()
+        // Keep the clip view's x: with the line numbers' inset it is
+        // negative, and the visible rect's x (0) would slide the text
+        // under them.
+        let clip = scrollView.contentView
+        // In the middle of what the scroll view's insets (bars floating over the editor) leave clear.
+        let insets = scrollView.contentInsets
+        let shown = clip.bounds.height - insets.top - insets.bottom
+        let minY = -insets.top
+        let maxY = max(minY, frame.height - clip.bounds.height + insets.bottom)
+        let y = rect.midY - shown / 2 - insets.top
+        clip.scroll(to: NSPoint(x: clip.bounds.minX, y: min(maxY, max(minY, y))))
+        scrollView.reflectScrolledClipView(clip)
+      } else {
+        scroll(NSPoint(x: visible.minX, y: max(0, rect.midY - visible.height / 2)))
+      }
+    }
+
     /// Moves the caret to `line` and `column` (from 1), selecting `length`
     /// characters on the line, scrolls it to the middle of the view and
     /// flashes the line (or the selection).
@@ -1557,28 +1592,14 @@
       let selection = NSRange(location: location, length: min(max(length, 0), NSMaxRange(content) - location))
       setSelectedRange(selection)
       window?.makeFirstResponder(self)
-      if let layoutManager, let textContainer {
-        let glyphs = layoutManager.glyphRange(
-          forCharacterRange: NSRange(location: location, length: 0), actualCharacterRange: nil)
-        var rect = layoutManager.boundingRect(forGlyphRange: glyphs, in: textContainer)
-        rect.origin.y += textContainerOrigin.y
-        let visible = visibleRect
-        if let scrollView = enclosingScrollView {
-          // Keep the clip view's x: with the line numbers' inset it is
-          // negative, and the visible rect's x (0) would slide the text
-          // under them.
-          let clip = scrollView.contentView
-          // In the middle of what the scroll view's insets (bars floating over the editor) leave clear.
-          let insets = scrollView.contentInsets
-          let shown = clip.bounds.height - insets.top - insets.bottom
-          let minY = -insets.top
-          let maxY = max(minY, frame.height - clip.bounds.height + insets.bottom)
-          let y = rect.midY - shown / 2 - insets.top
-          clip.scroll(to: NSPoint(x: clip.bounds.minX, y: min(maxY, max(minY, y))))
-          scrollView.reflectScrolledClipView(clip)
-        } else {
-          scroll(NSPoint(x: visible.minX, y: max(0, rect.midY - visible.height / 2)))
-        }
+      scrollToMiddle(location)
+      // Text before the line that isn't laid out yet (a file just opened, a width that changed) has guessed
+      // heights, wrapped lines most of all: the line is scrolled to again as they become real.
+      if let layoutManager, layoutManager.firstUnlaidCharacterIndex() < location {
+        pendingReveal = location
+        scheduleLayoutFill()
+      } else {
+        pendingReveal = nil
       }
       if selection.length > 0 {
         showFindIndicator(for: selection)
