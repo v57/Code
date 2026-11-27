@@ -171,6 +171,7 @@
       self.configuration = configuration
       lineIndex = LineIndex(text)
       let storage = NSTextStorage(string: text)
+      CodeLineBreaks.install(on: storage)
       let layoutManager = NSLayoutManager()
       // The text in view is laid out first and the rest a slice per run-loop turn (`fillLayout`): laying out a
       // whole file at once stalled opening it (a 60 KB file took half a second, mostly making glyphs). The
